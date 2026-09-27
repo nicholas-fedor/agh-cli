@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Lock file maintenance by @renovate[bot] in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
 - Pin dependencies by @renovate[bot] in [#1](https://github.com/nicholas-fedor/agh-cli/pull/1)
 - Update dependency typescript to v7 by @renovate[bot] in [#11](https://github.com/nicholas-fedor/agh-cli/pull/11)
 - Update actions/setup-go action to v7 by @renovate[bot] in [#10](https://github.com/nicholas-fedor/agh-cli/pull/10)
@@ -25,8 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
-- @renovate[bot] made their first contribution in [#1](https://github.com/nicholas-fedor/agh-cli/pull/1)
-- @github-actions[bot] made their first contribution in [#12](https://github.com/nicholas-fedor/agh-cli/pull/12)
+- @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
+- @github-actions[bot] made their first contribution in [#13](https://github.com/nicholas-fedor/agh-cli/pull/13)
 - @nicholas-fedor made their first contribution in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 
 ## Compare Releases
