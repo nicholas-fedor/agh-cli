@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add Docker Hub repository overview by @nicholas-fedor in [#29](https://github.com/nicholas-fedor/agh-cli/pull/29)
+
 ### Changed
 
 - Skip workflow linting for release tags by @nicholas-fedor in [#27](https://github.com/nicholas-fedor/agh-cli/pull/27)
