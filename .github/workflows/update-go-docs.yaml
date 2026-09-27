@@ -1,0 +1,37 @@
+name: Update Go Docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Skip the pkg.go.dev update"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      dry-run:
+        description: "Skip the pkg.go.dev update"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  update-go-docs:
+    name: Update pkg.go.dev
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Run pkg.go.dev update
+        uses: nicholas-fedor/go-proxy-pull-action@b1f3a0ac79735437e667c3073d060c0c1031529d # v1.1.51
+        with:
+          goproxy: https://proxy.golang.org
+          import_path: github.com/nicholas-fedor/agh-cli
