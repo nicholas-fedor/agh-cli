@@ -10,7 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 // OSFileReader reads mounted secret files from the operating system.
@@ -54,7 +54,7 @@ func (*OSFileReader) Read(ctx context.Context, filePath string) ([]byte, error) 
 		return nil, fmt.Errorf("read credential file %q: %w", filePath, err)
 	}
 
-	if !path.IsAbs(filePath) {
+	if !filepath.IsAbs(filePath) {
 		return nil, fmt.Errorf("read credential file %q: %w", filePath, ErrFileNotAbsolute)
 	}
 

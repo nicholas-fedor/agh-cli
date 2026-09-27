@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
+
+// windowsOS is the value [runtime.GOOS] reports for Microsoft Windows, where
+// POSIX permission bits are emulated instead of enforced.
+const windowsOS = "windows"
 
 // TestLoadPreservesInstanceOrder verifies configuration ownership and file
 // order for loaded instances.
@@ -262,12 +267,20 @@ func readConfigFile(t *testing.T, path string) string {
 
 // requireFileMode asserts the permission bits of one file.
 //
+// The assertion is skipped on Windows, which reports emulated permission bits
+// rather than the POSIX mode a configuration file is written with. The saving
+// behavior under test still runs on every platform.
+//
 // Parameters:
 //   - t: test context.
 //   - path: file to inspect.
 //   - want: expected permission bits.
 func requireFileMode(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("Windows emulates permission bits instead of enforcing POSIX modes")
+	}
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
