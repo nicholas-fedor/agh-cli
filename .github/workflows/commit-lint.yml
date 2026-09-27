@@ -2,6 +2,8 @@
 name: Commit Lint
 on:
   pull_request:
+    branches-ignore:
+      - "docs/update-changelog"
 
 permissions:
   contents: read
