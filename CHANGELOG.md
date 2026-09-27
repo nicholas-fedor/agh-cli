@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Handle clean changelog pull requests by @nicholas-fedor in [#24](https://github.com/nicholas-fedor/agh-cli/pull/24)
+- Skip commit lint for changelog-only pull requests by @nicholas-fedor in [#22](https://github.com/nicholas-fedor/agh-cli/pull/22)
 - Update pkg.go.dev after stable releases by @nicholas-fedor in [#18](https://github.com/nicholas-fedor/agh-cli/pull/18)
 - Upload coverage to Codecov by @nicholas-fedor in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 - Initialize agh-cli CLI and library by @nicholas-fedor
@@ -31,8 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
-- @nicholas-fedor made their first contribution in [#20](https://github.com/nicholas-fedor/agh-cli/pull/20)
-- @github-actions[bot] made their first contribution in [#19](https://github.com/nicholas-fedor/agh-cli/pull/19)
+- @nicholas-fedor made their first contribution in [#24](https://github.com/nicholas-fedor/agh-cli/pull/24)
+- @github-actions[bot] made their first contribution in [#21](https://github.com/nicholas-fedor/agh-cli/pull/21)
 - @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
 
 ## Compare Releases
