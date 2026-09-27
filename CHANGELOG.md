@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Pin dependencies by @renovate[bot] in [#1](https://github.com/nicholas-fedor/agh-cli/pull/1)
+- Update dependency typescript to v7 by @renovate[bot] in [#11](https://github.com/nicholas-fedor/agh-cli/pull/11)
+- Update actions/setup-go action to v7 by @renovate[bot] in [#10](https://github.com/nicholas-fedor/agh-cli/pull/10)
 - Update commitlint monorepo to v21.2.3 by @renovate[bot] in [#9](https://github.com/nicholas-fedor/agh-cli/pull/9)
 - Update alpine docker tag to v3.24.2 by @renovate[bot] in [#6](https://github.com/nicholas-fedor/agh-cli/pull/6)
 - Update github/codeql-action digest to 2892aa5 by @renovate[bot] in [#5](https://github.com/nicholas-fedor/agh-cli/pull/5)
@@ -22,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
-- @renovate[bot] made their first contribution in [#9](https://github.com/nicholas-fedor/agh-cli/pull/9)
-- @github-actions[bot] made their first contribution in [#7](https://github.com/nicholas-fedor/agh-cli/pull/7)
+- @renovate[bot] made their first contribution in [#1](https://github.com/nicholas-fedor/agh-cli/pull/1)
+- @github-actions[bot] made their first contribution in [#12](https://github.com/nicholas-fedor/agh-cli/pull/12)
 - @nicholas-fedor made their first contribution in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 
 ## Compare Releases
