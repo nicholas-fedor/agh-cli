@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pass GoReleaser arguments without empty newlines by @nicholas-fedor in [#25](https://github.com/nicholas-fedor/agh-cli/pull/25)
 - Handle clean changelog pull requests by @nicholas-fedor in [#24](https://github.com/nicholas-fedor/agh-cli/pull/24)
 - Skip commit lint for changelog-only pull requests by @nicholas-fedor in [#22](https://github.com/nicholas-fedor/agh-cli/pull/22)
 - Update pkg.go.dev after stable releases by @nicholas-fedor in [#18](https://github.com/nicholas-fedor/agh-cli/pull/18)
@@ -33,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
-- @nicholas-fedor made their first contribution in [#24](https://github.com/nicholas-fedor/agh-cli/pull/24)
-- @github-actions[bot] made their first contribution in [#21](https://github.com/nicholas-fedor/agh-cli/pull/21)
+- @nicholas-fedor made their first contribution in [#25](https://github.com/nicholas-fedor/agh-cli/pull/25)
+- @github-actions[bot] made their first contribution in [#23](https://github.com/nicholas-fedor/agh-cli/pull/23)
 - @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
 
 ## Compare Releases
