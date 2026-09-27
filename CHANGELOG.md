@@ -26,9 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
+- @nicholas-fedor made their first contribution in [#16](https://github.com/nicholas-fedor/agh-cli/pull/16)
+- @github-actions[bot] made their first contribution in [#15](https://github.com/nicholas-fedor/agh-cli/pull/15)
 - @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
-- @github-actions[bot] made their first contribution in [#13](https://github.com/nicholas-fedor/agh-cli/pull/13)
-- @nicholas-fedor made their first contribution in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 
 ## Compare Releases
 
