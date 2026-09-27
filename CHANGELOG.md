@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Skip workflow linting for release tags by @nicholas-fedor in [#27](https://github.com/nicholas-fedor/agh-cli/pull/27)
 
+### Fixed
+
+- Create the first config in the per-user configuration directory by @nicholas-fedor in [#31](https://github.com/nicholas-fedor/agh-cli/pull/31)
+
 ## [0.1.0] - 2026-09-27
 
 ### Changed
