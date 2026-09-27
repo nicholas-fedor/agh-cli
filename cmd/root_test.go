@@ -92,7 +92,7 @@ func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 	configRoot := isolateRootUserConfigRoot(t)
 
 	userDirectory := filepath.Join(configRoot, app.DefaultConfigDirName)
-	require.NoError(t, os.Mkdir(userDirectory, RootConfigDirMode))
+	require.NoError(t, os.MkdirAll(userDirectory, RootConfigDirMode))
 
 	userConfig := writeRootConfigFile(
 		t,
