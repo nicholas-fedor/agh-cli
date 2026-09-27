@@ -25,10 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update github/codeql-action digest to 2892aa5 by @renovate[bot] in [#5](https://github.com/nicholas-fedor/agh-cli/pull/5)
 - Update actions/setup-go digest to 924ae3a by @renovate[bot] in [#2](https://github.com/nicholas-fedor/agh-cli/pull/2)
 
+### Fixed
+
+- Support absolute paths on Windows by @nicholas-fedor in [#20](https://github.com/nicholas-fedor/agh-cli/pull/20)
+
 ### New Contributors
 
-- @nicholas-fedor made their first contribution in [#18](https://github.com/nicholas-fedor/agh-cli/pull/18)
-- @github-actions[bot] made their first contribution in [#17](https://github.com/nicholas-fedor/agh-cli/pull/17)
+- @nicholas-fedor made their first contribution in [#20](https://github.com/nicholas-fedor/agh-cli/pull/20)
+- @github-actions[bot] made their first contribution in [#19](https://github.com/nicholas-fedor/agh-cli/pull/19)
 - @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
 
 ## Compare Releases
