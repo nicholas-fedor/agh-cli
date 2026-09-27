@@ -10,16 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upload coverage to Codecov by @nicholas-fedor in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 - Initialize agh-cli CLI and library by @nicholas-fedor
 
 ### Chores
 
+- Update alpine docker tag to v3.24.2 by @renovate[bot] in [#6](https://github.com/nicholas-fedor/agh-cli/pull/6)
 - Update github/codeql-action digest to 2892aa5 by @renovate[bot] in [#5](https://github.com/nicholas-fedor/agh-cli/pull/5)
 - Update actions/setup-go digest to 924ae3a by @renovate[bot] in [#2](https://github.com/nicholas-fedor/agh-cli/pull/2)
 
 ### New Contributors
 
-- @nicholas-fedor made their first contribution
+- @nicholas-fedor made their first contribution in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
+- @github-actions[bot] made their first contribution in [#4](https://github.com/nicholas-fedor/agh-cli/pull/4)
+- @renovate[bot] made their first contribution in [#6](https://github.com/nicholas-fedor/agh-cli/pull/6)
 
 ## Compare Releases
 
