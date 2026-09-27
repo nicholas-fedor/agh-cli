@@ -17,7 +17,16 @@ import (
 	"github.com/nicholas-fedor/agh-cli/cmd/instance"
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite"
 	"github.com/nicholas-fedor/agh-cli/cmd/version"
+	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
+
+// configFileStem is the configuration file name looked up in every default
+// search path.
+const configFileStem = "config"
+
+// configFileType is the configuration format of the files found in the default
+// search paths.
+const configFileType = "yaml"
 
 // newRootCommand creates the root command with fresh subcommands and flags.
 //
@@ -96,7 +105,25 @@ func ExecuteContext(ctx context.Context) error {
 	return nil
 }
 
+// registerConfigSearchPaths points Viper at the default configuration locations.
+//
+// The per-user configuration directory is registered before the current
+// directory, so a configuration created by the quickstart keeps applying
+// regardless of the working directory.
+func registerConfigSearchPaths() {
+	viper.SetConfigName(configFileStem)
+	viper.SetConfigType(configFileType)
+
+	for _, path := range app.ConfigSearchPaths() {
+		viper.AddConfigPath(path)
+	}
+}
+
 // initConfig reads the Viper configuration.
+//
+// An explicit path is used as given. Otherwise the default search paths are
+// registered and an absent file is a warning rather than a failure, because the
+// first write creates it.
 //
 // Parameters:
 //   - cfgFile: explicit configuration file path, or an empty value that selects
@@ -108,10 +135,7 @@ func initConfig(cfgFile string) error {
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
-		viper.SetConfigName("config")
-		viper.SetConfigType("yaml")
-		viper.AddConfigPath(".")
-		viper.AddConfigPath("$HOME/.config/agh-cli")
+		registerConfigSearchPaths()
 	}
 
 	err := viper.ReadInConfig()

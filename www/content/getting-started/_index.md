@@ -65,7 +65,7 @@ A container normally has no credential store session, so configure a `file` sour
 
 ## Quick Start
 
-By default, `agh-cli` looks for `./config.yaml` first and then `~/.config/agh-cli/config.yaml`. Add an instance without a password, then store the secret in the operating system credential store:
+By default, `agh-cli` looks for `~/.config/agh-cli/config.yaml` first and then `./config.yaml`. Add an instance without a password, then store the secret in the operating system credential store:
 
 ```bash
 agh-cli instance add default adguard.example.com --username admin
@@ -78,7 +78,9 @@ Store this credential for instance "default"? [y/N]: y
 Stored credential for instance "default" in keyring service "agh-cli" with key "default".
 ```
 
-The hidden prompt keeps the password out of your shell history and out of any process listing. The command writes the secret to the credential store first and then rewrites `config.yaml` to reference it, so the file ends up without a plaintext password:
+`instance add` is also the step that creates the configuration, so a fresh install writes `~/.config/agh-cli/config.yaml` and creates that directory rather than dropping a file into the directory you happened to run the command from.
+
+The hidden prompt keeps the password out of your shell history and out of any process listing. The command writes the secret to the credential store first and then rewrites the configuration to reference it, so the file ends up without a plaintext password:
 
 ```yaml
 credentials:
@@ -100,10 +102,13 @@ Continue with the [configuration details](#configuration) below for additional i
 
 `agh-cli` reads a YAML configuration file to discover AdGuard Home instances.
 
-| Flag           | Default                             | Description                       |
-|----------------|-------------------------------------|-----------------------------------|
-| `-c, --config` | `config.yaml`                       | Path to configuration file        |
-|                | `$HOME/.config/agh-cli/config.yaml` | Fallback if local file is missing |
+| Flag           | Default                                | Description                       |
+|----------------|----------------------------------------|-----------------------------------|
+| `-c, --config` | `$XDG_CONFIG_HOME/agh-cli/config.yaml` | Path to configuration file        |
+|                | `~/.config/agh-cli/config.yaml`        | Fallback if per-user file is missing |
+|                | `./config.yaml`                        | Fallback if no per-user file exists |
+
+Set `XDG_CONFIG_HOME` to relocate the per-user configuration, or pass `--config` to point at one specific file. The first command that writes a configuration creates this per-user file and its directory.
 
 ### Config File
 

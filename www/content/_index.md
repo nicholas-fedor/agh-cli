@@ -50,7 +50,7 @@ While a Docker image is available, **agh-cli** is primarily intended for install
     agh-cli instance credentials set default
     ```
 
-    The command writes the secret to the credential store first, then rewrites `./config.yaml` (or whichever file `--config` selected) to reference it:
+    The command writes the secret to the credential store first, then rewrites the configuration file (or whichever file `--config` selected) to reference it:
 
     ```yaml
     credentials:
@@ -66,7 +66,7 @@ While a Docker image is available, **agh-cli** is primarily intended for install
           key: default
     ```
 
-    If `./config.yaml` is absent, `agh-cli` also searches `~/.config/agh-cli/config.yaml`.
+    The first `instance add` creates `~/.config/agh-cli/config.yaml` and its directory. `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
 
 4. Check the result:
 

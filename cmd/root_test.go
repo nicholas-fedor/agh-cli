@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
 
 const (
@@ -27,6 +29,20 @@ const (
 	RootVersionName = "version"
 	// RootInstanceName identifies the instance subcommand.
 	RootInstanceName = "instance"
+	// RootInstanceAddName identifies the instance add subcommand.
+	RootInstanceAddName = "add"
+	// RootUsernameFlagName names the username flag of instance add.
+	RootUsernameFlagName = "username"
+	// RootAddUsername is the username passed to instance add.
+	RootAddUsername = "admin"
+	// RootUserConfigHomeEnv supplies the per-user configuration root when the
+	// dedicated variable is absent.
+	RootUserConfigHomeEnv = "HOME"
+	// RootUserConfigDirEnv selects the per-user configuration root on Unix.
+	RootUserConfigDirEnv = "XDG_CONFIG_HOME"
+	// RootConfigDirMode is the permission mode of a created per-user
+	// configuration directory.
+	RootConfigDirMode = 0o700
 	// RootRepeatedExecutions counts repeated root command executions.
 	RootRepeatedExecutions = 2
 	// RootConfigInstanceName identifies the configured instance in test data.
@@ -49,6 +65,74 @@ const (
 	RootLong = "A Go CLI that provides CRUD operations for interacting with " +
 		"multiple AdGuard Home instances simultaneously."
 )
+
+// TestRootCommandPrefersUserConfigOverWorkingDirectory verifies the per-user
+// configuration outranks one in the current directory, so a command launched
+// from the home directory cannot silently shadow the configuration the
+// quickstart created.
+func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
+	workingDirectory := t.TempDir()
+	configRoot := t.TempDir()
+
+	t.Chdir(workingDirectory)
+	t.Setenv(RootUserConfigHomeEnv, configRoot)
+	t.Setenv(RootUserConfigDirEnv, configRoot)
+
+	userDirectory := filepath.Join(configRoot, app.DefaultConfigDirName)
+	require.NoError(t, os.Mkdir(userDirectory, RootConfigDirMode))
+
+	userConfig := writeRootConfigFile(
+		t,
+		userDirectory,
+		app.DefaultConfigFileName,
+	)
+	writeRootConfigFile(t, workingDirectory, app.DefaultConfigFileName)
+
+	resetRootConfigState(t)
+
+	command := newRootCommand()
+	command.SetOut(io.Discard)
+	command.SetErr(io.Discard)
+	command.SetArgs([]string{RootVersionName})
+
+	require.NoError(t, command.ExecuteContext(t.Context()))
+	assert.Equal(t, userConfig, viper.ConfigFileUsed())
+}
+
+// TestRootCommandWritesFirstConfigToUserDirectory verifies the first write of a
+// fresh install creates the per-user configuration file, because the current
+// directory is not a configuration location the quickstart documents.
+func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
+	workingDirectory := t.TempDir()
+	configRoot := t.TempDir()
+
+	t.Chdir(workingDirectory)
+	t.Setenv(RootUserConfigHomeEnv, configRoot)
+	t.Setenv(RootUserConfigDirEnv, configRoot)
+
+	resetRootConfigState(t)
+
+	command := newRootCommand()
+	command.SetOut(io.Discard)
+	command.SetErr(io.Discard)
+	command.SetArgs([]string{
+		RootInstanceName, RootInstanceAddName,
+		RootConfigInstanceName, RootConfigHost,
+		"--" + RootUsernameFlagName, RootAddUsername,
+	})
+
+	require.NoError(t, command.ExecuteContext(t.Context()))
+
+	userConfig := filepath.Join(
+		configRoot,
+		app.DefaultConfigDirName,
+		app.DefaultConfigFileName,
+	)
+
+	assert.FileExists(t, userConfig)
+	assert.NoFileExists(t, filepath.Join(workingDirectory, app.DefaultConfigFileName))
+	assert.Contains(t, readRootConfigFile(t, userConfig), RootConfigHost)
+}
 
 // TestRootCommandHonorsConfigFlag verifies that --config selects the requested file.
 func TestRootCommandHonorsConfigFlag(t *testing.T) {
@@ -281,6 +365,23 @@ func setRootProcessArgs(t *testing.T, args ...string) {
 	t.Cleanup(func() {
 		os.Args = previous
 	})
+}
+
+// readRootConfigFile reads a written configuration file for a test.
+//
+// Parameters:
+//   - t: active test requiring the configuration file.
+//   - configPath: path of the configuration file to read.
+//
+// Returns:
+//   - string: the configuration file contents.
+func readRootConfigFile(t *testing.T, configPath string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	return string(data)
 }
 
 // writeRootConfigFile writes a minimal valid configuration file.

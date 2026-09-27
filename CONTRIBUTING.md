@@ -237,8 +237,10 @@ Use generated mocks in consumer/application tests. Do not use them to test `pkg/
 Configuration lookup order is:
 
 1. an explicit `--config` path;
-2. `./config.yaml`;
-3. `~/.config/agh-cli/config.yaml`.
+2. `$XDG_CONFIG_HOME/agh-cli/config.yaml`, defaulting to `~/.config/agh-cli/config.yaml`;
+3. `./config.yaml`.
+
+The first command that writes a configuration creates the per-user file in step 2, including its directory, so a fresh install never drops a configuration into whatever directory it was run from. Step 3 exists so a project can pin its own configuration.
 
 Start from `example/config.yaml`, which documents every credential source. Never commit a real `config.yaml`, credentials, tokens, or private instance endpoints. Configuration files containing credentials must be readable only by their owner:
 

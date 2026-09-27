@@ -218,22 +218,62 @@ func TestSaveLeavesNoTemporaryFiles(t *testing.T) {
 	assert.Equal(t, "config.yaml", entries[0].Name())
 }
 
-// TestSaveFailureLeavesNoPartialConfig verifies a save that cannot start leaves
-// no destination file and no temporary file behind.
-func TestSaveFailureLeavesNoPartialConfig(t *testing.T) {
+// TestSaveCreatesMissingConfigDirectory verifies a save into an absent
+// per-user configuration directory creates it, because the first write of a
+// fresh install has no directory to reuse.
+func TestSaveCreatesMissingConfigDirectory(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	manager, err := Load(filepath.Join(dir, "absent", "config.yaml"))
+	dir := filepath.Join(t.TempDir(), DefaultConfigDirName)
+	path := filepath.Join(dir, DefaultConfigFileName)
+
+	manager, err := Load(path)
 	require.NoError(t, err)
 	require.NoError(t, manager.Add("home", "home.example.com", "", "admin", "secret"))
 
-	err = manager.Save()
+	require.NoError(t, manager.Save())
+
+	requireFileMode(t, dir, configDirMode)
+	requireFileMode(t, path, configFileMode)
+	assert.Contains(t, readConfigFile(t, path), "home.example.com")
+}
+
+// TestSaveKeepsExistingConfigDirectoryMode verifies a save leaves a directory
+// the operator created alone, because a save must not renumber a path the
+// operator manages.
+func TestSaveKeepsExistingConfigDirectoryMode(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), DefaultConfigDirName)
+	require.NoError(t, os.Mkdir(dir, 0o750))
+
+	path := filepath.Join(dir, DefaultConfigFileName)
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Save())
+
+	requireFileMode(t, dir, 0o750)
+}
+
+// TestWriteFileAtomicReportsUnusableConfigDirectory verifies a save names the
+// directory it could not create and writes nothing, when a path component is a
+// regular file rather than a directory.
+func TestWriteFileAtomicReportsUnusableConfigDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory\n"), configFileMode))
+
+	err := writeFileAtomic(filepath.Join(blocked, DefaultConfigFileName), []byte("instances:\n"))
+
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create config dir")
 
 	entries, readErr := os.ReadDir(dir)
 	require.NoError(t, readErr)
-	assert.Empty(t, entries)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "blocked", entries[0].Name())
 }
 
 // writeConfigFile writes initial configuration contents for a test.

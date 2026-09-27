@@ -26,14 +26,90 @@ const factoryTestPassword = "legacy-plaintext-password"
 // factoryTestHost is the instance host used by the factory tests.
 const factoryTestHost = "factory.example.com"
 
-// TestConfigPathFallsBackToDefaultFileName verifies the path used when no
-// configuration file was resolved.
-func TestConfigPathFallsBackToDefaultFileName(t *testing.T) {
-	t.Parallel()
+// userConfigDirEnv selects the per-user configuration root on Unix.
+const userConfigDirEnv = "XDG_CONFIG_HOME"
 
+// userConfigHomeEnv supplies the per-user configuration root on Unix.
+const userConfigHomeEnv = "HOME"
+
+// TestConfigPathFallsBackToUserConfigPath verifies the path used when no
+// configuration file was resolved. Viper resolves nothing exactly when no
+// configuration file exists yet, so the per-user path is the destination of the
+// first write rather than a file in the working directory.
+func TestConfigPathFallsBackToUserConfigPath(t *testing.T) {
 	lockViper(t)
 
+	configRoot := t.TempDir()
+	t.Setenv(userConfigHomeEnv, configRoot)
+	t.Setenv(userConfigDirEnv, configRoot)
+
+	expected := filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName)
+
+	assert.Equal(t, expected, ConfigPath())
+}
+
+// TestConfigPathFallsBackToBareNameWithoutUserConfigRoot verifies the last
+// resort when the operating system reports no per-user configuration root.
+func TestConfigPathFallsBackToBareNameWithoutUserConfigRoot(t *testing.T) {
+	lockViper(t)
+
+	t.Setenv(userConfigHomeEnv, "")
+	t.Setenv(userConfigDirEnv, "")
+
 	assert.Equal(t, DefaultConfigFileName, ConfigPath())
+}
+
+// TestUserConfigPathUsesUserConfigDirectory verifies the per-user path follows
+// the configuration root rather than a hardcoded home path.
+func TestUserConfigPathUsesUserConfigDirectory(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv(userConfigHomeEnv, configRoot)
+	t.Setenv(userConfigDirEnv, configRoot)
+
+	userPath, err := UserConfigPath()
+
+	require.NoError(t, err)
+	assert.Equal(
+		t,
+		filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName),
+		userPath,
+	)
+}
+
+// TestUserConfigPathReportsUnavailableRoot verifies an unavailable root is
+// reported rather than silently reduced to a relative path.
+func TestUserConfigPathReportsUnavailableRoot(t *testing.T) {
+	t.Setenv(userConfigHomeEnv, "")
+	t.Setenv(userConfigDirEnv, "")
+
+	userPath, err := UserConfigPath()
+
+	require.Error(t, err)
+	assert.Empty(t, userPath)
+	assert.Contains(t, err.Error(), "resolve user config path")
+}
+
+// TestConfigSearchPathsPreferUserConfigDirectory verifies the per-user directory
+// outranks the current directory, so a configuration created by the quickstart
+// keeps applying from any working directory.
+func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv(userConfigHomeEnv, configRoot)
+	t.Setenv(userConfigDirEnv, configRoot)
+
+	expected := []string{filepath.Join(configRoot, DefaultConfigDirName), localConfigDir}
+
+	assert.Equal(t, expected, ConfigSearchPaths())
+}
+
+// TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable verifies an
+// unresolvable root leaves the current directory as the only search path instead
+// of failing the command.
+func TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable(t *testing.T) {
+	t.Setenv(userConfigHomeEnv, "")
+	t.Setenv(userConfigDirEnv, "")
+
+	assert.Equal(t, []string{localConfigDir}, ConfigSearchPaths())
 }
 
 // TestConfigPathUsesResolvedFile verifies that the resolved Viper path wins.
