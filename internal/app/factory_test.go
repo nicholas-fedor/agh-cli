@@ -6,6 +6,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -26,22 +27,36 @@ const factoryTestPassword = "legacy-plaintext-password"
 // factoryTestHost is the instance host used by the factory tests.
 const factoryTestHost = "factory.example.com"
 
-// userConfigDirEnv selects the per-user configuration root on Unix.
+// windowsOS is the value [runtime.GOOS] reports for Microsoft Windows, where
+// [os.UserConfigDir] reads the roaming application data directory.
+const windowsOS = "windows"
+
+// darwinOS is the value [runtime.GOOS] reports for macOS, where
+// [os.UserConfigDir] ignores XDG_CONFIG_HOME and reads the home directory.
+const darwinOS = "darwin"
+
+// userConfigDirEnv names the XDG configuration root variable, which
+// [os.UserConfigDir] reads on Unix systems other than macOS.
 const userConfigDirEnv = "XDG_CONFIG_HOME"
 
-// userConfigHomeEnv supplies the per-user configuration root on Unix.
+// userConfigHomeEnv names the home directory variable, which [os.UserConfigDir]
+// reads on macOS and, as a fallback, on other Unix systems.
 const userConfigHomeEnv = "HOME"
+
+// windowsUserConfigEnv names the roaming application data variable, which
+// [os.UserConfigDir] reads on Windows.
+const windowsUserConfigEnv = "AppData"
 
 // TestConfigPathFallsBackToUserConfigPath verifies the path used when no
 // configuration file was resolved. Viper resolves nothing exactly when no
 // configuration file exists yet, so the per-user path is the destination of the
 // first write rather than a file in the working directory.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigPathFallsBackToUserConfigPath(t *testing.T) {
 	lockViper(t)
 
-	configRoot := t.TempDir()
-	t.Setenv(userConfigHomeEnv, configRoot)
-	t.Setenv(userConfigDirEnv, configRoot)
+	configRoot := isolateUserConfigRoot(t)
 
 	expected := filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName)
 
@@ -50,21 +65,22 @@ func TestConfigPathFallsBackToUserConfigPath(t *testing.T) {
 
 // TestConfigPathFallsBackToBareNameWithoutUserConfigRoot verifies the last
 // resort when the operating system reports no per-user configuration root.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigPathFallsBackToBareNameWithoutUserConfigRoot(t *testing.T) {
 	lockViper(t)
 
-	t.Setenv(userConfigHomeEnv, "")
-	t.Setenv(userConfigDirEnv, "")
+	clearUserConfigRoot(t)
 
 	assert.Equal(t, DefaultConfigFileName, ConfigPath())
 }
 
 // TestUserConfigPathUsesUserConfigDirectory verifies the per-user path follows
 // the configuration root rather than a hardcoded home path.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestUserConfigPathUsesUserConfigDirectory(t *testing.T) {
-	configRoot := t.TempDir()
-	t.Setenv(userConfigHomeEnv, configRoot)
-	t.Setenv(userConfigDirEnv, configRoot)
+	configRoot := isolateUserConfigRoot(t)
 
 	userPath, err := UserConfigPath()
 
@@ -78,9 +94,10 @@ func TestUserConfigPathUsesUserConfigDirectory(t *testing.T) {
 
 // TestUserConfigPathReportsUnavailableRoot verifies an unavailable root is
 // reported rather than silently reduced to a relative path.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestUserConfigPathReportsUnavailableRoot(t *testing.T) {
-	t.Setenv(userConfigHomeEnv, "")
-	t.Setenv(userConfigDirEnv, "")
+	clearUserConfigRoot(t)
 
 	userPath, err := UserConfigPath()
 
@@ -92,10 +109,10 @@ func TestUserConfigPathReportsUnavailableRoot(t *testing.T) {
 // TestConfigSearchPathsPreferUserConfigDirectory verifies the per-user directory
 // outranks the current directory, so a configuration created by the quickstart
 // keeps applying from any working directory.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
-	configRoot := t.TempDir()
-	t.Setenv(userConfigHomeEnv, configRoot)
-	t.Setenv(userConfigDirEnv, configRoot)
+	configRoot := isolateUserConfigRoot(t)
 
 	expected := []string{filepath.Join(configRoot, DefaultConfigDirName), localConfigDir}
 
@@ -105,9 +122,10 @@ func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
 // TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable verifies an
 // unresolvable root leaves the current directory as the only search path instead
 // of failing the command.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable(t *testing.T) {
-	t.Setenv(userConfigHomeEnv, "")
-	t.Setenv(userConfigDirEnv, "")
+	clearUserConfigRoot(t)
 
 	assert.Equal(t, []string{localConfigDir}, ConfigSearchPaths())
 }
@@ -330,6 +348,65 @@ func TestNewCredentialsCoordinatorReportsUnreadableFile(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, coordinator)
 	assert.Contains(t, err.Error(), "create credential coordinator")
+}
+
+// userConfigRootEnv returns the environment variable that [os.UserConfigDir]
+// reads on the given platform.
+//
+// The variable is platform-specific. On macOS, XDG_CONFIG_HOME is ignored and
+// the path derives from the home directory, while Windows reads the roaming
+// application data directory. A test that sets the wrong variable resolves the
+// real user configuration root instead of the isolated one.
+//
+// Parameters:
+//   - goos: value [runtime.GOOS] reported for the running test.
+//
+// Returns:
+//   - string: name of the environment variable that selects the configuration
+//     root.
+func userConfigRootEnv(goos string) string {
+	switch goos {
+	case windowsOS:
+		return windowsUserConfigEnv
+	case darwinOS:
+		return userConfigHomeEnv
+	default:
+		return userConfigDirEnv
+	}
+}
+
+// isolateUserConfigRoot points the per-user configuration root at a temporary
+// directory so a test never reads or writes the real user configuration.
+//
+// The returned value is what [os.UserConfigDir] reports afterwards, which keeps
+// assertions correct on every platform without repeating the platform table.
+//
+// Returns:
+//   - string: configuration root [os.UserConfigDir] reports.
+func isolateUserConfigRoot(t *testing.T) string {
+	t.Helper()
+
+	t.Setenv(userConfigRootEnv(runtime.GOOS), t.TempDir())
+
+	root, err := os.UserConfigDir()
+	require.NoError(t, err)
+
+	return root
+}
+
+// clearUserConfigRoot empties the variable that [os.UserConfigDir] reads on the
+// host platform, so the root is reported as unavailable.
+//
+// The home directory is cleared as well because [os.UserConfigDir] falls back to
+// it on Unix systems that do not honor XDG_CONFIG_HOME.
+//
+// Parameters:
+//   - t: active test requiring an unavailable per-user configuration root.
+func clearUserConfigRoot(t *testing.T) {
+	t.Helper()
+
+	t.Setenv(userConfigRootEnv(runtime.GOOS), "")
+	t.Setenv(userConfigHomeEnv, "")
 }
 
 // writeFactoryConfig writes a configuration document for the factory tests.

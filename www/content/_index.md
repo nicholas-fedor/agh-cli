@@ -66,7 +66,7 @@ While a Docker image is available, **agh-cli** is primarily intended for install
           key: default
     ```
 
-    The first `instance add` creates `~/.config/agh-cli/config.yaml` and its directory. `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
+    The first `instance add` creates the per-user configuration file and its directory. `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
 
 4. Check the result:
 

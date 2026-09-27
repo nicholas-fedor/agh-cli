@@ -127,14 +127,14 @@ go install github.com/nicholas-fedor/agh-cli@latest
 
 ## Quick Start
 
-By default, `agh-cli` looks for `~/.config/agh-cli/config.yaml` first and then `./config.yaml`. Add an instance without a password and store the secret in the operating system credential store:
+By default, `agh-cli` looks for the per-user configuration file first and then `./config.yaml`. Add an instance without a password and store the secret in the operating system credential store:
 
 ```bash
 agh-cli instance add default adguard.example.com --username admin
 agh-cli instance credentials set default
 ```
 
-The first command creates the configuration, so `instance add` is also the step that creates `~/.config/agh-cli/`. `credentials set` reads the password from a hidden prompt, so it never appears in your shell history or in a process listing, then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
+The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `credentials set` reads the password from a hidden prompt, so it never appears in your shell history or in a process listing, then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
 
 Compare DNS rewrite rules between AdGuard Home instances:
 
@@ -154,13 +154,21 @@ agh-cli filtering status --instance default
 
 `agh-cli` reads a YAML configuration file to discover AdGuard Home instances.
 
-| Flag           | Default                              | Description                       |
-|----------------|--------------------------------------|-----------------------------------|
-| `-c, --config` | `$XDG_CONFIG_HOME/agh-cli/config.yaml` | Path to configuration file        |
-|                | `~/.config/agh-cli/config.yaml`      | Fallback if per-user file is missing |
-|                | `./config.yaml`                      | Fallback if no per-user file exists |
+| Flag           | Default | Description                                        |
+|----------------|---------|----------------------------------------------------|
+| `-c, --config` | none    | Path to configuration file                         |
+|                | per-user configuration file | Searched before `./config.yaml` |
+|                | `./config.yaml` | Searched when no per-user file exists     |
 
-Set `XDG_CONFIG_HOME` to relocate the per-user configuration, or pass `--config` to point at one specific file. The first command that writes a configuration creates this per-user file and its directory.
+The per-user configuration file is `agh-cli/config.yaml` under the platform configuration root:
+
+| Platform | Path |
+|----------|------|
+| Linux and other Unix | `$XDG_CONFIG_HOME/agh-cli/config.yaml`, defaulting to `~/.config/agh-cli/config.yaml` |
+| macOS | `~/Library/Application Support/agh-cli/config.yaml` |
+| Windows | `%AppData%\agh-cli\config.yaml` |
+
+Set `XDG_CONFIG_HOME` to relocate the per-user configuration on Linux and other Unix systems. The first command that writes a configuration creates this per-user file and its directory.
 
 ### Config File
 
@@ -354,7 +362,7 @@ agh-cli rewrites the file with mode 600 when it saves, so a migrated configurati
 
 The key is resolved in one order: the `--key` value passed to `set`, then the `credential.key` already configured for the instance, then the instance name. The key never embeds a host, so changing a host never requires re-entering a password.
 
-`--all` and the per-instance commands only ever touch the configured service, so credentials belonging to other applications are never affected. The service is global to the operating system user rather than per configuration path, so a credential written through `./config.yaml` is visible to a later run that resolves `~/.config/agh-cli/config.yaml`.
+`--all` and the per-instance commands only ever touch the configured service, so credentials belonging to other applications are never affected. The service is global to the operating system user rather than per configuration path, so a credential written through `./config.yaml` is visible to a later run that resolves the per-user configuration file.
 
 ### Headless and External Secret Sources
 

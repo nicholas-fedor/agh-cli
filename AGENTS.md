@@ -108,7 +108,7 @@ Every command tree must be constructed fresh:
 ## Configuration safety
 
 - Use `example/config.yaml` as the starting template. It documents every credential source.
-- The lookup order is explicit `--config`, `$XDG_CONFIG_HOME/agh-cli/config.yaml` (defaulting to `~/.config/agh-cli/config.yaml`), then `./config.yaml`.
+- The lookup order is explicit `--config`, the per-user configuration file, then `./config.yaml`. The per-user file is `agh-cli/config.yaml` under the platform configuration root: `$XDG_CONFIG_HOME/agh-cli/config.yaml` (defaulting to `~/.config/agh-cli/config.yaml`) on Unix, `~/Library/Application Support/agh-cli/config.yaml` on macOS, and `%AppData%\agh-cli\config.yaml` on Windows. Resolve it with [os.UserConfigDir], never a hardcoded home path.
 - The first write creates the per-user configuration file and its directory. A write never invents a path in the current working directory.
 - Use `chmod 600 config.yaml` for files containing credentials. The configuration manager already writes mode 600.
 - Never treat local test credentials as repository content, and never include them in output, tests, or commits.

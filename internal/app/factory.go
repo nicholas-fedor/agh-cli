@@ -18,8 +18,9 @@ import (
 // configuration root.
 //
 // [os.UserConfigDir] resolves the root, so the directory is
-// `$XDG_CONFIG_HOME/agh-cli` when that variable is set and
-// `$HOME/.config/agh-cli` otherwise.
+// `$XDG_CONFIG_HOME/agh-cli` or `$HOME/.config/agh-cli` on Unix,
+// `~/Library/Application Support/agh-cli` on macOS, and `%AppData%\agh-cli` on
+// Windows.
 const DefaultConfigDirName = config.DefaultConfigDirName
 
 // DefaultConfigFileName is the configuration file inside

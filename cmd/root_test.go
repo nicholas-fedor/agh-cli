@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -35,14 +36,25 @@ const (
 	RootUsernameFlagName = "username"
 	// RootAddUsername is the username passed to instance add.
 	RootAddUsername = "admin"
-	// RootUserConfigHomeEnv supplies the per-user configuration root when the
-	// dedicated variable is absent.
-	RootUserConfigHomeEnv = "HOME"
-	// RootUserConfigDirEnv selects the per-user configuration root on Unix.
-	RootUserConfigDirEnv = "XDG_CONFIG_HOME"
 	// RootConfigDirMode is the permission mode of a created per-user
 	// configuration directory.
 	RootConfigDirMode = 0o700
+	// RootUserConfigDirEnv names the XDG configuration root variable, which
+	// [os.UserConfigDir] reads on Unix systems other than macOS.
+	RootUserConfigDirEnv = "XDG_CONFIG_HOME"
+	// RootUserConfigHomeEnv names the home directory variable, which
+	// [os.UserConfigDir] reads on macOS and, as a fallback, on other Unix
+	// systems.
+	RootUserConfigHomeEnv = "HOME"
+	// RootWindowsUserConfigEnv names the roaming application data variable,
+	// which [os.UserConfigDir] reads on Windows.
+	RootWindowsUserConfigEnv = "AppData"
+	// RootWindowsOS is the value [runtime.GOOS] reports for Microsoft Windows,
+	// where [os.UserConfigDir] reads the roaming application data directory.
+	RootWindowsOS = "windows"
+	// RootDarwinOS is the value [runtime.GOOS] reports for macOS, where
+	// [os.UserConfigDir] ignores XDG_CONFIG_HOME and reads the home directory.
+	RootDarwinOS = "darwin"
 	// RootRepeatedExecutions counts repeated root command executions.
 	RootRepeatedExecutions = 2
 	// RootConfigInstanceName identifies the configured instance in test data.
@@ -70,13 +82,14 @@ const (
 // configuration outranks one in the current directory, so a command launched
 // from the home directory cannot silently shadow the configuration the
 // quickstart created.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 	workingDirectory := t.TempDir()
-	configRoot := t.TempDir()
 
 	t.Chdir(workingDirectory)
-	t.Setenv(RootUserConfigHomeEnv, configRoot)
-	t.Setenv(RootUserConfigDirEnv, configRoot)
+
+	configRoot := isolateRootUserConfigRoot(t)
 
 	userDirectory := filepath.Join(configRoot, app.DefaultConfigDirName)
 	require.NoError(t, os.Mkdir(userDirectory, RootConfigDirMode))
@@ -102,13 +115,14 @@ func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 // TestRootCommandWritesFirstConfigToUserDirectory verifies the first write of a
 // fresh install creates the per-user configuration file, because the current
 // directory is not a configuration location the quickstart documents.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 	workingDirectory := t.TempDir()
-	configRoot := t.TempDir()
 
 	t.Chdir(workingDirectory)
-	t.Setenv(RootUserConfigHomeEnv, configRoot)
-	t.Setenv(RootUserConfigDirEnv, configRoot)
+
+	configRoot := isolateRootUserConfigRoot(t)
 
 	resetRootConfigState(t)
 
@@ -365,6 +379,51 @@ func setRootProcessArgs(t *testing.T, args ...string) {
 	t.Cleanup(func() {
 		os.Args = previous
 	})
+}
+
+// rootUserConfigEnv returns the environment variable that [os.UserConfigDir]
+// reads on the given platform.
+//
+// The variable is platform-specific. On macOS, XDG_CONFIG_HOME is ignored and
+// the path derives from the home directory, while Windows reads the roaming
+// application data directory. A test that sets the wrong variable resolves the
+// real user configuration root instead of the isolated one.
+//
+// Parameters:
+//   - goos: value [runtime.GOOS] reported for the running test.
+//
+// Returns:
+//   - string: name of the environment variable that selects the configuration
+//     root.
+func rootUserConfigEnv(goos string) string {
+	switch goos {
+	case RootWindowsOS:
+		return RootWindowsUserConfigEnv
+	case RootDarwinOS:
+		return RootUserConfigHomeEnv
+	default:
+		return RootUserConfigDirEnv
+	}
+}
+
+// isolateRootUserConfigRoot points the per-user configuration root at a
+// temporary directory so a test never reads or writes the real user
+// configuration.
+//
+// The returned value is what [os.UserConfigDir] reports afterwards, which keeps
+// assertions correct on every platform without repeating the platform table.
+//
+// Returns:
+//   - string: configuration root [os.UserConfigDir] reports.
+func isolateRootUserConfigRoot(t *testing.T) string {
+	t.Helper()
+
+	t.Setenv(rootUserConfigEnv(runtime.GOOS), t.TempDir())
+
+	root, err := os.UserConfigDir()
+	require.NoError(t, err)
+
+	return root
 }
 
 // readRootConfigFile reads a written configuration file for a test.
