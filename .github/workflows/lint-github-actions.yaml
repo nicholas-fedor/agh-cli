@@ -3,6 +3,8 @@ name: Lint GitHub Actions workflows
 on:
   workflow_dispatch: {}
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/**"
   pull_request:
