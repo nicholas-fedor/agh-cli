@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update pkg.go.dev after stable releases by @nicholas-fedor in [#18](https://github.com/nicholas-fedor/agh-cli/pull/18)
 - Upload coverage to Codecov by @nicholas-fedor in [#8](https://github.com/nicholas-fedor/agh-cli/pull/8)
 - Initialize agh-cli CLI and library by @nicholas-fedor
 
@@ -26,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New Contributors
 
-- @nicholas-fedor made their first contribution in [#16](https://github.com/nicholas-fedor/agh-cli/pull/16)
-- @github-actions[bot] made their first contribution in [#15](https://github.com/nicholas-fedor/agh-cli/pull/15)
+- @nicholas-fedor made their first contribution in [#18](https://github.com/nicholas-fedor/agh-cli/pull/18)
+- @github-actions[bot] made their first contribution in [#17](https://github.com/nicholas-fedor/agh-cli/pull/17)
 - @renovate[bot] made their first contribution in [#14](https://github.com/nicholas-fedor/agh-cli/pull/14)
 
 ## Compare Releases
