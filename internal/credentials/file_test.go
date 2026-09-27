@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,6 +26,10 @@ const secretFileMode fs.FileMode = 0o600
 
 // unreadableFileMode is the mode of a file a test makes unreadable.
 const unreadableFileMode fs.FileMode = 0o000
+
+// windowsOS is the value [runtime.GOOS] reports for Microsoft Windows, where
+// POSIX permission bits and symbolic links have different semantics.
+const windowsOS = "windows"
 
 // TestOSFileReaderPreservesExactBytes verifies that the reader returns the file
 // bytes without trimming or normalizing them.
@@ -80,6 +85,7 @@ func TestOSFileReaderRejectsUnusablePaths(t *testing.T) {
 		name          string
 		prepare       pathProvider
 		expectedError error
+		posixOnly     bool
 	}{
 		{
 			name:          "relative path",
@@ -100,17 +106,23 @@ func TestOSFileReaderRejectsUnusablePaths(t *testing.T) {
 			name:          "dangling symbolic link",
 			prepare:       danglingSymlinkPath,
 			expectedError: ErrFileNotFound,
+			posixOnly:     true,
 		},
 		{
 			name:          "unreadable file",
 			prepare:       unreadableFilePath,
 			expectedError: ErrFileUnreadable,
+			posixOnly:     true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+
+			if test.posixOnly && runtime.GOOS == windowsOS {
+				t.Skip("Windows enforces access with ACLs and gates symbolic links behind developer mode")
+			}
 
 			data, err := NewOSFileReader().Read(t.Context(), test.prepare(t))
 
@@ -166,7 +178,7 @@ func TestReadCredentialFileAcceptsLimitSizeFile(t *testing.T) {
 func TestReadCredentialFileRejectsAbsentFile(t *testing.T) {
 	t.Parallel()
 
-	data, err := readCredentialFile(danglingSymlinkPath(t))
+	data, err := readCredentialFile(absentSecretPath(t))
 
 	require.ErrorIs(t, err, ErrFileNotFound)
 	assert.Nil(t, data)
@@ -269,6 +281,23 @@ func TestSizeError(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrFileTooLarge)
 	assert.ErrorContains(t, err, strconv.Itoa(MaxCredentialFileSize))
+}
+
+// absentSecretPath returns an absolute path of a secret file that does not exist.
+//
+// The path is a plain missing entry rather than a dangling symbolic link, so the
+// absence case runs on every platform instead of depending on symbolic link
+// support.
+//
+// Parameters:
+//   - t: test handle used to create the parent directory.
+//
+// Returns:
+//   - string: absolute path of the absent file.
+func absentSecretPath(t *testing.T) string {
+	t.Helper()
+
+	return filepath.Join(t.TempDir(), "agh-cli-default")
 }
 
 // danglingSymlinkPath returns a symbolic link whose target does not exist.
