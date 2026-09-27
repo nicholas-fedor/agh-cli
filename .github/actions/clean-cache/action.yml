@@ -1,0 +1,39 @@
+name: "Clean GH Actions Cache"
+description: "Remove GH Actions cache entries for closed branches."
+
+inputs:
+  GH_TOKEN:
+    description: "GitHub token for API access"
+    required: true
+  GH_REPO:
+    description: "GitHub repository in owner/repo format"
+    required: true
+  BRANCH:
+    description: "Target branch"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clean Cache
+      shell: bash
+      env:
+        # https://cli.github.com/manual/gh_help_environment
+        GH_TOKEN: ${{ inputs.GH_TOKEN }}
+        GH_REPO: ${{ inputs.GH_REPO }}
+        BRANCH: ${{ inputs.BRANCH }}
+      run: |
+        # Get cache keys for target branch
+        echo "Fetching list of cache keys for $BRANCH"
+        cacheKeys=$(gh cache list --ref "$BRANCH" --json id --jq '.[].id')
+
+        # Setting this to not fail the workflow while deleting cache keys.
+        set +e
+
+        # Delete the keys
+        echo "Deleting caches..."
+        for cacheKey in $cacheKeys
+        do
+          gh cache delete "$cacheKey"
+        done
+        echo "Done"

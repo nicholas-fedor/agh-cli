@@ -1,0 +1,32 @@
+name: Lint GitHub Actions workflows
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: nicholas-fedor/actionlint-action@b349ef9a439253e292855fc2b07b337a27bb2954 # v1.0.18

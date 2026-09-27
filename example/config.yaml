@@ -1,0 +1,66 @@
+# Credential store namespace shared by every instance.
+#
+# agh-cli stores secrets in the operating system credential store: the macOS
+# Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager.
+# The service is a global namespace for the operating system user, so a
+# credential written through one configuration path is visible to the others.
+# Omit this block to use the "agh-cli" service.
+credentials:
+  service: agh-cli
+
+instances:
+  # Preferred shape: no password in the file. Store the secret with
+  # `agh-cli instance credentials set default`, which writes it to the
+  # credential store and records the reference below.
+  default:
+    host: your-adguard-host.example.com
+    scheme: https
+    username: your-username
+    credential:
+      # keyring reads the password from the operating system credential store.
+      # `key` is the credential identity within the service. It defaults to the
+      # instance name and never embeds a host, so changing the host never
+      # requires re-entering a password.
+      source: keyring
+      key: default
+
+  # Docker, Kubernetes, systemd, and Vault mount secrets as read-only files,
+  # commonly below /run/secrets. agh-cli opens the file read-only, never
+  # trims it, and never modifies it, so a trailing newline written by the
+  # external system stays part of the password. The path must be absolute, must
+  # point at a regular file, and must be 64 KiB or smaller.
+  office:
+    host: adguard.office.example.com
+    scheme: https
+    username: admin
+    credential:
+      source: file
+      path: /run/secrets/agh-cli/office
+
+  # Headless hosts, SSH sessions, and containers often have no credential store
+  # session. Read the password from an environment variable instead. An unset
+  # variable is an error, never a fallback to another source.
+  lab:
+    host: adguard.lab.example.com
+    scheme: http
+    username: admin
+    credential:
+      source: env
+      env: AGH_LAB_PASSWORD
+
+  # Legacy shape: the password stays in this file. It keeps working unchanged.
+  # Keep the file at mode 600 (`chmod 600 config.yaml`), and migrate it with
+  # `agh-cli instance credentials migrate`.
+  backup:
+    host: backup-adguard.example.com
+    scheme: https
+    username: admin
+    password: your-password
+
+  # An instance that needs no authentication sends no credential at all.
+  # `credential.source: none` accepts no key, path, or env field.
+  unauthenticated:
+    host: adguard.lan.example.com
+    scheme: http
+    credential:
+      source: none

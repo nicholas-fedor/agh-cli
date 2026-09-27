@@ -1,0 +1,42 @@
+######################################################################################################
+#                                                                                                    #
+#                                    agh-cli Mockery Configuration                                   #
+#                                                                                                    #
+# agh-cli: https://github.com/nicholas-fedor/agh-cli/                                                #
+# Mockery: github.com/vektra/mockery/v3@latest                                                       #
+# Configuration: https://vektra.github.io/mockery/latest/configuration                               #
+#                                                                                                    #
+######################################################################################################
+
+all: true
+dir: "{{.InterfaceDir}}/mocks"
+filename: "{{.InterfaceName}}.go"
+force-file-write: true
+formatter: goimports
+formatter-options:
+  goimports:
+    all-errors: false
+    comments: true
+    format-only: true
+    fragment: false
+    local-prefix: ""
+    tab-indent: true
+    tab-width: 8
+generate: true
+include-auto-generated: false
+log-level: info
+structname: "{{.Mock}}{{.InterfaceName}}"
+pkgname: "mocks"
+recursive: true
+require-template-schema-exists: true
+template: testify
+template-data:
+  boilerplate-file: build/mockery/license-header.txt
+template-schema: "{{.Template}}.schema.json"
+packages:
+  github.com/nicholas-fedor/agh-cli/pkg:
+    config:
+      all: true
+  github.com/nicholas-fedor/agh-cli/internal:
+    config:
+      all: true

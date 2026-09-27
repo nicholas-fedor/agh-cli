@@ -1,0 +1,279 @@
+################################################################################
+#                                                                              #
+#                 GoReleaser OSS Nightly Release Configuration                 #
+#                                                                              #
+# Project: agh-cli                                                             #
+# Project Repository: https://github.com/nicholas-fedor/agh-cli/               #
+#                                                                              #
+# GoReleaser URL: https://goreleaser.com/                                      #
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json      #
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj                                             #
+#                                                                              #
+################################################################################
+
+################################################################################
+# Configuration Version
+version: 2
+################################################################################
+
+################################################################################
+# General Configuration
+# https://goreleaser.com/customization/general/
+################################################################################
+
+# ##############################################################################
+# Project Name
+# https://goreleaser.com/customization/project/
+# ##############################################################################
+project_name: "agh-cli"
+
+################################################################################
+# Verifiable Builds (Supply Chain Security)
+# https://goreleaser.com/customization/builds/verifiable_builds/
+################################################################################
+# Skip verifiable builds for nightly image builds.
+
+################################################################################
+# Go Binary Build Configuration
+# https://goreleaser.com/customization/builds/go/
+################################################################################
+builds:
+  - id: "agh-cli-binary"
+    main: main.go
+    binary: "agh-cli"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.Version={{.Version}}
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.CommitSHA={{.Commit}}
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.BuildTime={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - "386"
+      - arm
+      - arm64
+      - riscv64
+    ignore:
+      - goos: windows
+        goarch: riscv64
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: riscv64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+################################################################################
+# Release Configuration (SCM)
+# https://goreleaser.com/customization/publish/scm/
+################################################################################
+# Skip release to GitHub for nightly releases
+release:
+  disable: true
+
+################################################################################
+# Binary Archive Configuration
+# https://goreleaser.com/customization/package/archives/
+################################################################################
+# Skip building archives for nightly releases
+
+################################################################################
+# Source Archive Configuration
+################################################################################
+# Skip archive handling for nightly releases
+
+################################################################################
+# Checksums Configuration
+# https://goreleaser.com/customization/package/checksum/
+################################################################################
+# Skip checksum handling for nightly releases
+
+################################################################################
+# Docker Digests Configuration
+# https://goreleaser.com/customization/package/docker_digests/
+################################################################################
+docker_digest:
+  name_template: "digests.txt"
+
+################################################################################
+# Docker Image Build Configuration (Modern dockers_v2)
+# https://goreleaser.com/customization/package/dockers_v2/
+################################################################################
+dockers_v2:
+  ##############################################################################
+  # Multi-platform manifest (all platforms) - non-prefixed nightly tag only
+  ##############################################################################
+  - id: "agh-cli-manifest-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm/v6
+      - linux/arm64
+      - linux/riscv64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  ##############################################################################
+  # Platform-specific images - platform-prefixed nightly tags only
+  ##############################################################################
+  - id: "agh-cli-amd64-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "amd64-nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/amd64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-i386-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "i386-nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/386
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-armhf-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "armhf-nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/arm/v6
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-arm64v8-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "arm64v8-nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/arm64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-riscv64-nightly"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "riscv64-nightly"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/riscv64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+################################################################################
+# Software Bill of Materials (SBOM) Configuration
+# https://goreleaser.com/customization/sbom/
+################################################################################
+# Skip SBOM signing for nightlies
+
+################################################################################
+# Signing Configuration (Cosign - Keyless OIDC)
+# https://goreleaser.com/customization/sign/
+################################################################################
+# Skip checksum signing for nightlies
+
+################################################################################
+# Docker Image Signing (Cosign)
+# https://goreleaser.com/customization/sign/docker_sign/
+################################################################################
+docker_signs:
+  - id: cosign-images
+    cmd: cosign
+    args:
+      - "sign"
+      - "${artifact}@${digest}"
+      - "--yes"
+    output: true
+
+################################################################################
+# Changelog Configuration
+# https://goreleaser.com/customization/changelog/
+################################################################################
+changelog:
+  disable: true

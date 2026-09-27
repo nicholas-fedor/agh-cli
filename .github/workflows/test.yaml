@@ -1,0 +1,54 @@
+name: Run tests and upload coverage
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - cmd/**
+      - internal/**
+      - pkg/**
+      - go.mod
+      - go.sum
+      - main.go
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run tests and collect coverage
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest
+          - windows-latest
+          - ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: "go.mod"
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            **/go.sum
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          go test -race -v -coverprofile coverage.out -covermode atomic ./...

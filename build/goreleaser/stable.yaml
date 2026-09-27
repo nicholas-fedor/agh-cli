@@ -1,0 +1,367 @@
+################################################################################
+#                                                                              #
+#                  GoReleaser OSS Stable Release Configuration                 #
+#                                                                              #
+# Project: agh-cli                                                             #
+# Project Repository: https://github.com/nicholas-fedor/agh-cli/               #
+#                                                                              #
+# GoReleaser URL: https://goreleaser.com/                                      #
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json      #
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj                                             #
+#                                                                              #
+################################################################################
+
+################################################################################
+# Configuration Version
+version: 2
+################################################################################
+
+################################################################################
+# Project Configuration
+# https://goreleaser.com/customization/project/
+################################################################################
+project_name: "agh-cli"
+
+################################################################################
+# Verifiable Builds (Supply Chain Security)
+# https://goreleaser.com/customization/builds/verifiable_builds/
+################################################################################
+gomod:
+  proxy: true
+  env:
+    - GOPROXY=https://proxy.golang.org,direct
+    - GOSUMDB=sum.golang.org
+
+################################################################################
+# Go Binary Build Configuration
+# https://goreleaser.com/customization/builds/go/
+################################################################################
+builds:
+  - id: "agh-cli-binary"
+    main: main.go
+    binary: "agh-cli"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.Version={{.Version}}
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.CommitSHA={{.Commit}}
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.BuildTime={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - "386"
+      - arm
+      - arm64
+      - riscv64
+    ignore:
+      - goos: windows
+        goarch: riscv64
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: riscv64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+################################################################################
+# Binary Archive Configuration
+# https://goreleaser.com/customization/package/archives/
+################################################################################
+archives:
+  - formats: ["tar.gz"]
+    name_template: >-
+      {{- .ProjectName }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "386" }}i386
+      {{- else if eq .Arch "arm" }}armhf
+      {{- else if eq .Arch "arm64" }}arm64v8
+      {{- else if eq .Arch "riscv64" }}riscv64
+      {{- else }}{{ .Arch }}{{ end }}_
+      {{- .Version -}}
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+    files:
+      - LICENSE.md
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+
+################################################################################
+# Native Package Configuration
+# https://goreleaser.com/customization/nfpm/
+################################################################################
+nfpms:
+  - id: "agh-cli"
+    package_name: "agh-cli"
+    ids:
+      - "agh-cli-binary"
+    vendor: "Nicholas Fedor"
+    homepage: "https://github.com/nicholas-fedor/agh-cli"
+    maintainer: "Nicholas Fedor <nick@nickfedor.com>"
+    description: "CLI for managing multiple AdGuard Home instances."
+    license: "AGPL-3.0-or-later"
+    formats:
+      - "deb"
+      - "rpm"
+      - "apk"
+      - "archlinux"
+    bindir: "/usr/bin"
+    section: "utils"
+    priority: "optional"
+    mtime: "{{ .CommitDate }}"
+    file_name_template: >-
+      {{- .PackageName }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "386" }}i386
+      {{- else if eq .Arch "arm" }}armhf
+      {{- else if eq .Arch "arm64" }}arm64v8
+      {{- else if eq .Arch "riscv64" }}riscv64
+      {{- else }}{{ .Arch }}{{ end }}_
+      {{- .Version }}
+    contents:
+      - src: "LICENSE.md"
+        dst: "/usr/share/doc/agh-cli/LICENSE.md"
+
+################################################################################
+# Source Archive Configuration
+################################################################################
+source:
+  enabled: true
+  name_template: "agh-cli.src"
+
+################################################################################
+# Checksums Configuration
+# https://goreleaser.com/customization/package/checksum/
+################################################################################
+checksum:
+  name_template: "checksums.txt"
+
+################################################################################
+# Docker Digests Configuration
+# https://goreleaser.com/customization/package/docker_digests/
+################################################################################
+docker_digest:
+  name_template: "digests.txt"
+
+################################################################################
+# Docker Image Build Configuration (Modern dockers_v2)
+# https://goreleaser.com/customization/package/dockers_v2/
+#
+# Original semantics preservation:
+#   - Multi-platform manifest (all 5 platforms) with non-prefixed tags
+#   - 5 single-platform images with platform-prefixed tags
+#   This requires 6 dockers_v2 entries total.
+################################################################################
+dockers_v2:
+  ##############################################################################
+  # Multi-platform manifest (all platforms) - non-prefixed tags only
+  ##############################################################################
+  - id: "agh-cli-manifest"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "{{ .Major }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - "{{ .Version }}"
+      - "latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm/v6
+      - linux/arm64
+      - linux/riscv64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  ##############################################################################
+  # Platform-specific images - platform-prefixed tags only
+  ##############################################################################
+  - id: "agh-cli-amd64"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "amd64-{{ .Major }}"
+      - "amd64-{{ .Major }}.{{ .Minor }}"
+      - "amd64-{{ .Version }}"
+      - "amd64-latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/amd64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-i386"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "i386-{{ .Major }}"
+      - "i386-{{ .Major }}.{{ .Minor }}"
+      - "i386-{{ .Version }}"
+      - "i386-latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/386
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-armhf"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "armhf-{{ .Major }}"
+      - "armhf-{{ .Major }}.{{ .Minor }}"
+      - "armhf-{{ .Version }}"
+      - "armhf-latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/arm/v6
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-arm64v8"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "arm64v8-{{ .Major }}"
+      - "arm64v8-{{ .Major }}.{{ .Minor }}"
+      - "arm64v8-{{ .Version }}"
+      - "arm64v8-latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/arm64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+  - id: "agh-cli-riscv64"
+    ids: ["agh-cli-binary"]
+    images:
+      - "nickfedor/agh-cli"
+      - "ghcr.io/nicholas-fedor/agh-cli"
+    tags:
+      - "riscv64-{{ .Major }}"
+      - "riscv64-{{ .Major }}.{{ .Minor }}"
+      - "riscv64-{{ .Version }}"
+      - "riscv64-latest"
+    dockerfile: build/docker/Dockerfile
+    platforms:
+      - linux/riscv64
+    labels:
+      org.opencontainers.image.name: "agh-cli"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.description: "A CLI for managing multiple AdGuard Home instances."
+      org.opencontainers.image.licenses: "AGPLv3"
+      org.opencontainers.image.url: "https://hub.docker.com/r/nickfedor/agh-cli"
+      org.opencontainers.image.documentation: "https://github.com/nicholas-fedor/agh-cli"
+
+################################################################################
+# Software Bill of Materials (SBOM) Configuration
+# https://goreleaser.com/customization/sbom/
+################################################################################
+sboms:
+  - id: binaries
+    artifacts: archive
+  - id: source
+    artifacts: source
+  - id: packages
+    artifacts: package
+
+################################################################################
+# Signing Configuration (Cosign - Keyless OIDC)
+# https://goreleaser.com/customization/sign/
+################################################################################
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    args:
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+################################################################################
+# Docker Image Signing (Cosign)
+# https://goreleaser.com/customization/sign/docker_sign/
+################################################################################
+docker_signs:
+  - id: cosign-images
+    cmd: cosign
+    args:
+      - "sign"
+      - "${artifact}@${digest}"
+      - "--yes"
+    output: true
+
+################################################################################
+# Changelog Configuration
+# https://goreleaser.com/customization/changelog/
+################################################################################
+changelog:
+  disable: true

@@ -1,0 +1,43 @@
+# Dependencies
+vendor/
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# === Test coverage ===
+coverage/
+coverage.out
+**/testdata/*
+!pkg/**/testdata/fuzz/
+*.lcov
+
+# Built binaries
+bin/
+dist/
+out/
+*.exe
+*.test
+*.prof
+*.tgz
+
+# Go workspace files
+go.work
+
+# Hugo output
+public/
+.hugo_build.lock
+
+# Instance configuration
+config.yaml
+!example/config.yaml
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
