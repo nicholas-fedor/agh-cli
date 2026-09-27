@@ -51,6 +51,14 @@ type Manager struct {
 	credentialsSet bool
 }
 
+// DefaultConfigDirName is the configuration directory name created under a
+// per-user configuration root.
+const DefaultConfigDirName = "agh-cli"
+
+// DefaultConfigFileName is the configuration file name inside the configuration
+// directory.
+const DefaultConfigFileName = "config.yaml"
+
 // Configuration persistence errors.
 var (
 	// ErrDuplicateInstance indicates that YAML contains a duplicate instance name.
@@ -441,6 +449,11 @@ func writeTempFile(path string, data []byte) (string, error) {
 
 // writeFileAtomic replaces path with data through a private temporary file.
 //
+// A missing parent directory is created first, so the first save into a fresh
+// per-user configuration directory succeeds instead of failing on the temporary
+// file. An existing directory keeps its own permissions, because a save must
+// not widen or narrow a directory the operator created.
+//
 // The replacement file carries mode 0600, and the destination permissions are
 // tightened explicitly, so a configuration that was world-readable before the
 // save is private afterwards.
@@ -450,9 +463,15 @@ func writeTempFile(path string, data []byte) (string, error) {
 //   - data: complete file contents.
 //
 // Returns:
-//   - error: a wrapped error when the temporary file cannot be created, the
-//     rename fails, or the destination permissions cannot be tightened.
+//   - error: a wrapped error when the parent directory cannot be created, the
+//     temporary file cannot be created, the rename fails, or the destination
+//     permissions cannot be tightened.
 func writeFileAtomic(path string, data []byte) error {
+	err := os.MkdirAll(filepath.Dir(path), configDirMode)
+	if err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
 	tempName, err := writeTempFile(path, data)
 	if err != nil {
 		return fmt.Errorf("%w", err)

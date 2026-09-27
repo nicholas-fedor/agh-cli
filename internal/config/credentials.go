@@ -34,6 +34,12 @@ const DefaultCredentialService = "agh-cli"
 // configFileMode is the permission mode of every written configuration file.
 const configFileMode = 0o600
 
+// configDirMode is the permission mode of a configuration directory created by
+// a save. The XDG base directory specification requires user-owned data
+// directories to be private, and the configuration may name a mounted secret
+// path, so the directory never exposes the configuration to other users.
+const configDirMode = 0o700
+
 // tempFilePattern is the [os.CreateTemp] pattern suffix of an in-progress
 // write.
 const tempFilePattern = ".tmp-*"
