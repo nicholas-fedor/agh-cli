@@ -47,3 +47,12 @@ jobs:
       docker_namespace: nickfedor
       ghcr_namespace: nicholas-fedor
       environment: CI
+
+  # Publish the released module documentation after a successful build
+  update-go-docs:
+    needs: [test, lint, build]
+    uses: ./.github/workflows/update-go-docs.yaml
+    with:
+      dry-run: ${{ inputs.dry-run || false }}
+    permissions:
+      contents: read
