@@ -135,7 +135,7 @@ agh-cli instance credentials username set default admin
 agh-cli instance credentials password set default
 ```
 
-The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `instance add` takes no credentials at all: the username and the password are set separately through the credential commands. The password is read from a hidden prompt and is never exposed as a command argument, so it stays out of your shell history and out of any process listing. `credentials password set` then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
+The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `instance add` takes no credentials at all: the username and the password are set separately through the credential commands. No command accepts the password as an argument, and the hidden prompt keeps it out of your shell history and out of any process listing. When standard input is redirected instead, keep the literal out of the command line yourself. `credentials password set` then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
 
 Compare DNS rewrite rules between AdGuard Home instances:
 
