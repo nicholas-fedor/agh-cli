@@ -1,10 +1,15 @@
 ---
-title: Manage stored instance credentials
-description: Store, inspect, migrate, and remove the credentials of configured instances in the operating system credential store.
+title: Manage instance authentication
+description: Manage the authentication of configured instances. A username is configuration and lives in the configuration file; a password is a secret and lives in the o...
 type: docs
 ---
 
-Store, inspect, migrate, and remove the credentials of configured instances in the operating system credential store.
+Manage the authentication of configured instances. A username is
+configuration and lives in the configuration file; a password is a secret
+and lives in the operating system credential store. The two are managed
+independently, so either can be changed without disturbing the other.
+Use 'migrate' to move an instance written by an older release onto this
+model.
 
 ### Usage
 

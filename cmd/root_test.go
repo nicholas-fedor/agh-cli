@@ -32,10 +32,14 @@ const (
 	RootInstanceName = "instance"
 	// RootInstanceAddName identifies the instance add subcommand.
 	RootInstanceAddName = "add"
-	// RootUsernameFlagName names the username flag of instance add.
-	RootUsernameFlagName = "username"
-	// RootAddUsername is the username passed to instance add.
+	// RootAddUsername is the username recorded by the credentials username command.
 	RootAddUsername = "admin"
+	// RootCredentialsName identifies the credentials subcommand group.
+	RootCredentialsName = "credentials"
+	// RootUsernameName identifies the credentials username subcommand group.
+	RootUsernameName = "username"
+	// RootSetName identifies a set subcommand.
+	RootSetName = "set"
 	// RootConfigDirMode is the permission mode of a created per-user
 	// configuration directory.
 	RootConfigDirMode = 0o700
@@ -74,7 +78,7 @@ const (
 	// RootShort is the published root description.
 	RootShort = "CLI for managing multiple AdGuard Home instances"
 	// RootLong is the published root long description.
-	RootLong = "A Go CLI that provides CRUD operations for interacting with " +
+	RootLong = "A Go CLI that provides CRUD operations for interacting with\n" +
 		"multiple AdGuard Home instances simultaneously."
 )
 
@@ -132,7 +136,6 @@ func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 	command.SetArgs([]string{
 		RootInstanceName, RootInstanceAddName,
 		RootConfigInstanceName, RootConfigHost,
-		"--" + RootUsernameFlagName, RootAddUsername,
 	})
 
 	require.NoError(t, command.ExecuteContext(t.Context()))
@@ -146,6 +149,53 @@ func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 	assert.FileExists(t, userConfig)
 	assert.NoFileExists(t, filepath.Join(workingDirectory, app.DefaultConfigFileName))
 	assert.Contains(t, readRootConfigFile(t, userConfig), RootConfigHost)
+}
+
+// TestRootCommandConfiguresCredentialsThroughCredentialsGroup verifies the
+// supported workflow end to end: an add writes no credentials, and the
+// credentials group then records the username in the same file.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestRootCommandConfiguresCredentialsThroughCredentialsGroup(t *testing.T) {
+	workingDirectory := t.TempDir()
+
+	t.Chdir(workingDirectory)
+
+	configRoot := isolateRootUserConfigRoot(t)
+
+	resetRootConfigState(t)
+
+	addCommand := newRootCommand()
+	addCommand.SetOut(io.Discard)
+	addCommand.SetErr(io.Discard)
+	addCommand.SetArgs([]string{
+		RootInstanceName, RootInstanceAddName,
+		RootConfigInstanceName, RootConfigHost,
+	})
+
+	require.NoError(t, addCommand.ExecuteContext(t.Context()))
+
+	userConfig := filepath.Join(
+		configRoot,
+		app.DefaultConfigDirName,
+		app.DefaultConfigFileName,
+	)
+
+	afterAdd := readRootConfigFile(t, userConfig)
+	assert.NotContains(t, afterAdd, "username:")
+
+	resetRootConfigState(t)
+
+	usernameCommand := newRootCommand()
+	usernameCommand.SetOut(io.Discard)
+	usernameCommand.SetErr(io.Discard)
+	usernameCommand.SetArgs([]string{
+		RootInstanceName, RootCredentialsName, RootUsernameName, RootSetName,
+		RootConfigInstanceName, RootAddUsername,
+	})
+
+	require.NoError(t, usernameCommand.ExecuteContext(t.Context()))
+	assert.Contains(t, readRootConfigFile(t, userConfig), RootAddUsername)
 }
 
 // TestRootCommandHonorsConfigFlag verifies that --config selects the requested file.

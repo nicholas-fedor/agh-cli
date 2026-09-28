@@ -1,24 +1,26 @@
 ---
 title: Add
-description: Add a new instance configuration. Prefer adding the instance without a password and storing the credential with 'agh-cli instance credentials set'.
+description: Add a new instance configuration without any credentials. Set the administrator username with 'agh-cli instance credentials username set <instance> <username...
 type: docs
 ---
 
-Add a new instance configuration. Prefer adding the instance without a password and storing the credential with 'agh-cli instance credentials set'.
+Add a new instance configuration without any credentials. Set the
+administrator username with 'agh-cli instance credentials username set
+<instance> <username>' and the password with 'agh-cli instance credentials
+password set <instance>', so neither value ever appears in a process
+listing or shell history.
 
 ### Usage
 
 ```bash
-agh-cli instance add <name> <host>
+agh-cli instance add <instance> <host>
 ```
 
 ### Command Options
 
 | Flag | Short | Default | Type | Description |
 |------|-------|---------|------|-------------|
-| `--password` | `-p` | "" | string | admin password (deprecated: run 'agh-cli instance add <name> <host>' without a password, then 'agh-cli instance credentials set <name>') |
 | `--scheme` | `-s` | https | string | HTTP scheme |
-| `--username` | `-u` | "" | string | admin username |
 
 ### Global Options
 

@@ -4,12 +4,14 @@ description: Report the credential store backend, its availability, and the conf
 type: docs
 ---
 
-Report the credential store backend, its availability, and the configured credential source and presence of one instance, or of every configured instance. A stored secret is never reported.
+Report the credential store backend, its availability, and the
+configured credential source and presence of one instance, or of every
+configured instance. A stored secret is never reported.
 
 ### Usage
 
 ```bash
-agh-cli instance credentials status [name]
+agh-cli instance credentials password status [instance]
 ```
 
 ### Command Options

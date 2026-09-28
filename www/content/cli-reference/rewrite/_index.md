@@ -4,7 +4,8 @@ description: Create, read, update, and delete DNS rewrite rules on one or more A
 type: docs
 ---
 
-Create, read, update, and delete DNS rewrite rules on one or more AdGuard Home instances.
+Create, read, update, and delete DNS rewrite rules on one or more
+AdGuard Home instances.
 
 ### Usage
 

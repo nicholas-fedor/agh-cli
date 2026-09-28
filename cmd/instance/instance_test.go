@@ -73,26 +73,24 @@ const (
 	InstanceAllFlagName = "all"
 	// InstanceSchemeFlagName names the --scheme flag.
 	InstanceSchemeFlagName = "scheme"
-	// InstancePasswordFlagName names the deprecated --password flag.
+	// InstancePasswordFlagName names a flag that must never be published by a
+	// credential or add command.
 	InstancePasswordFlagName = "password"
-	// InstanceUsernameFlagName names the --username flag.
+	// InstanceUsernameFlagName names a flag that must never be published by the
+	// add command.
 	InstanceUsernameFlagName = "username"
 	// InstanceAddedHost is the host recorded by the add test.
 	InstanceAddedHost = "command-added.example.com"
 	// InstanceAddedScheme is the scheme recorded by the add test.
 	InstanceAddedScheme = "http"
-	// InstanceAddedUsername is the username recorded by the add test.
-	InstanceAddedUsername = "admin"
-	// InstanceAddedPassword is the password recorded by the add test.
-	InstanceAddedPassword = "secret"
 	// InstanceConfigFileName is the configuration file name used by command tests.
 	InstanceConfigFileName = "config.yaml"
-	// InstanceDeprecationMarker is the help marker of the deprecated password
-	// flag.
-	InstanceDeprecationMarker = "deprecated"
-	// InstanceDeprecationReplacement names the replacement command in the help
-	// text of the deprecated password flag.
-	InstanceDeprecationReplacement = "agh-cli instance credentials set"
+	// InstanceUsernameReplacement names the username command in the add help
+	// text.
+	InstanceUsernameReplacement = "credentials username set"
+	// InstancePasswordReplacement names the password command in the add help
+	// text.
+	InstancePasswordReplacement = "credentials password set"
 )
 
 // instanceCommandMutex serializes the command tests that mutate the
@@ -115,24 +113,22 @@ func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
 		},
 		{
 			Name:  InstanceAddName,
-			Use:   "add <name> <host>",
+			Use:   "add <instance> <host>",
 			Short: "Add a new instance configuration",
 			Flags: map[string]instanceFlagExpectation{
-				InstanceSchemeFlagName:   {def: instanceCommandHTTPScheme, shorthand: "s"},
-				InstanceUsernameFlagName: {def: "", shorthand: "u"},
-				InstancePasswordFlagName: {def: "", shorthand: "p"},
+				InstanceSchemeFlagName: {def: instanceCommandHTTPScheme, shorthand: "s"},
 			},
 		},
 		{
 			Name:  InstanceRemoveName,
-			Use:   "remove <name>",
+			Use:   "remove <instance>",
 			Short: "Remove an instance configuration",
 			Flags: map[string]instanceFlagExpectation{},
 		},
 		{
 			Name:  InstanceCredentialsName,
 			Use:   InstanceCredentialsName,
-			Short: "Manage stored instance credentials",
+			Short: "Manage instance authentication",
 			Flags: map[string]instanceFlagExpectation{},
 		},
 	}
@@ -156,34 +152,75 @@ func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
 	}
 }
 
-// TestNewCommandMarksPasswordFlagDeprecated verifies that the legacy password
-// flag stays published while its help names the replacement workflow.
-func TestNewCommandMarksPasswordFlagDeprecated(t *testing.T) {
+// TestNewCommandAddPublishesNoCredentialFlags verifies that adding an instance
+// cannot carry authentication details on the command line. Both belong to the
+// credential workflow, so neither is published.
+func TestNewCommandAddPublishesNoCredentialFlags(t *testing.T) {
 	t.Parallel()
 
 	add := requireInstanceSubcommand(t, NewCommand(), InstanceAddName)
 
-	flag := add.Flags().Lookup(InstancePasswordFlagName)
-	require.NotNil(t, flag)
+	assert.Nil(t, add.Flags().Lookup(InstanceUsernameFlagName))
+	assert.Nil(t, add.Flags().Lookup(InstancePasswordFlagName))
+	assert.Nil(t, add.Flags().Lookup("u"))
+	assert.Nil(t, add.Flags().Lookup("p"))
+}
 
-	assert.Contains(t, flag.Usage, InstanceDeprecationMarker)
-	assert.Contains(t, flag.Usage, InstanceDeprecationReplacement)
-	assert.Contains(t, add.Long, InstanceDeprecationReplacement)
+// TestNewCommandAddNamesCredentialCommands verifies the add help points at the
+// commands that configure authentication.
+func TestNewCommandAddNamesCredentialCommands(t *testing.T) {
+	t.Parallel()
+
+	add := requireInstanceSubcommand(t, NewCommand(), InstanceAddName)
+
+	help := flattenHelp(add.Long)
+
+	assert.Contains(t, help, InstanceUsernameReplacement)
+	assert.Contains(t, help, InstancePasswordReplacement)
+}
+
+// flattenHelp collapses the line breaks of a wrapped help string, so an
+// assertion about a command path does not depend on where the text wraps.
+//
+// Parameters:
+//   - help: the wrapped help text.
+//
+// Returns:
+//   - string: the help text with runs of whitespace collapsed to one space.
+func flattenHelp(help string) string {
+	return strings.Join(strings.Fields(help), " ")
 }
 
 // TestNewCommandCredentialsRegistersLeaves verifies that the credentials group
-// exposes the four documented use cases.
+// separates the two halves of instance authentication and keeps the whole-instance
+// migration at the group level.
 func TestNewCommandCredentialsRegistersLeaves(t *testing.T) {
 	t.Parallel()
 
 	group := requireInstanceSubcommand(t, NewCommand(), InstanceCredentialsName)
 
-	leaves := []string{"set", "clear", "status", "migrate"}
+	leaves := []string{"migrate", "username", "password"}
 
 	for _, leaf := range leaves {
 		require.NotNil(t, group.Commands(), "credentials group has no subcommands")
 		require.NotNil(t, requireInstanceSubcommand(t, group, leaf), leaf)
 	}
+
+	usernameGroup := requireInstanceSubcommand(t, group, "username")
+	assert.Equal(t, "set <instance> <username>",
+		requireInstanceSubcommand(t, usernameGroup, "set").Use)
+	assert.Equal(t, "status [instance]",
+		requireInstanceSubcommand(t, usernameGroup, "status").Use)
+	assert.Equal(t, "clear <instance>",
+		requireInstanceSubcommand(t, usernameGroup, "clear").Use)
+
+	passwordGroup := requireInstanceSubcommand(t, group, "password")
+	assert.Equal(t, "set <instance>",
+		requireInstanceSubcommand(t, passwordGroup, "set").Use)
+	assert.Equal(t, "status [instance]",
+		requireInstanceSubcommand(t, passwordGroup, "status").Use)
+	assert.Equal(t, "clear <instance>",
+		requireInstanceSubcommand(t, passwordGroup, "clear").Use)
 }
 
 // TestNewCommandSetPublishesNoPasswordFlag verifies that the credential write
@@ -192,7 +229,8 @@ func TestNewCommandSetPublishesNoPasswordFlag(t *testing.T) {
 	t.Parallel()
 
 	group := requireInstanceSubcommand(t, NewCommand(), InstanceCredentialsName)
-	set := requireInstanceSubcommand(t, group, "set")
+	passwordGroup := requireInstanceSubcommand(t, group, "password")
+	set := requireInstanceSubcommand(t, passwordGroup, "set")
 
 	assert.Nil(t, set.Flags().Lookup(InstancePasswordFlagName))
 	assert.NotNil(t, set.Flags().Lookup("key"))
@@ -213,12 +251,20 @@ func TestNewCommandBuildsIndependentTrees(t *testing.T) {
 	secondAdd := requireInstanceSubcommand(t, second, InstanceAddName)
 	firstSet := requireInstanceSubcommand(
 		t,
-		requireInstanceSubcommand(t, first, InstanceCredentialsName),
+		requireInstanceSubcommand(
+			t,
+			requireInstanceSubcommand(t, first, InstanceCredentialsName),
+			"password",
+		),
 		"set",
 	)
 	secondSet := requireInstanceSubcommand(
 		t,
-		requireInstanceSubcommand(t, second, InstanceCredentialsName),
+		requireInstanceSubcommand(
+			t,
+			requireInstanceSubcommand(t, second, InstanceCredentialsName),
+			"password",
+		),
 		"set",
 	)
 
@@ -322,8 +368,6 @@ func TestNewCommandAddPersistsFlagValues(t *testing.T) {
 		instanceCommandAlphaName,
 		InstanceAddedHost,
 		"--" + InstanceSchemeFlagName, InstanceAddedScheme,
-		"--username", InstanceAddedUsername,
-		"--" + InstancePasswordFlagName, InstanceAddedPassword,
 	})
 
 	require.NoError(t, run.err)
@@ -334,15 +378,13 @@ func TestNewCommandAddPersistsFlagValues(t *testing.T) {
 	assert.Contains(t, written, "  "+instanceCommandAlphaName+":")
 	assert.Contains(t, written, "    host: "+InstanceAddedHost)
 	assert.Contains(t, written, "    scheme: "+InstanceAddedScheme)
-	assert.Contains(t, written, "    username: "+InstanceAddedUsername)
-	assert.Contains(t, written, "    password: "+InstanceAddedPassword)
 	assert.Contains(t, written, "  "+instanceCommandDefaultName+":")
 }
 
-// TestNewCommandAddWarnsAboutDeprecatedPassword verifies that the legacy flag
-// still works and that the notice reaches the error stream, never the command
-// output a script parses.
-func TestNewCommandAddWarnsAboutDeprecatedPassword(t *testing.T) {
+// TestNewCommandAddStoresNoCredentials verifies that an added instance is
+// written without a username or password, because both are owned by the
+// credential workflow.
+func TestNewCommandAddStoresNoCredentials(t *testing.T) {
 	t.Parallel()
 
 	lockInstanceCommandState(t)
@@ -355,20 +397,20 @@ func TestNewCommandAddWarnsAboutDeprecatedPassword(t *testing.T) {
 		InstanceAddName,
 		instanceCommandAlphaName,
 		InstanceAddedHost,
-		"--" + InstancePasswordFlagName, InstanceAddedPassword,
 	})
 
 	require.NoError(t, run.err)
-	assert.Equal(t, "Instance \""+instanceCommandAlphaName+"\" added\n", run.out)
-	assert.NotContains(t, run.out, InstanceAddedPassword)
-	assert.Contains(t, run.errOut, InstanceDeprecationMarker)
-	assert.Contains(t, run.errOut, InstanceDeprecationReplacement)
-	assert.NotContains(t, run.errOut, InstanceAddedPassword)
+
+	written := readInstanceConfig(t, configPath)
+
+	assert.NotContains(t, written, "username:")
+	assert.NotContains(t, written, "password:")
+	assert.NotContains(t, written, "credential:")
 }
 
-// TestNewCommandAddOmitsNoticeWithoutPassword verifies that the deprecation
-// notice is silent for the supported workflow.
-func TestNewCommandAddOmitsNoticeWithoutPassword(t *testing.T) {
+// TestNewCommandAddRejectsCredentialFlags verifies that a caller still passing a
+// credential flag is refused by name rather than silently ignored.
+func TestNewCommandAddRejectsCredentialFlags(t *testing.T) {
 	t.Parallel()
 
 	lockInstanceCommandState(t)
@@ -377,14 +419,18 @@ func TestNewCommandAddOmitsNoticeWithoutPassword(t *testing.T) {
 	configPath := writeInstanceConfig(t)
 	useConfigFile(t, configPath)
 
-	run := runInstanceCommand(t, []string{
-		InstanceAddName,
-		instanceCommandAlphaName,
-		InstanceAddedHost,
-	})
+	for _, flagName := range []string{InstanceUsernameFlagName, InstancePasswordFlagName} {
+		run := runInstanceCommand(t, []string{
+			InstanceAddName,
+			instanceCommandAlphaName,
+			InstanceAddedHost,
+			"--" + flagName, "value",
+		})
 
-	require.NoError(t, run.err)
-	assert.Empty(t, run.errOut)
+		require.Error(t, run.err, flagName)
+		assert.Contains(t, run.err.Error(), "unknown flag: --"+flagName)
+		assert.NotContains(t, readInstanceConfig(t, configPath), instanceCommandAlphaName)
+	}
 }
 
 // TestNewCommandRemoveDeletesConfiguredInstance verifies that removal targets the

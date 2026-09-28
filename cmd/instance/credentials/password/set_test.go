@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"errors"
@@ -27,7 +27,7 @@ func TestRunSetReadsRedirectedSecret(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.SetResult{
+		setResult: app.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -38,7 +38,7 @@ func TestRunSetReadsRedirectedSecret(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n",
@@ -68,7 +68,7 @@ func TestRunSetUsesHiddenTerminalPrompt(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.SetResult{
+		setResult: app.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -79,7 +79,7 @@ func TestRunSetUsesHiddenTerminalPrompt(t *testing.T) {
 
 	seams := testStreams(store, true, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"y\n",
@@ -104,7 +104,7 @@ func TestRunSetRequiresConfirmationWithoutTerminal(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, testSecret+"\n", setCommandName, testInstanceName)
+	run := runPassword(t, seams, testSecret+"\n", setCommandName, testInstanceName)
 
 	require.ErrorIs(t, run.err, ErrConfirmationUnavailable)
 	assert.Equal(t, 0, store.sets)
@@ -118,7 +118,7 @@ func TestRunSetDeclinedConfirmationStoresNothing(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, true, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"n\n",
@@ -161,7 +161,7 @@ func TestRunSetRejectsEmptySecret(t *testing.T) {
 			store := &fakeCoordinator{}
 			seams := testStreams(store, test.terminal, test.secret)
 
-			run := runCredentials(
+			run := runPassword(
 				t,
 				seams,
 				test.input,
@@ -184,7 +184,7 @@ func TestRunSetTrimsSingleTrailingNewline(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n",
@@ -205,7 +205,7 @@ func TestRunSetKeepsTrailingNewlineOfDoubledRedirect(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n\n",
@@ -224,7 +224,7 @@ func TestRunSetForwardsCustomKey(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.SetResult{
+		setResult: app.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -236,7 +236,7 @@ func TestRunSetForwardsCustomKey(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n",
@@ -258,7 +258,7 @@ func TestRunSetWarnsWhenConfigurationWasNotSaved(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.SetResult{
+		setResult: app.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -269,7 +269,7 @@ func TestRunSetWarnsWhenConfigurationWasNotSaved(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n",
@@ -292,7 +292,7 @@ func TestRunSetForwardsStoreFailure(t *testing.T) {
 	store := &fakeCoordinator{setErr: errors.New("credential store unavailable")}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		testSecret+"\n",
@@ -315,7 +315,7 @@ func TestRunSetRequiresInstanceName(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, testSecret, setCommandName)
+	run := runPassword(t, seams, testSecret, setCommandName)
 
 	require.Error(t, run.err)
 	assert.Equal(t, 0, store.sets)

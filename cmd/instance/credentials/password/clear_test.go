@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"errors"
@@ -20,7 +20,7 @@ func TestRunClearRemovesNamedCredential(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.ClearResult{
+		clearResult: app.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -31,7 +31,7 @@ func TestRunClearRemovesNamedCredential(t *testing.T) {
 
 	seams := testStreams(store, true, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"y\n",
@@ -62,7 +62,7 @@ func TestRunClearReportsAbsentCredential(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.ClearResult{
+		clearResult: app.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -73,7 +73,7 @@ func TestRunClearReportsAbsentCredential(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",
@@ -92,7 +92,7 @@ func TestRunClearWarnsWhenReferenceSurvives(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.ClearResult{
+		clearResult: app.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -103,7 +103,7 @@ func TestRunClearWarnsWhenReferenceSurvives(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",
@@ -123,7 +123,7 @@ func TestRunClearRemovesWholeService(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearAllResult: app.ClearResult{
+		clearAllResult: app.PasswordClearResult{
 			Service: testService,
 			Removed: true,
 			All:     true,
@@ -132,7 +132,7 @@ func TestRunClearRemovesWholeService(t *testing.T) {
 
 	seams := testStreams(store, true, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"y\n",
@@ -168,7 +168,7 @@ func TestRunClearRejectsAmbiguousSelection(t *testing.T) {
 			store := &fakeCoordinator{}
 			seams := testStreams(store, true, testSecret)
 
-			run := runCredentials(t, seams, "y\n", args...)
+			run := runPassword(t, seams, "y\n", args...)
 
 			require.ErrorIs(t, run.err, ErrInvalidSelection)
 			assert.Equal(t, 0, store.clears)
@@ -185,7 +185,7 @@ func TestRunClearDeclinedConfirmationDeletesNothing(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, true, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"no\n",
@@ -206,7 +206,7 @@ func TestRunClearRequiresConfirmationWithoutTerminal(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", clearCommandName, testInstanceName)
+	run := runPassword(t, seams, "", clearCommandName, testInstanceName)
 
 	require.ErrorIs(t, run.err, ErrConfirmationUnavailable)
 	assert.Equal(t, 0, store.clears)
@@ -228,7 +228,7 @@ func TestRunClearForwardsExternalSourceRefusal(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",
@@ -249,7 +249,7 @@ func TestRunClearForwardsStoreFailure(t *testing.T) {
 	store := &fakeCoordinator{clearErr: errors.New("credential store unavailable")}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",
@@ -270,7 +270,7 @@ func TestRunClearForwardsServiceFailure(t *testing.T) {
 	store := &fakeCoordinator{clearAllErr: errors.New("credential store unavailable")}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",

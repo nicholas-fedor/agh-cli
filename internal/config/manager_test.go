@@ -82,18 +82,18 @@ func TestManagerMutationsUseInstanceConfiguration(t *testing.T) {
 	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	require.NoError(t, err)
 
-	err = manager.Add("home", "home.example.com", "", "admin", "secret")
+	err = manager.Add("home", "home.example.com", "")
 	require.NoError(t, err)
 	assert.Equal(t, instance.Config{
 		Name:       "home",
 		Host:       "home.example.com",
 		Scheme:     "https",
-		Username:   "admin",
-		Password:   "secret",
+		Username:   "",
+		Password:   "",
 		Credential: nil,
 	}, manager.Instances()["home"])
 
-	err = manager.Add("home", "other.example.com", "", "", "")
+	err = manager.Add("home", "other.example.com", "")
 	require.ErrorIs(t, err, ErrInstanceAlreadyExists)
 
 	err = manager.Remove("home")
@@ -102,6 +102,146 @@ func TestManagerMutationsUseInstanceConfiguration(t *testing.T) {
 
 	err = manager.Remove("home")
 	require.ErrorIs(t, err, ErrInstanceNotFound)
+}
+
+// TestAddStoresNoCredentials verifies an added instance carries no
+// authentication details, because the credential workflow owns both.
+func TestAddStoresNoCredentials(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+
+	cfg := manager.Instances()["home"]
+
+	assert.Empty(t, cfg.Username)
+	assert.Empty(t, cfg.Password)
+	assert.Nil(t, cfg.Credential)
+}
+
+// TestSetUsernameRecordsUsernameIndependently verifies a username is recorded on
+// its own, so changing it leaves the stored credential and the scheme alone.
+func TestSetUsernameRecordsUsernameIndependently(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+	require.NoError(t, manager.SetCredential("home", instance.CredentialRef{
+		Source: instance.KeyringSource,
+		Key:    "home",
+	}))
+
+	require.NoError(t, manager.SetUsername("home", "admin"))
+
+	cfg := manager.Instances()["home"]
+
+	assert.Equal(t, "admin", cfg.Username)
+	assert.Equal(t, "https", cfg.Scheme)
+	assert.Equal(t, "home.example.com", cfg.Host)
+	require.NotNil(t, cfg.Credential)
+	assert.Equal(t, instance.KeyringSource, cfg.Credential.Source)
+	assert.Equal(t, "home", cfg.Credential.Key)
+}
+
+// TestSetUsernameReplacesExistingUsername verifies a username can be changed in
+// place.
+func TestSetUsernameReplacesExistingUsername(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+
+	require.NoError(t, manager.SetUsername("home", "first"))
+	require.NoError(t, manager.SetUsername("home", "second"))
+
+	assert.Equal(t, "second", manager.Instances()["home"].Username)
+}
+
+// TestSetUsernameRejectsUnknownInstance verifies the change names a configured
+// instance.
+func TestSetUsernameRejectsUnknownInstance(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+
+	err = manager.SetUsername("absent", "admin")
+
+	require.ErrorIs(t, err, ErrInstanceNotFound)
+}
+
+// TestClearUsernameRemovesOnlyUsername verifies clearing a username leaves a
+// stored credential reference and a legacy plaintext password in place, because
+// the username and the password are managed independently.
+func TestClearUsernameRemovesOnlyUsername(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+	require.NoError(t, manager.SetUsername("home", "admin"))
+	require.NoError(t, manager.SetCredential("home", instance.CredentialRef{
+		Source: instance.KeyringSource,
+		Key:    "home",
+	}))
+
+	require.NoError(t, manager.ClearUsername("home"))
+
+	cfg := manager.Instances()["home"]
+	assert.Empty(t, cfg.Username)
+	require.NotNil(t, cfg.Credential)
+	assert.Equal(t, instance.KeyringSource, cfg.Credential.Source)
+	assert.Equal(t, "home", cfg.Credential.Key)
+}
+
+// TestClearUsernameIsIdempotent verifies repeating the clear is safe, because an
+// instance without a username is already in the target state.
+func TestClearUsernameIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+
+	require.NoError(t, manager.ClearUsername("home"))
+	require.NoError(t, manager.ClearUsername("home"))
+
+	assert.Empty(t, manager.Instances()["home"].Username)
+}
+
+// TestClearUsernameRejectsUnknownInstance verifies the change names a configured
+// instance.
+func TestClearUsernameRejectsUnknownInstance(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+
+	err = manager.ClearUsername("absent")
+
+	require.ErrorIs(t, err, ErrInstanceNotFound)
+}
+
+// TestSavePersistsUsernameWithoutCredential verifies a username survives a save
+// while the configuration records no password.
+func TestSavePersistsUsernameWithoutCredential(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+	require.NoError(t, manager.SetUsername("home", "admin"))
+	require.NoError(t, manager.Save())
+
+	assert.Equal(
+		t,
+		"instances:\n  home:\n    host: home.example.com\n    username: admin\n",
+		readConfigFile(t, path),
+	)
 }
 
 // TestSaveKeepsLegacyPlaintextPassword verifies a configuration without a
@@ -133,7 +273,7 @@ func TestSaveOmitsEmptyOptionalInstanceFields(t *testing.T) {
 	manager, err := Load(path)
 	require.NoError(t, err)
 
-	require.NoError(t, manager.Add("home", "home.example.com", "https", "", ""))
+	require.NoError(t, manager.Add("home", "home.example.com", "https"))
 	require.NoError(t, manager.Save())
 
 	assert.Equal(
@@ -152,7 +292,7 @@ func TestSaveSkipsInstancesAbsentFromOrder(t *testing.T) {
 	manager, err := Load(path)
 	require.NoError(t, err)
 
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", ""))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 
 	manager.data.Instances["orphan"] = instance.Config{
 		Name:       "orphan",
@@ -209,7 +349,7 @@ func TestSaveLeavesNoTemporaryFiles(t *testing.T) {
 	manager, err := Load(path)
 	require.NoError(t, err)
 
-	require.NoError(t, manager.Add("home", "home.example.com", "", "admin", "secret"))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 	require.NoError(t, manager.Save())
 
 	entries, err := os.ReadDir(dir)
@@ -229,7 +369,7 @@ func TestSaveCreatesMissingConfigDirectory(t *testing.T) {
 
 	manager, err := Load(path)
 	require.NoError(t, err)
-	require.NoError(t, manager.Add("home", "home.example.com", "", "admin", "secret"))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 
 	require.NoError(t, manager.Save())
 

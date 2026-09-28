@@ -120,8 +120,10 @@ Every command tree must be constructed fresh:
 - A secret must never appear in an error, a status value, a log line, a test fixture, or documentation. Errors may carry the service, the credential key, the file path, or the variable name.
 - Supported `credential.source` values are `keyring`, `file`, `env`, `plaintext`, and `none`. A configured source is the only source that is read; an unreadable credential is an error, never a fallback.
 - `file` and `env` sources belong to an external system. Never delete, rewrite, or detach them from the CLI.
-- `agh-cli instance credentials` has no `get` subcommand on purpose, and `agh-cli instance add --password` is deprecated. Do not add a command that prints a secret or a flag that accepts one as an argument.
-- Rotation is a repeated `agh-cli instance credentials set <name>`, not a separate command.
+- `agh-cli instance credentials` has no `get` subcommand on purpose. `agh-cli instance add` publishes no username or password flag, and none may be added back. Do not add a command that prints a secret or a flag that accepts one as an argument.
+- Rotation is a repeated `agh-cli instance credentials password set <instance>`, not a separate command.
+- The username and the password are managed independently, and each owns its own command subtree: `agh-cli instance credentials username set|status|clear` and `agh-cli instance credentials password set|status|clear`. A username is configuration and is written to the configuration file; a password is a secret and lives in the credential store. Never let one write touch the other.
+- `agh-cli instance credentials migrate` stays at the group level, because it moves a whole instance from the legacy model, where a username was written at creation alongside a plaintext password, onto the current one. Do not move it into either subtree.
 
 ## Documentation and generated content
 

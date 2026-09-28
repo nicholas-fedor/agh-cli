@@ -36,7 +36,8 @@ func NewCommand() *cobra.Command {
 	wildcardCmd := &cobra.Command{
 		Use:   "wildcard",
 		Short: "Wildcard rewrite rule operations",
-		Long:  `Add or remove wildcard rewrite entries across one or more AdGuard Home instances.`,
+		Long: `Add or remove wildcard rewrite entries across one or more
+AdGuard Home instances.`,
 	}
 
 	// Register subcommands.

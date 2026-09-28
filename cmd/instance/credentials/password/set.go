@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ type secretReader struct {
 	readPassword terminalReader
 }
 
-// newSetCommand creates the credentials set command and binds its flags.
+// newSetCommand creates the password set command and binds its flags.
 //
 // The command deliberately publishes no password flag. An argument value is
 // visible in process listings, shell history, and command logs, so the only
@@ -55,12 +55,12 @@ func newSetCommand(seams *streams) *cobra.Command {
 	values := &setValues{}
 
 	command := &cobra.Command{
-		Use:   "set <name>",
+		Use:   "set <instance>",
 		Short: "Store the credential of a configured instance",
-		Long: `Store the credential of a configured instance in the operating system ` +
-			`credential store and point the instance at it. The secret is read from a ` +
-			`hidden prompt, or from standard input when it is redirected, and it is ` +
-			`never echoed or printed. Use --yes for a non-interactive workflow.`,
+		Long: `Store the credential of a configured instance in the operating system
+credential store and point the instance at it. The secret is read from a
+hidden prompt, or from standard input when it is redirected, and it is
+never echoed or printed. Use --yes for a non-interactive workflow.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSet(cmd, args, values, seams)
@@ -138,7 +138,7 @@ func runSet(cmd *cobra.Command, args []string, values *setValues, seams *streams
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}
 
-	result, err := store.Set(cmd.Context(), name, values.key, secret)
+	result, err := store.SetPassword(cmd.Context(), name, values.key, secret)
 	if err != nil {
 		return fmt.Errorf("set credential for %q: %w", name, err)
 	}
@@ -156,7 +156,7 @@ func runSet(cmd *cobra.Command, args []string, values *setValues, seams *streams
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential write.
-func reportSetResult(cmd *cobra.Command, result app.SetResult) {
+func reportSetResult(cmd *cobra.Command, result app.PasswordSetResult) {
 	action := "Stored"
 	if result.Replaced {
 		action = "Replaced"

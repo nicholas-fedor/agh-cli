@@ -9,9 +9,11 @@ credentials:
   service: agh-cli
 
 instances:
-  # Preferred shape: no password in the file. Store the secret with
-  # `agh-cli instance credentials set default`, which writes it to the
-  # credential store and records the reference below.
+  # Preferred shape: no password in the file. Set the username with
+  # `agh-cli instance credentials username set default your-username` and
+  # store the secret with `agh-cli instance credentials password set default`, which
+  # writes it to the credential store and records the reference below. The
+  # username and the password are managed independently.
   default:
     host: your-adguard-host.example.com
     scheme: https

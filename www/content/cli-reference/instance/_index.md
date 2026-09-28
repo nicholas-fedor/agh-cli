@@ -4,7 +4,8 @@ description: List, add, and remove AdGuard Home instance configurations, and man
 type: docs
 ---
 
-List, add, and remove AdGuard Home instance configurations, and manage the credentials those instances use.
+List, add, and remove AdGuard Home instance configurations, and
+manage the credentials those instances use.
 
 ### Usage
 

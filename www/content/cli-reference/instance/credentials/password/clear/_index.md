@@ -4,12 +4,16 @@ description: Remove a stored credential from the operating system credential sto
 type: docs
 ---
 
-Remove a stored credential from the operating system credential store. Use --all to remove every credential of the configured service. A mounted secret file and an environment variable are owned by another system and are never removed here. Use --yes for a non-interactive workflow.
+Remove a stored credential from the operating system credential store.
+Use --all to remove every credential of the configured service.
+A mounted secret file and an environment variable are owned by another
+system and are never removed here. Use --yes for a non-interactive
+workflow.
 
 ### Usage
 
 ```bash
-agh-cli instance credentials clear <name>
+agh-cli instance credentials password clear <instance>
 ```
 
 ### Command Options

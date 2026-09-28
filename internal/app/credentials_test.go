@@ -330,7 +330,7 @@ func TestCredentialsSetResolvesCredentialKey(t *testing.T) {
 				Return(nil).
 				Once()
 
-			result, err := NewCredentials(store, local).Set(
+			result, err := NewCredentials(store, local).SetPassword(
 				t.Context(),
 				alphaInstance,
 				test.key,
@@ -338,7 +338,7 @@ func TestCredentialsSetResolvesCredentialKey(t *testing.T) {
 			)
 
 			require.NoError(t, err)
-			assert.Equal(t, SetResult{
+			assert.Equal(t, PasswordSetResult{
 				Instance: alphaInstance,
 				Backend:  credentials.KeyringBackend,
 				Service:  "agh-cli",
@@ -375,7 +375,7 @@ func TestCredentialsSetReportsReplacedCredential(t *testing.T) {
 		Return(nil).
 		Once()
 
-	result, err := NewCredentials(store, local).Set(
+	result, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		alphaInstance,
 		"",
@@ -397,7 +397,7 @@ func TestCredentialsSetRejectsUnknownInstance(t *testing.T) {
 	local := newCredentialConfig(t, plaintextConfig())
 	store := mockCredentials.NewMockStore(t)
 
-	result, err := NewCredentials(store, local).Set(
+	result, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		"missing",
 		"",
@@ -426,7 +426,7 @@ func TestCredentialsSetReportsStoreFailure(t *testing.T) {
 		Return(wantErr).
 		Once()
 
-	_, err := NewCredentials(store, local).Set(
+	_, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		alphaInstance,
 		"",
@@ -438,6 +438,203 @@ func TestCredentialsSetReportsStoreFailure(t *testing.T) {
 	assert.Equal(t, 0, local.saves)
 	assert.Equal(t, "alpha-secret", local.Instances()[alphaInstance].Password)
 	assert.Nil(t, local.Instances()[alphaInstance].Credential)
+}
+
+// TestCredentialsSetUsernameRecordsConfiguration verifies a username is written
+// to the configuration file and the credential store is never consulted.
+func TestCredentialsSetUsernameRecordsConfiguration(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := NewCredentials(store, local).SetUsername(alphaInstance, "new-admin")
+
+	require.NoError(t, err)
+	assert.Equal(t, alphaInstance, result.Instance)
+	assert.Equal(t, "new-admin", result.Username)
+	assert.True(t, result.Saved)
+	assert.Equal(t, 1, local.saves)
+	assert.Equal(t, "new-admin", local.Instances()[alphaInstance].Username)
+	assert.Contains(t, local.file(t), "username: new-admin")
+}
+
+// TestCredentialsSetUsernameKeepsCredentialReference verifies changing a
+// username does not detach the instance from its credential source, because the
+// username and the password are managed independently.
+func TestCredentialsSetUsernameKeepsCredentialReference(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	_, err := NewCredentials(store, local).SetUsername(alphaInstance, "new-admin")
+
+	require.NoError(t, err)
+
+	cfg := local.Instances()[alphaInstance]
+	require.NotNil(t, cfg.Credential)
+	assert.Equal(t, instance.KeyringSource, cfg.Credential.Source)
+	assert.Equal(t, alphaInstance, cfg.Credential.Key)
+}
+
+// TestCredentialsSetUsernameRejectsUnknownInstance verifies a username is only
+// recorded for a configured instance.
+func TestCredentialsSetUsernameRejectsUnknownInstance(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := NewCredentials(store, local).SetUsername("missing", "new-admin")
+
+	require.ErrorIs(t, err, config.ErrInstanceNotFound)
+	assert.Empty(t, result)
+	assert.Equal(t, 0, local.saves)
+}
+
+// TestCredentialsSetUsernameReportsSaveFailure verifies a failed configuration
+// write is reported even though the in-memory change was accepted.
+func TestCredentialsSetUsernameReportsSaveFailure(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("disk full")
+	local := newCredentialConfig(t, keyringConfig())
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+
+	_, err := NewCredentials(store, local).SetUsername(alphaInstance, "new-admin")
+
+	require.ErrorIs(t, err, wantErr)
+}
+
+// TestCredentialsClearUsernameRemovesOnlyUsername verifies clearing a username
+// leaves a stored credential reference in place, so a working password survives.
+func TestCredentialsClearUsernameRemovesOnlyUsername(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := NewCredentials(store, local).ClearUsername(alphaInstance)
+
+	require.NoError(t, err)
+	assert.Equal(t, alphaInstance, result.Instance)
+	assert.Empty(t, result.Username)
+	assert.True(t, result.Saved)
+	assert.Equal(t, 1, local.saves)
+	assert.Empty(t, local.Instances()[alphaInstance].Username)
+	require.NotNil(t, local.Instances()[alphaInstance].Credential)
+	assert.Equal(t, instance.KeyringSource, local.Instances()[alphaInstance].Credential.Source)
+}
+
+// TestCredentialsClearUsernameIsIdempotent verifies repeating the clear is safe,
+// because an instance without a username is already in the target state.
+func TestCredentialsClearUsernameIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, "credentials:\n  service: agh-cli\n"+
+		"instances:\n  alpha:\n    host: alpha.example.com\n    password: alpha-secret\n")
+	store := mockCredentials.NewMockStore(t)
+
+	coordinator := NewCredentials(store, local)
+
+	first, err := coordinator.ClearUsername(alphaInstance)
+	require.NoError(t, err)
+
+	second, err := coordinator.ClearUsername(alphaInstance)
+	require.NoError(t, err)
+
+	assert.Equal(t, first, second)
+	assert.Empty(t, local.Instances()[alphaInstance].Username)
+}
+
+// TestCredentialsClearUsernameRejectsUnknownInstance verifies the clear names a
+// configured instance.
+func TestCredentialsClearUsernameRejectsUnknownInstance(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := NewCredentials(store, local).ClearUsername("missing")
+
+	require.ErrorIs(t, err, config.ErrInstanceNotFound)
+	assert.Empty(t, result)
+	assert.Equal(t, 0, local.saves)
+}
+
+// TestCredentialsStatusUsernameReportsUsername verifies the username read path
+// reports the configured value, because a username is configuration rather than a
+// secret. The credential store is never consulted to answer it.
+func TestCredentialsStatusUsernameReportsUsername(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	report, err := NewCredentials(store, local).StatusUsername([]string{alphaInstance})
+
+	require.NoError(t, err)
+	require.Len(t, report.Instances, 1)
+	assert.Equal(t, alphaInstance, report.Instances[0].Instance)
+	assert.Equal(t, "admin", report.Instances[0].Username)
+}
+
+// TestCredentialsStatusUsernameOmitsUnsetUsername verifies an instance without a
+// username reports an empty value rather than a placeholder.
+func TestCredentialsStatusUsernameOmitsUnsetUsername(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, "credentials:\n  service: agh-cli\n"+
+		"instances:\n  alpha:\n    host: alpha.example.com\n    password: alpha-secret\n")
+	store := mockCredentials.NewMockStore(t)
+
+	report, err := NewCredentials(store, local).StatusUsername([]string{alphaInstance})
+
+	require.NoError(t, err)
+	require.Len(t, report.Instances, 1)
+	assert.Empty(t, report.Instances[0].Username)
+}
+
+// TestCredentialsStatusUsernameRejectsUnknownInstance verifies the read path names
+// a configured instance.
+func TestCredentialsStatusUsernameRejectsUnknownInstance(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+
+	_, err := NewCredentials(store, local).StatusUsername([]string{"missing"})
+
+	require.ErrorIs(t, err, config.ErrInstanceNotFound)
+}
+
+// TestCredentialsStatusPasswordOmitsUsername verifies the password report carries
+// no username, because the two halves of instance authentication are reported
+// separately.
+func TestCredentialsStatusPasswordOmitsUsername(t *testing.T) {
+	t.Parallel()
+
+	local := newCredentialConfig(t, keyringConfig())
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().
+		Get(mock.Anything, "agh-cli", alphaInstance).
+		Return("alpha-secret", nil).
+		Once()
+
+	report, err := NewCredentials(store, local).StatusPassword(
+		t.Context(),
+		[]string{alphaInstance},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, report.Instances, 1)
+	assert.Equal(t, alphaInstance, report.Instances[0].Instance)
+	assert.Equal(t, instance.KeyringSource, report.Instances[0].Source)
 }
 
 // keyringConfig returns a configuration whose instances already reference the
@@ -473,10 +670,10 @@ func TestCredentialsClearRemovesReferenceAfterDeletingEntry(t *testing.T) {
 		},
 	).Once()
 
-	result, err := NewCredentials(store, local).Clear(t.Context(), alphaInstance)
+	result, err := NewCredentials(store, local).ClearPassword(t.Context(), alphaInstance)
 
 	require.NoError(t, err)
-	assert.Equal(t, ClearResult{
+	assert.Equal(t, PasswordClearResult{
 		Instance: alphaInstance,
 		Service:  "agh-cli",
 		Key:      alphaInstance,
@@ -503,10 +700,10 @@ func TestCredentialsClearTreatsAbsentCredentialAsCleared(t *testing.T) {
 		Return("", credentials.ErrNotFound).
 		Once()
 
-	result, err := NewCredentials(store, local).Clear(t.Context(), alphaInstance)
+	result, err := NewCredentials(store, local).ClearPassword(t.Context(), alphaInstance)
 
 	require.NoError(t, err)
-	assert.Equal(t, ClearResult{
+	assert.Equal(t, PasswordClearResult{
 		Instance: alphaInstance,
 		Service:  "agh-cli",
 		Key:      alphaInstance,
@@ -537,12 +734,12 @@ func TestCredentialsClearIsIdempotent(t *testing.T) {
 
 	coordinator := NewCredentials(store, local)
 
-	first, err := coordinator.Clear(t.Context(), alphaInstance)
+	first, err := coordinator.ClearPassword(t.Context(), alphaInstance)
 	require.NoError(t, err)
 	assert.True(t, first.Removed)
 	assert.True(t, first.Saved)
 
-	second, err := coordinator.Clear(t.Context(), alphaInstance)
+	second, err := coordinator.ClearPassword(t.Context(), alphaInstance)
 	require.NoError(t, err)
 	assert.False(t, second.Removed)
 	assert.True(t, second.Saved)
@@ -567,7 +764,7 @@ func TestCredentialsClearSaveFailureKeepsReferenceOnDisk(t *testing.T) {
 		Once()
 	store.EXPECT().Delete(mock.Anything, "agh-cli", alphaInstance).Return(nil).Once()
 
-	result, err := NewCredentials(store, local).Clear(t.Context(), alphaInstance)
+	result, err := NewCredentials(store, local).ClearPassword(t.Context(), alphaInstance)
 
 	require.ErrorIs(t, err, wantErr)
 	assert.True(t, result.Removed)
@@ -581,7 +778,7 @@ func TestCredentialsClearSaveFailureKeepsReferenceOnDisk(t *testing.T) {
 		Return("", credentials.ErrNotFound).
 		Once()
 
-	retry, err := NewCredentials(store, local).Clear(t.Context(), alphaInstance)
+	retry, err := NewCredentials(store, local).ClearPassword(t.Context(), alphaInstance)
 
 	require.NoError(t, err)
 	assert.False(t, retry.Removed)
@@ -616,7 +813,7 @@ func TestCredentialsSetStoresBeforeUpdatingConfig(t *testing.T) {
 		}).
 		Once()
 
-	result, err := NewCredentials(store, local).Set(
+	result, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		alphaInstance,
 		"",
@@ -624,7 +821,7 @@ func TestCredentialsSetStoresBeforeUpdatingConfig(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	assert.Equal(t, SetResult{
+	assert.Equal(t, PasswordSetResult{
 		Instance: alphaInstance,
 		Backend:  credentials.KeyringBackend,
 		Service:  "agh-cli",
@@ -668,7 +865,7 @@ func TestCredentialsSetSaveFailureLeavesPlaintextOnDisk(t *testing.T) {
 		Return(nil).
 		Once()
 
-	result, err := NewCredentials(store, local).Set(
+	result, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		alphaInstance,
 		"",
@@ -694,7 +891,7 @@ func TestCredentialsSetSaveFailureLeavesPlaintextOnDisk(t *testing.T) {
 		Return(nil).
 		Once()
 
-	retry, err := NewCredentials(store, local).Set(
+	retry, err := NewCredentials(store, local).SetPassword(
 		t.Context(),
 		alphaInstance,
 		"",
@@ -759,7 +956,7 @@ func TestCredentialsClearRefusesExternalCredentialSource(t *testing.T) {
 			// No store expectation is registered, so any store call fails.
 			store := mockCredentials.NewMockStore(t)
 
-			result, err := NewCredentials(store, local).Clear(t.Context(), test.instance)
+			result, err := NewCredentials(store, local).ClearPassword(t.Context(), test.instance)
 
 			require.ErrorIs(t, err, ErrExternalCredentialSource)
 			require.ErrorContains(t, err, string(test.wantSource))
@@ -807,17 +1004,17 @@ func TestCredentialsClearAllowsManagedCredentialSources(t *testing.T) {
 
 	coordinator := NewCredentials(store, local)
 
-	keyring, err := coordinator.Clear(t.Context(), alphaInstance)
+	keyring, err := coordinator.ClearPassword(t.Context(), alphaInstance)
 	require.NoError(t, err)
 	assert.True(t, keyring.Removed)
 	assert.True(t, keyring.Saved)
 
-	explicit, err := coordinator.Clear(t.Context(), "explicit")
+	explicit, err := coordinator.ClearPassword(t.Context(), "explicit")
 	require.NoError(t, err)
 	assert.False(t, explicit.Removed)
 	assert.True(t, explicit.Saved)
 
-	legacy, err := coordinator.Clear(t.Context(), "legacy")
+	legacy, err := coordinator.ClearPassword(t.Context(), "legacy")
 	require.NoError(t, err)
 	assert.Equal(t, "legacy", legacy.Key)
 	assert.False(t, legacy.Removed)
@@ -839,10 +1036,10 @@ func TestCredentialsClearAllStaysInsideService(t *testing.T) {
 	store := mockCredentials.NewMockStore(t)
 	store.EXPECT().DeleteAll(mock.Anything, "agh-cli").Return(nil).Once()
 
-	result, err := NewCredentials(store, local).ClearAll(t.Context())
+	result, err := NewCredentials(store, local).ClearAllPasswords(t.Context())
 
 	require.NoError(t, err)
-	assert.Equal(t, ClearResult{Service: "agh-cli", Removed: true, All: true}, result)
+	assert.Equal(t, PasswordClearResult{Service: "agh-cli", Removed: true, All: true}, result)
 	assert.Equal(t, 0, local.saves)
 	require.NotNil(t, local.Instances()[alphaInstance].Credential)
 }
@@ -855,7 +1052,7 @@ func TestCredentialsClearRejectsUnknownInstance(t *testing.T) {
 	local := newCredentialConfig(t, plaintextConfig())
 	store := mockCredentials.NewMockStore(t)
 
-	_, err := NewCredentials(store, local).Clear(t.Context(), "missing")
+	_, err := NewCredentials(store, local).ClearPassword(t.Context(), "missing")
 
 	require.ErrorIs(t, err, config.ErrInstanceNotFound)
 }
@@ -893,13 +1090,13 @@ func TestCredentialsStatusReportsPresencePerNamedInstance(t *testing.T) {
 		Return("", credentials.ErrNotFound).
 		Once()
 
-	result, err := NewCredentials(store, local).Status(t.Context(), nil)
+	result, err := NewCredentials(store, local).StatusPassword(t.Context(), nil)
 
 	require.NoError(t, err)
 	assert.True(t, result.Available)
 	assert.Equal(t, credentials.KeyringBackend, result.Backend)
 	assert.Equal(t, "agh-cli", result.Service)
-	assert.Equal(t, []CredentialStatus{
+	assert.Equal(t, []PasswordStatus{
 		{Instance: "legacy", Source: instance.PlaintextSource, Presence: PresencePresent},
 		{Instance: "bare", Source: instance.PlaintextSource, Presence: PresenceAbsent},
 		{
@@ -951,7 +1148,7 @@ func TestCredentialsStatusReportsUnavailableStore(t *testing.T) {
 		Return("", credentials.ErrStoreUnavailable).
 		Once()
 
-	result, err := NewCredentials(store, local).Status(t.Context(), []string{"stored"})
+	result, err := NewCredentials(store, local).StatusPassword(t.Context(), []string{"stored"})
 
 	require.NoError(t, err)
 	assert.False(t, result.Available)
@@ -968,7 +1165,7 @@ func TestCredentialsStatusRejectsUnknownInstance(t *testing.T) {
 	local := newCredentialConfig(t, plaintextConfig())
 	store := mockCredentials.NewMockStore(t)
 
-	result, err := NewCredentials(store, local).Status(t.Context(), []string{"missing"})
+	result, err := NewCredentials(store, local).StatusPassword(t.Context(), []string{"missing"})
 
 	require.ErrorIs(t, err, config.ErrInstanceNotFound)
 	assert.Empty(t, result.Instances)
@@ -987,7 +1184,7 @@ func TestCredentialsUsesConfiguredService(t *testing.T) {
 	store := mockCredentials.NewMockStore(t)
 	store.EXPECT().DeleteAll(mock.Anything, "agh-cli-custom").Return(nil).Once()
 
-	result, err := NewCredentials(store, local).ClearAll(t.Context())
+	result, err := NewCredentials(store, local).ClearAllPasswords(t.Context())
 
 	require.NoError(t, err)
 	assert.Equal(t, "agh-cli-custom", result.Service)
@@ -1006,7 +1203,7 @@ func TestCredentialsFallsBackToDefaultService(t *testing.T) {
 	store := mockCredentials.NewMockStore(t)
 	store.EXPECT().DeleteAll(mock.Anything, credentials.DefaultService).Return(nil).Once()
 
-	result, err := NewCredentials(store, local).ClearAll(t.Context())
+	result, err := NewCredentials(store, local).ClearAllPasswords(t.Context())
 
 	require.NoError(t, err)
 	assert.Equal(t, credentials.DefaultService, result.Service)
@@ -1034,7 +1231,7 @@ func TestCredentialsReportsStoreFailures(t *testing.T) {
 					Once()
 			},
 			run: func(ctx context.Context, coordinator *Credentials) error {
-				_, err := coordinator.Set(ctx, alphaInstance, "", "new-secret")
+				_, err := coordinator.SetPassword(ctx, alphaInstance, "", "new-secret")
 
 				return err
 			},
@@ -1052,7 +1249,7 @@ func TestCredentialsReportsStoreFailures(t *testing.T) {
 					Once()
 			},
 			run: func(ctx context.Context, coordinator *Credentials) error {
-				_, err := coordinator.Clear(ctx, alphaInstance)
+				_, err := coordinator.ClearPassword(ctx, alphaInstance)
 
 				return err
 			},
@@ -1066,7 +1263,7 @@ func TestCredentialsReportsStoreFailures(t *testing.T) {
 					Once()
 			},
 			run: func(ctx context.Context, coordinator *Credentials) error {
-				_, err := coordinator.ClearAll(ctx)
+				_, err := coordinator.ClearAllPasswords(ctx)
 
 				return err
 			},

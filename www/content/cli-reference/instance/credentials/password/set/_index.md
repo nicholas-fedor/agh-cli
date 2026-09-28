@@ -4,12 +4,15 @@ description: Store the credential of a configured instance in the operating syst
 type: docs
 ---
 
-Store the credential of a configured instance in the operating system credential store and point the instance at it. The secret is read from a hidden prompt, or from standard input when it is redirected, and it is never echoed or printed. Use --yes for a non-interactive workflow.
+Store the credential of a configured instance in the operating system
+credential store and point the instance at it. The secret is read from a
+hidden prompt, or from standard input when it is redirected, and it is
+never echoed or printed. Use --yes for a non-interactive workflow.
 
 ### Usage
 
 ```bash
-agh-cli instance credentials set <name>
+agh-cli instance credentials password set <instance>
 ```
 
 ### Command Options

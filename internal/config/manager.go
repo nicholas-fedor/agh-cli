@@ -127,17 +127,19 @@ func Load(path string) (*Manager, error) {
 // Add inserts a new instance configuration into the manager's in-memory state.
 // It does not write the change to disk.
 //
+// An added instance carries no credentials. A username and a password are
+// authentication details owned by the credential workflow, so they are set
+// afterwards rather than accepted as add-time input.
+//
 // Parameters:
 //   - name: unique instance identifier.
 //   - host: AdGuard Home hostname or IP address.
 //   - scheme: URL scheme used to contact the instance; an empty value becomes
 //     HTTPS.
-//   - username: optional AdGuard Home administrator username.
-//   - password: optional AdGuard Home administrator password.
 //
 // Returns:
 //   - error: ErrInstanceAlreadyExists when name is already configured.
-func (m *Manager) Add(name, host, scheme, username, password string) error {
+func (m *Manager) Add(name, host, scheme string) error {
 	if m.Exists(name) {
 		return fmt.Errorf("instance %q %w", name, ErrInstanceAlreadyExists)
 	}
@@ -150,8 +152,8 @@ func (m *Manager) Add(name, host, scheme, username, password string) error {
 		Name:       name,
 		Host:       host,
 		Scheme:     scheme,
-		Username:   username,
-		Password:   password,
+		Username:   "",
+		Password:   "",
 		Credential: nil,
 	}
 	m.nameOrder = append(m.nameOrder, name)
