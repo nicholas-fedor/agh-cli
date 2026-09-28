@@ -31,8 +31,8 @@ func newInstanceAddCommand() *cobra.Command {
 		Long: `Add a new instance configuration without any credentials. Set the
 administrator username with 'agh-cli instance credentials username set
 <instance> <username>' and the password with 'agh-cli instance credentials
-password set <instance>', so neither value ever appears in a process
-listing or shell history.`,
+password set <instance>'. The password is read from a hidden prompt, so
+it never appears in a process listing or shell history.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstanceAdd(cmd, args, values)

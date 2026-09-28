@@ -20,8 +20,8 @@ func newInstanceRemoveCommand() *cobra.Command {
 		Use:   "remove <instance>",
 		Short: "Remove an instance configuration",
 		Long: `Remove an instance configuration. The stored credential of the
-instance is kept, so clear it separately with 'agh-cli instance
-credentials password clear'.`,
+instance is kept, so clear it before removing the instance with 'agh-cli
+instance credentials password clear <instance>'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runInstanceRemove,
 	}
