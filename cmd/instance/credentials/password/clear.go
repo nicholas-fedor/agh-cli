@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ type clearValues struct {
 	yes bool
 }
 
-// newClearCommand creates the credentials clear command and binds its flags.
+// newClearCommand creates the password clear command and binds its flags.
 //
 // Parameters:
 //   - seams: input seams and credential coordinator factory.
@@ -34,13 +34,13 @@ func newClearCommand(seams *streams) *cobra.Command {
 	values := &clearValues{}
 
 	command := &cobra.Command{
-		Use:   "clear <name>",
+		Use:   "clear <instance>",
 		Short: "Remove a stored instance credential",
-		Long: `Remove a stored credential from the operating system credential store. ` +
-			`Use --all to remove every credential of the configured service. ` +
-			`A mounted secret file and an environment variable are owned by another ` +
-			`system and are never removed here. Use --yes for a non-interactive ` +
-			`workflow.`,
+		Long: `Remove a stored credential from the operating system credential store.
+Use --all to remove every credential of the configured service.
+A mounted secret file and an environment variable are owned by another
+system and are never removed here. Use --yes for a non-interactive
+workflow.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runClear(cmd, args, values, seams)
@@ -162,7 +162,7 @@ func clearInstance(
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}
 
-	result, err := store.Clear(cmd.Context(), name)
+	result, err := store.ClearPassword(cmd.Context(), name)
 	if err != nil {
 		return fmt.Errorf("clear credential of %q: %w", name, err)
 	}
@@ -210,7 +210,7 @@ func clearService(cmd *cobra.Command, seams *streams, values *clearValues) error
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}
 
-	result, err := store.ClearAll(cmd.Context())
+	result, err := store.ClearAllPasswords(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("clear credential service: %w", err)
 	}
@@ -225,7 +225,7 @@ func clearService(cmd *cobra.Command, seams *streams, values *clearValues) error
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential delete.
-func reportClearInstance(cmd *cobra.Command, result app.ClearResult) {
+func reportClearInstance(cmd *cobra.Command, result app.PasswordClearResult) {
 	if !result.Removed {
 		cmd.Printf(
 			"No stored credential for instance %q with key %q in service %q.\n",
@@ -252,7 +252,7 @@ func reportClearInstance(cmd *cobra.Command, result app.ClearResult) {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the service-wide delete.
-func reportClearService(cmd *cobra.Command, result app.ClearResult) {
+func reportClearService(cmd *cobra.Command, result app.PasswordClearResult) {
 	cmd.Printf("Removed every credential in service %q.\n", result.Service)
 }
 
@@ -265,7 +265,7 @@ func reportClearService(cmd *cobra.Command, result app.ClearResult) {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential delete.
-func warnUnsavedReference(cmd *cobra.Command, result app.ClearResult) {
+func warnUnsavedReference(cmd *cobra.Command, result app.PasswordClearResult) {
 	if result.Saved {
 		return
 	}

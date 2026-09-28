@@ -23,7 +23,7 @@ import (
 // Returns:
 //   - string: the field name followed by the quoted identity, or an empty string
 //     when the configured source owns no identity.
-func (status CredentialStatus) TargetLabel() string {
+func (status PasswordStatus) TargetLabel() string {
 	switch status.Source {
 	case instance.KeyringSource:
 		return "key " + strconv.Quote(status.Target)

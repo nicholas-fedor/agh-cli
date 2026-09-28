@@ -56,7 +56,8 @@ func NewCommand() *cobra.Command {
 	rewriteCmd := &cobra.Command{
 		Use:   "rewrite",
 		Short: "DNS rewrite rule operations",
-		Long:  `Create, read, update, and delete DNS rewrite rules on one or more AdGuard Home instances.`,
+		Long: `Create, read, update, and delete DNS rewrite rules on one or more
+AdGuard Home instances.`,
 	}
 
 	// Register subcommands.

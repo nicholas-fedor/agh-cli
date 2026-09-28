@@ -190,8 +190,6 @@ func TestAddInstanceCreatesConfiguration(t *testing.T) {
 		Name:       "default",
 		Host:       factoryTestHost,
 		Scheme:     "http",
-		Username:   "admin",
-		Password:   factoryTestPassword,
 	})
 
 	require.NoError(t, err)
@@ -201,8 +199,32 @@ func TestAddInstanceCreatesConfiguration(t *testing.T) {
 	assert.Contains(t, written, "  default:")
 	assert.Contains(t, written, "    host: "+factoryTestHost)
 	assert.Contains(t, written, "    scheme: http")
-	assert.Contains(t, written, "    username: admin")
-	assert.Contains(t, written, "    password: "+factoryTestPassword)
+}
+
+// TestAddInstanceStoresNoCredentials verifies an added instance is written
+// without authentication details, because the credential workflow owns both the
+// username and the password.
+func TestAddInstanceStoresNoCredentials(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), factoryTestConfigName)
+
+	err := AddInstance(InstanceAddRequest{
+		ConfigPath: configPath,
+		Name:       "default",
+		Host:       factoryTestHost,
+	})
+
+	require.NoError(t, err)
+
+	manager, loadErr := LoadConfig(configPath)
+	require.NoError(t, loadErr)
+
+	cfg := manager.Instances()["default"]
+
+	assert.Empty(t, cfg.Username)
+	assert.Empty(t, cfg.Password)
+	assert.Nil(t, cfg.Credential)
 }
 
 // TestAddInstanceKeepsExistingInstances verifies that an add preserves the
@@ -325,7 +347,7 @@ func TestNewCredentialsCoordinatorUsesResolvedFile(t *testing.T) {
 
 	// A legacy plaintext instance is decided from the configuration alone, so
 	// this inspection never probes the operating system credential store.
-	report, statusErr := coordinator.Status(t.Context(), []string{"default"})
+	report, statusErr := coordinator.StatusPassword(t.Context(), []string{"default"})
 
 	require.NoError(t, statusErr)
 	require.Len(t, report.Instances, 1)

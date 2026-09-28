@@ -65,11 +65,12 @@ A container normally has no credential store session, so configure a `file` sour
 
 ## Quick Start
 
-By default, `agh-cli` looks for the per-user configuration file first and then `./config.yaml`. Add an instance without a password, then store the secret in the operating system credential store:
+By default, `agh-cli` looks for the per-user configuration file first and then `./config.yaml`. Add an instance, then set its username and store the secret in the operating system credential store:
 
 ```bash
-agh-cli instance add default adguard.example.com --username admin
-agh-cli instance credentials set default
+agh-cli instance add default adguard.example.com
+agh-cli instance credentials username set default admin
+agh-cli instance credentials password set default
 ```
 
 ```text
@@ -155,7 +156,7 @@ agh-cli instance add default adguard.example.com
 agh-cli instance remove backup
 ```
 
-`agh-cli instance add --password` is **deprecated**. The flag still works so existing scripts keep running, but an argument value is visible in process listings and shell history, so `agh-cli` prints a deprecation notice on standard error. Add the instance without a password and run `agh-cli instance credentials set <name>` instead.
+`agh-cli instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands: `agh-cli instance credentials username set <instance> <username>` writes the username to the configuration file, and `agh-cli instance credentials password set <instance>` stores the password in the operating system credential store. The two are independent, so either can be changed without touching the other.
 
 ### Credential Sources
 
@@ -191,39 +192,43 @@ Selection precedence:
 
 ## Credentials
 
-`agh-cli instance credentials` manages instance passwords in the operating system credential store.
+`agh-cli instance credentials` manages the two halves of instance authentication. A username is configuration and lives in the configuration file; a password is a secret and lives in the operating system credential store. Each has its own `set`, `status`, and `clear`, so either can be changed without disturbing the other. `migrate` sits at the group level because it moves a whole instance from the legacy model.
 
-| Command                                      | Description                                                |
-|----------------------------------------------|------------------------------------------------------------|
-| `agh-cli instance credentials set <name>`    | Store a secret and point the instance at it                |
-| `agh-cli instance credentials status [name]` | Report source, target, and presence, never the secret      |
-| `agh-cli instance credentials clear <name>`  | Remove a stored credential and its configuration reference |
-| `agh-cli instance credentials clear --all`   | Remove every credential of the configured service          |
-| `agh-cli instance credentials migrate`       | Move legacy plaintext passwords into the credential store  |
+| Command                                                              | Description                                                |
+|----------------------------------------------------------------------|------------------------------------------------------------|
+| `agh-cli instance credentials username set <instance> <username>`   | Set the administrator username in the configuration file |
+| `agh-cli instance credentials username status [instance]`           | Report the configured username                            |
+| `agh-cli instance credentials username clear <instance>`            | Remove the administrator username                         |
+| `agh-cli instance credentials password set <instance>`              | Store a secret and point the instance at it               |
+| `agh-cli instance credentials password status [instance]`           | Report source, target, and presence, never the secret     |
+| `agh-cli instance credentials password clear <instance>`            | Remove a stored credential and its configuration reference |
+| `agh-cli instance credentials password clear --all`                 | Remove every credential of the configured service         |
+| `agh-cli instance credentials migrate`                              | Move an instance from the legacy model onto this one      |
 
-| Flag        | Commands       | Description                                                       |
-|-------------|----------------|-------------------------------------------------------------------|
-| `--key`     | `set`          | Credential key; defaults to the instance name                     |
-| `-y, --yes` | `set`, `clear` | Skip the confirmation, for non-interactive use                    |
-| `--all`     | `clear`        | Remove every credential of the configured service                 |
-| `--json`    | `status`       | Render the report as JSON                                         |
+| Flag        | Commands                  | Description                                                       |
+|-------------|---------------------------|-------------------------------------------------------------------|
+| `--key`     | `password set`            | Credential key; defaults to the instance name                     |
+| `-y, --yes` | `password set`, `password clear` | Skip the confirmation, for non-interactive use               |
+| `--all`     | `password clear`          | Remove every credential of the configured service                 |
+| `--json`    | `username status`, `password status` | Render the report as JSON                    |
 | `--dry-run` | `migrate`      | Report the change without writing to the store or the config file |
 
 There is deliberately **no** `get` command. No command prints a stored secret, so `status` is safe to run in a shared terminal or a captured log. When a request needs the password, `agh-cli` reads it from the store and sends it.
 
 ### Storing a Credential
 
-Add the instance without a password, then store the secret:
+Add the instance first, then set the username and store the secret:
 
 ```bash
-agh-cli instance add default adguard.example.com --username admin
-agh-cli instance credentials set default
+agh-cli instance add default adguard.example.com
+agh-cli instance credentials username set default admin
+agh-cli instance credentials password set default
 ```
 
 `set` reads the password from a hidden prompt. When standard input is redirected, such as in a script, it reads the secret from standard input instead and echoes nothing:
 
 ```bash
-printf '%s' "$AGH_ADMIN_PASSWORD" | agh-cli instance credentials set default --yes
+printf '%s' "$AGH_ADMIN_PASSWORD" | agh-cli instance credentials password set default --yes
 ```
 
 The secret is read before the confirmation, so declining the prompt stores nothing and the value is dropped immediately. `--yes` pre-accepts the confirmation, which is the only way a redirected workflow can proceed, because a prompt needs a terminal. One trailing newline is stripped from a redirected secret, so a password that genuinely ends in a newline round-trips through a double redirect. An empty secret is refused before the store is touched.
@@ -234,10 +239,10 @@ The credential store write happens first and `config.yaml` is rewritten only aft
 
 ```bash
 # Every configured instance
-agh-cli instance credentials status
+agh-cli instance credentials password status
 
 # One instance, as JSON
-agh-cli instance credentials status default --json
+agh-cli instance credentials password status default --json
 ```
 
 ```text
@@ -256,7 +261,7 @@ Presence is `present`, `absent`, or `unknown`. A `file` or `env` source reports 
 Rotation is a second `set` for the same instance. The store is read first, so a write refuses to guess whether it would replace an existing credential, and the report names the outcome:
 
 ```bash
-agh-cli instance credentials set default
+agh-cli instance credentials password set default
 ```
 
 ```text
@@ -269,8 +274,8 @@ If the configuration file could not be rewritten, `agh-cli` warns that the plain
 ### Removing a Credential
 
 ```bash
-agh-cli instance credentials clear default
-agh-cli instance credentials clear --all --yes
+agh-cli instance credentials password clear default
+agh-cli instance credentials password clear --all --yes
 ```
 
 `clear` deletes the store entry first and removes the configuration reference afterwards, so the file never points at a secret that still exists. Clearing an absent credential is not an error, which makes a repeated clear safe. `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error instead of a silent change of source; detach each instance with its own `clear`.

@@ -16,10 +16,10 @@ import (
 // password for one instance.
 type Presence uint8
 
-// CredentialStatus reports the configured credential state of one named instance.
-// It never carries a secret or a value derived from one.
-type CredentialStatus struct {
-	// Instance is the instance name whose credential was inspected.
+// PasswordStatus reports the configured password state of one named instance.
+// It never carries a secret, a value derived from one, or the instance username.
+type PasswordStatus struct {
+	// Instance is the instance name whose password was inspected.
 	Instance string
 	// Source is the configured credential source. A legacy instance without a
 	// credential reference reports instance.PlaintextSource.
@@ -35,12 +35,12 @@ type CredentialStatus struct {
 	Err error
 }
 
-// StatusResult reports credential store state for a service and its named
+// PasswordReport reports credential store state for a service and its named
 // instances.
 //
 // The operating system credential store cannot enumerate its entries, so presence
 // is reported per named instance instead of per stored credential.
-type StatusResult struct {
+type PasswordReport struct {
 	// Backend is the credential store backend name.
 	Backend string
 	// Service is the credential store namespace.
@@ -48,7 +48,7 @@ type StatusResult struct {
 	// Available reports whether every credential store read succeeded.
 	Available bool
 	// Instances contains one entry per named instance in configuration order.
-	Instances []CredentialStatus
+	Instances []PasswordStatus
 }
 
 const (
@@ -62,12 +62,14 @@ const (
 	PresencePresent
 )
 
-// Status reports credential store state without ever returning a secret.
+// StatusPassword reports credential store state without ever returning a secret.
 //
 // The operating system credential store cannot enumerate its entries, so presence
 // is reported per named instance. A named instance is inspected even when its
 // source is not the keyring, because a configuration reference is the only
-// description of the credential agh-cli will use for it.
+// description of the credential agh-cli will use for it. The report carries no
+// username, because the configured identity is answered by
+// [Credentials.StatusUsername].
 //
 // Parameters:
 //   - ctx: context checked before the credential store calls.
@@ -75,39 +77,39 @@ const (
 //     configured instance in configuration order.
 //
 // Returns:
-//   - StatusResult: the backend, the service, and one entry per instance.
+//   - PasswordReport: the backend, the service, and one entry per instance.
 //   - error: a wrapped error when a requested name is unknown.
-func (a *Credentials) Status(
+func (a *Credentials) StatusPassword(
 	ctx context.Context,
 	names []string,
-) (StatusResult, error) {
+) (PasswordReport, error) {
 	service := a.service()
 
 	selected, err := a.statusConfigs(names)
 	if err != nil {
-		return StatusResult{}, fmt.Errorf("select instances for status: %w", err)
+		return PasswordReport{}, fmt.Errorf("select instances for password status: %w", err)
 	}
 
-	result := StatusResult{
+	result := PasswordReport{
 		Backend:   a.store.Backend(),
 		Service:   service,
 		Available: true,
-		Instances: make([]CredentialStatus, 0, len(selected)),
+		Instances: make([]PasswordStatus, 0, len(selected)),
 	}
 
 	for _, cfg := range selected {
-		result.Instances = append(result.Instances, a.credentialStatus(ctx, service, cfg))
+		result.Instances = append(result.Instances, a.passwordStatus(ctx, service, cfg))
 	}
 
 	result.Available = !slices.ContainsFunc(
 		result.Instances,
-		func(entry CredentialStatus) bool { return entry.Err != nil },
+		func(entry PasswordStatus) bool { return entry.Err != nil },
 	)
 
 	return result, nil
 }
 
-// credentialStatus reports the configured credential state of one instance.
+// passwordStatus reports the configured password state of one instance.
 //
 // Parameters:
 //   - ctx: context checked before the credential store call.
@@ -115,14 +117,14 @@ func (a *Credentials) Status(
 //   - cfg: configured instance whose credential reference is inspected.
 //
 // Returns:
-//   - CredentialStatus: the configured source, its identity, and its presence.
-func (a *Credentials) credentialStatus(
+//   - PasswordStatus: the configured source, its identity, and its presence.
+func (a *Credentials) passwordStatus(
 	ctx context.Context,
 	service string,
 	cfg instance.Config,
-) CredentialStatus {
+) PasswordStatus {
 	source, target := credentialIdentity(cfg)
-	entry := CredentialStatus{Instance: cfg.Name, Source: source, Target: target}
+	entry := PasswordStatus{Instance: cfg.Name, Source: source, Target: target}
 
 	if source != instance.KeyringSource {
 		entry.Presence = externalPresence(source, cfg)
@@ -146,7 +148,8 @@ func (a *Credentials) credentialStatus(
 	return entry
 }
 
-// statusConfigs resolves the instances inspected by Status.
+// statusConfigs resolves the instances inspected by StatusPassword and
+// StatusUsername.
 //
 // Parameters:
 //   - names: requested instance names, or an empty slice for every configured

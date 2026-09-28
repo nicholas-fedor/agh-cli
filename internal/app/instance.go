@@ -20,6 +20,10 @@ type InstanceListRequest struct {
 }
 
 // InstanceAddRequest contains the inputs for adding one instance.
+//
+// The request carries no credentials. A username and a password are
+// authentication details owned by the credential workflow, so an added instance
+// is configured without them and the operator sets them afterwards.
 type InstanceAddRequest struct {
 	// ConfigPath is the configuration file the instance is appended to.
 	ConfigPath string
@@ -27,14 +31,9 @@ type InstanceAddRequest struct {
 	Host string
 	// Name is the unique instance identifier.
 	Name string
-	// Password is the legacy plaintext password. It is empty when the operator
-	// stores the credential separately.
-	Password string
 	// Scheme is the URL scheme used to contact the instance. An empty value
 	// becomes HTTPS.
 	Scheme string
-	// Username is the optional AdGuard Home administrator username.
-	Username string
 }
 
 // InstanceRemoveRequest contains the inputs for removing one instance.
@@ -101,7 +100,9 @@ func ListInstances(request InstanceListRequest) ([]instance.Config, error) {
 //
 // The load, mutate, and save sequence runs here so the command layer never
 // touches the configuration package. An absent file is created by the save, so
-// the first instance does not require a pre-existing configuration.
+// the first instance does not require a pre-existing configuration. The added
+// instance carries no credentials, so the save never writes an authentication
+// detail the operator did not choose to set.
 //
 // Parameters:
 //   - request: the instance identity, connection settings, and configuration
@@ -120,8 +121,6 @@ func AddInstance(request InstanceAddRequest) error {
 		request.Name,
 		request.Host,
 		request.Scheme,
-		request.Username,
-		request.Password,
 	)
 	if err != nil {
 		return fmt.Errorf("register instance: %w", err)

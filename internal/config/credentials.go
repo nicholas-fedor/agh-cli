@@ -90,10 +90,17 @@ func (m *Manager) ClearCredential(name string) error {
 	return nil
 }
 
-// ClearPassword removes the plaintext password of one instance in memory.
+// ClearLegacyPassword removes the legacy plaintext password of one instance in
+// memory.
 //
-// ClearPassword does not change the credential reference of the instance, so
-// migrating an instance to a credential source and dropping its plaintext
+// The field belongs to the legacy model, where a username and a plaintext
+// password were both written when the instance was added. It survives only for
+// instances that never adopted a credential source, so this mutator exists to
+// drop it during a migration rather than as a way to unset an instance's
+// password. Use [Manager.ClearCredential] to drop a credential reference.
+//
+// ClearLegacyPassword does not change the credential reference of the instance, so
+// migrating an instance to a credential source and dropping its legacy plaintext
 // password stay two independent steps.
 //
 // Parameters:
@@ -101,13 +108,63 @@ func (m *Manager) ClearCredential(name string) error {
 //
 // Returns:
 //   - error: ErrInstanceNotFound when name is not configured.
-func (m *Manager) ClearPassword(name string) error {
+func (m *Manager) ClearLegacyPassword(name string) error {
 	cfg, ok := m.data.Instances[name]
 	if !ok {
 		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
 	}
 
 	cfg.Password = ""
+	m.data.Instances[name] = cfg
+
+	return nil
+}
+
+// ClearUsername removes the administrator username of one instance in memory.
+//
+// The change is limited to the username. A stored credential reference and a
+// plaintext password both survive, so clearing a username never detaches an
+// instance from its credential source. Clearing an instance that has no
+// username is a no-op, so repeating the call is safe.
+//
+// Parameters:
+//   - name: instance identifier to update.
+//
+// Returns:
+//   - error: ErrInstanceNotFound when name is not configured.
+func (m *Manager) ClearUsername(name string) error {
+	cfg, ok := m.data.Instances[name]
+	if !ok {
+		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	}
+
+	cfg.Username = ""
+	m.data.Instances[name] = cfg
+
+	return nil
+}
+
+// SetUsername records the AdGuard Home administrator username of one instance in
+// memory. It does not write the change to disk.
+//
+// The username is configuration rather than a secret, so it is stored in the
+// configuration file and never in the credential store. The change is
+// independent of the stored password, so setting a username leaves a stored
+// credential untouched.
+//
+// Parameters:
+//   - name: instance identifier to update.
+//   - username: AdGuard Home administrator username.
+//
+// Returns:
+//   - error: ErrInstanceNotFound when the instance is unknown.
+func (m *Manager) SetUsername(name, username string) error {
+	cfg, ok := m.data.Instances[name]
+	if !ok {
+		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	}
+
+	cfg.Username = username
 	m.data.Instances[name] = cfg
 
 	return nil

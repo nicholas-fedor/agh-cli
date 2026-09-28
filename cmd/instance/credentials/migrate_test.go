@@ -37,7 +37,7 @@ func TestRunMigratePreviewsWithoutWriting(t *testing.T) {
 		},
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(
 		t,
@@ -82,7 +82,7 @@ func TestRunMigrateReportsAppliedMigration(t *testing.T) {
 		},
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, "", migrateCommandName)
 
@@ -110,7 +110,7 @@ func TestRunMigrateReportsNothingToDo(t *testing.T) {
 		},
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, "", migrateCommandName)
 
@@ -153,7 +153,7 @@ func TestRunMigrateReportsPerInstanceOutcome(t *testing.T) {
 		migrateErr: errors.New("some credentials were not migrated"),
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, "", migrateCommandName)
 
@@ -188,7 +188,7 @@ func TestRunMigrateWarnsAboutUnsavedConfiguration(t *testing.T) {
 		},
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, "", migrateCommandName)
 
@@ -222,12 +222,11 @@ func TestRunMigrateNeverReadsOrPrintsAPassword(t *testing.T) {
 		},
 	}
 
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, testSecret, migrateCommandName)
 
 	require.NoError(t, run.err)
-	assert.Empty(t, store.secret)
 	assert.NotContains(t, run.out, testSecret)
 	assert.NotContains(t, run.errOut, testSecret)
 	assert.Contains(t, run.out, "failed to migrate \"default\" to keyring key \"default\"")
@@ -239,7 +238,7 @@ func TestRunMigrateRejectsPositionalArguments(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
+	seams := testStreams(store)
 
 	run := runCredentials(t, seams, "", migrateCommandName, testInstanceName)
 

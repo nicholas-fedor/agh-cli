@@ -224,7 +224,7 @@ func TestSaveOmitsCredentialsStanzaWhenAbsent(t *testing.T) {
 	manager, err := Load(path)
 	require.NoError(t, err)
 
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", ""))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 	require.NoError(t, manager.SetCredential("home", instance.CredentialRef{
 		Source: instance.KeyringSource,
 		Key:    "home",
@@ -272,7 +272,7 @@ func TestSaveWritesCredentialFieldsInStableOrder(t *testing.T) {
 	manager, err := Load(path)
 	require.NoError(t, err)
 
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", ""))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 	require.NoError(t, manager.SetCredential("home", instance.CredentialRef{
 		Source: instance.KeyringSource,
 		Key:    "adguard-admin",
@@ -349,7 +349,7 @@ func TestSaveWritesSingleCredentialFieldPerSource(t *testing.T) {
 			manager, err := Load(path)
 			require.NoError(t, err)
 
-			require.NoError(t, manager.Add("home", "home.example.com", "", "", ""))
+			require.NoError(t, manager.Add("home", "home.example.com", ""))
 			require.NoError(t, manager.SetCredential("home", test.ref))
 			require.NoError(t, manager.Save())
 
@@ -395,7 +395,7 @@ func TestSaveOmitsPasswordForCredentialInstance(t *testing.T) {
 
 	// Clearing the plaintext password is a separate, later step and must not
 	// change what the configuration file contains.
-	require.NoError(t, manager.ClearPassword("home"))
+	require.NoError(t, manager.ClearLegacyPassword("home"))
 	require.NoError(t, manager.Save())
 	assert.Equal(t, give, readConfigFile(t, path))
 }
@@ -508,7 +508,7 @@ func TestSetCredentialStoresIndependentCopy(t *testing.T) {
 
 	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	require.NoError(t, err)
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", ""))
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
 
 	ref := instance.CredentialRef{
 		Source: instance.KeyringSource,
@@ -530,9 +530,15 @@ func TestSetCredentialStoresIndependentCopy(t *testing.T) {
 func TestSetCredentialKeepsExistingPassword(t *testing.T) {
 	t.Parallel()
 
-	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigFile(t, path, "instances:\n"+
+		"  home:\n"+
+		"    host: home.example.com\n"+
+		"    username: admin\n"+
+		"    password: legacy-secret\n")
+
+	manager, err := Load(path)
 	require.NoError(t, err)
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", "legacy-secret"))
 
 	err = manager.SetCredential("home", instance.CredentialRef{
 		Source: instance.KeyringSource,
@@ -704,9 +710,15 @@ func TestClearCredentialRejectsUnknownInstance(t *testing.T) {
 func TestClearPasswordKeepsCredentialReference(t *testing.T) {
 	t.Parallel()
 
-	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigFile(t, path, "instances:\n"+
+		"  home:\n"+
+		"    host: home.example.com\n"+
+		"    username: admin\n"+
+		"    password: legacy-secret\n")
+
+	manager, err := Load(path)
 	require.NoError(t, err)
-	require.NoError(t, manager.Add("home", "home.example.com", "", "", "legacy-secret"))
 
 	err = manager.SetCredential("home", instance.CredentialRef{
 		Source: instance.KeyringSource,
@@ -715,10 +727,11 @@ func TestClearPasswordKeepsCredentialReference(t *testing.T) {
 		Env:    "",
 	})
 	require.NoError(t, err)
-	require.NoError(t, manager.ClearPassword("home"))
+	require.NoError(t, manager.ClearLegacyPassword("home"))
 
 	cfg := manager.Instances()["home"]
 	assert.Empty(t, cfg.Password)
+	assert.Equal(t, "admin", cfg.Username)
 	require.NotNil(t, cfg.Credential)
 	assert.Equal(t, instance.KeyringSource, cfg.Credential.Source)
 }
@@ -731,7 +744,7 @@ func TestClearPasswordRejectsUnknownInstance(t *testing.T) {
 	manager, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	require.NoError(t, err)
 
-	err = manager.ClearPassword("absent")
+	err = manager.ClearLegacyPassword("absent")
 
 	require.ErrorIs(t, err, ErrInstanceNotFound)
 }

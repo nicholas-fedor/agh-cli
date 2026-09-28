@@ -38,16 +38,22 @@ While a Docker image is available, **agh-cli** is primarily intended for install
 
     See [Getting Started](/getting-started/) for packages, Docker, and building from source.
 
-2. Add an instance without a password:
+2. Add the instance. `instance add` takes no credentials, so it cannot leak one into your shell history or a process listing:
 
     ```bash
-    agh-cli instance add default adguard.example.com --username admin
+    agh-cli instance add default adguard.example.com
     ```
 
-3. Store the password in the operating system credential store. `agh-cli` reads it from a hidden prompt, so it never appears in your shell history or in a process listing:
+3. Set the administrator username. The username is configuration rather than a secret, so it is an ordinary argument:
 
     ```bash
-    agh-cli instance credentials set default
+    agh-cli instance credentials username set default admin
+    ```
+
+4. Store the password in the operating system credential store. `agh-cli` reads it from a hidden prompt, so it never appears in your shell history or in a process listing:
+
+    ```bash
+    agh-cli instance credentials password set default
     ```
 
     The command writes the secret to the credential store first, then rewrites the configuration file (or whichever file `--config` selected) to reference it:
@@ -68,15 +74,15 @@ While a Docker image is available, **agh-cli** is primarily intended for install
 
     The first `instance add` creates the per-user configuration file and its directory. `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
 
-4. Check the result:
+5. Check the result:
 
     ```bash
-    agh-cli instance credentials status
+    agh-cli instance credentials password status
     ```
 
     No command prints a stored secret. `status` reports the backend, the service, and whether each instance's credential is `present`, `absent`, or `unknown`.
 
-5. Run your first command:
+6. Run your first command:
 
     ```bash
     agh-cli filtering status --all

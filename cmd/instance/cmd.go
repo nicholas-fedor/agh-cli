@@ -18,10 +18,6 @@ type flagValues struct {
 	all bool
 	// scheme holds the --scheme flag value.
 	scheme string
-	// username holds the --username flag value.
-	username string
-	// password holds the deprecated --password flag value.
-	password string
 }
 
 // NewCommand creates the instance command and registers its subcommands.
@@ -32,8 +28,8 @@ func NewCommand() *cobra.Command {
 	instanceCmd := &cobra.Command{
 		Use:   "instance",
 		Short: "Manage configured AdGuard Home instances",
-		Long: `List, add, and remove AdGuard Home instance configurations, and ` +
-			`manage the credentials those instances use.`,
+		Long: `List, add, and remove AdGuard Home instance configurations, and
+manage the credentials those instances use.`,
 	}
 
 	// Register subcommands.

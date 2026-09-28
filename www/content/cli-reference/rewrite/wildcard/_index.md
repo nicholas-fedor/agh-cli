@@ -4,7 +4,8 @@ description: Add or remove wildcard rewrite entries across one or more AdGuard H
 type: docs
 ---
 
-Add or remove wildcard rewrite entries across one or more AdGuard Home instances.
+Add or remove wildcard rewrite entries across one or more
+AdGuard Home instances.
 
 ### Usage
 

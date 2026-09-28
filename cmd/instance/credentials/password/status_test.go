@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"encoding/json"
@@ -21,22 +21,22 @@ func TestRunStatusReportsEveryInstance(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		statusResult: app.StatusResult{
+		passwordReport: app.PasswordReport{
 			Backend:   testBackend,
 			Service:   testService,
 			Available: true,
-			Instances: []app.CredentialStatus{
+			Instances: []app.PasswordStatus{
 				keyringStatus(testInstanceName, app.PresencePresent, nil),
 				fileStatus("file-source", app.PresenceUnknown, nil),
 				envStatus("env-source", app.PresenceUnknown, nil),
-				plaintextStatus("legacy", app.PresencePresent, nil),
+				plaintextStatus("legacy", app.PresencePresent),
 			},
 		},
 	}
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName)
+	run := runPassword(t, seams, "", statusCommandName)
 
 	require.NoError(t, run.err)
 	assert.Empty(t, store.names)
@@ -60,11 +60,11 @@ func TestRunStatusReportsUnavailableKeyring(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		statusResult: app.StatusResult{
+		passwordReport: app.PasswordReport{
 			Backend:   testBackend,
 			Service:   testService,
 			Available: false,
-			Instances: []app.CredentialStatus{
+			Instances: []app.PasswordStatus{
 				keyringStatus(
 					testInstanceName,
 					app.PresenceUnknown,
@@ -76,7 +76,7 @@ func TestRunStatusReportsUnavailableKeyring(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName)
+	run := runPassword(t, seams, "", statusCommandName)
 
 	require.NoError(t, run.err)
 	assert.Equal(
@@ -96,17 +96,17 @@ func TestRunStatusSelectsNamedInstance(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		statusResult: app.StatusResult{
+		passwordReport: app.PasswordReport{
 			Backend:   testBackend,
 			Service:   testService,
 			Available: true,
-			Instances: []app.CredentialStatus{},
+			Instances: []app.PasswordStatus{},
 		},
 	}
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName, testInstanceName)
+	run := runPassword(t, seams, "", statusCommandName, testInstanceName)
 
 	require.NoError(t, run.err)
 	assert.Equal(t, []string{testInstanceName}, store.names)
@@ -118,11 +118,11 @@ func TestRunStatusRendersMachineReadableReport(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		statusResult: app.StatusResult{
+		passwordReport: app.PasswordReport{
 			Backend:   testBackend,
 			Service:   testService,
 			Available: true,
-			Instances: []app.CredentialStatus{
+			Instances: []app.PasswordStatus{
 				keyringStatus(testInstanceName, app.PresencePresent, nil),
 				envStatus("env-source", app.PresenceUnknown, nil),
 				keyringStatus(
@@ -136,12 +136,12 @@ func TestRunStatusRendersMachineReadableReport(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName, "--"+jsonFlagName)
+	run := runPassword(t, seams, "", statusCommandName, "--"+jsonFlagName)
 
 	require.NoError(t, run.err)
 	assert.NotContains(t, run.out, testSecret)
 
-	var report statusReport
+	var report passwordReport
 
 	require.NoError(t, json.Unmarshal([]byte(run.out), &report))
 
@@ -169,19 +169,19 @@ func TestRunStatusOmitsEmptyTargetFromJSON(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		statusResult: app.StatusResult{
+		passwordReport: app.PasswordReport{
 			Backend:   testBackend,
 			Service:   testService,
 			Available: true,
-			Instances: []app.CredentialStatus{
-				plaintextStatus("legacy", app.PresenceAbsent, nil),
+			Instances: []app.PasswordStatus{
+				plaintextStatus("legacy", app.PresenceAbsent),
 			},
 		},
 	}
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName, "--"+jsonFlagName)
+	run := runPassword(t, seams, "", statusCommandName, "--"+jsonFlagName)
 
 	require.NoError(t, run.err)
 	assert.NotContains(t, run.out, "target")
@@ -199,7 +199,7 @@ func TestRunStatusForwardsUnknownInstance(t *testing.T) {
 
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(t, seams, "", statusCommandName, "nope")
+	run := runPassword(t, seams, "", statusCommandName, "nope")
 
 	require.Error(t, run.err)
 	assert.Contains(t, run.err.Error(), "not found")
@@ -212,7 +212,7 @@ func TestRunStatusRejectsExtraArguments(t *testing.T) {
 	store := &fakeCoordinator{}
 	seams := testStreams(store, false, testSecret)
 
-	run := runCredentials(
+	run := runPassword(
 		t,
 		seams,
 		"",
@@ -247,7 +247,7 @@ func TestPresenceLabelCoversEveryValue(t *testing.T) {
 func TestWriteStatusTextReportsWriteFailure(t *testing.T) {
 	t.Parallel()
 
-	err := writeStatusText(&failingWriter{}, app.StatusResult{Backend: testBackend})
+	err := writeStatusText(&failingWriter{}, app.PasswordReport{Backend: testBackend})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "write credential status")
@@ -258,7 +258,7 @@ func TestWriteStatusTextReportsWriteFailure(t *testing.T) {
 func TestWriteStatusJSONReportsEncodeFailure(t *testing.T) {
 	t.Parallel()
 
-	err := writeStatusJSON(&failingWriter{}, app.StatusResult{Backend: testBackend})
+	err := writeStatusJSON(&failingWriter{}, app.PasswordReport{Backend: testBackend})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "encode credential status")
@@ -272,9 +272,9 @@ func TestWriteStatusJSONReportsEncodeFailure(t *testing.T) {
 //   - err: reported read failure, or nil.
 //
 // Returns:
-//   - app.CredentialStatus: the keyring-backed state.
-func keyringStatus(name string, presence app.Presence, err error) app.CredentialStatus {
-	return app.CredentialStatus{
+//   - app.PasswordStatus: the keyring-backed state.
+func keyringStatus(name string, presence app.Presence, err error) app.PasswordStatus {
+	return app.PasswordStatus{
 		Instance: name,
 		Source:   instance.KeyringSource,
 		Target:   name,
@@ -291,9 +291,9 @@ func keyringStatus(name string, presence app.Presence, err error) app.Credential
 //   - err: reported read failure, or nil.
 //
 // Returns:
-//   - app.CredentialStatus: the mounted-secret state.
-func fileStatus(name string, presence app.Presence, err error) app.CredentialStatus {
-	return app.CredentialStatus{
+//   - app.PasswordStatus: the mounted-secret state.
+func fileStatus(name string, presence app.Presence, err error) app.PasswordStatus {
+	return app.PasswordStatus{
 		Instance: name,
 		Source:   instance.FileSource,
 		Target:   testCredentialFile,
@@ -310,9 +310,9 @@ func fileStatus(name string, presence app.Presence, err error) app.CredentialSta
 //   - err: reported read failure, or nil.
 //
 // Returns:
-//   - app.CredentialStatus: the environment-backed state.
-func envStatus(name string, presence app.Presence, err error) app.CredentialStatus {
-	return app.CredentialStatus{
+//   - app.PasswordStatus: the environment-backed state.
+func envStatus(name string, presence app.Presence, err error) app.PasswordStatus {
+	return app.PasswordStatus{
 		Instance: name,
 		Source:   instance.EnvSource,
 		Target:   testCredentialEnv,
@@ -329,17 +329,16 @@ func envStatus(name string, presence app.Presence, err error) app.CredentialStat
 //   - err: reported read failure, or nil.
 //
 // Returns:
-//   - app.CredentialStatus: the legacy plaintext state.
+//   - app.PasswordStatus: the legacy plaintext state.
 func plaintextStatus(
 	name string,
 	presence app.Presence,
-	err error,
-) app.CredentialStatus {
-	return app.CredentialStatus{
+) app.PasswordStatus {
+	return app.PasswordStatus{
 		Instance: name,
 		Source:   instance.PlaintextSource,
 		Target:   "",
 		Presence: presence,
-		Err:      err,
+		Err:      nil,
 	}
 }

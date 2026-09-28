@@ -102,12 +102,12 @@ func (_c *MockCredentialConfig_ClearCredential_Call) RunAndReturn(run func(name 
 	return _c
 }
 
-// ClearPassword provides a mock function for the type MockCredentialConfig
-func (_mock *MockCredentialConfig) ClearPassword(name string) error {
+// ClearLegacyPassword provides a mock function for the type MockCredentialConfig
+func (_mock *MockCredentialConfig) ClearLegacyPassword(name string) error {
 	ret := _mock.Called(name)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ClearPassword")
+		panic("no return value specified for ClearLegacyPassword")
 	}
 
 	var r0 error
@@ -119,18 +119,18 @@ func (_mock *MockCredentialConfig) ClearPassword(name string) error {
 	return r0
 }
 
-// MockCredentialConfig_ClearPassword_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearPassword'
-type MockCredentialConfig_ClearPassword_Call struct {
+// MockCredentialConfig_ClearLegacyPassword_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearLegacyPassword'
+type MockCredentialConfig_ClearLegacyPassword_Call struct {
 	*mock.Call
 }
 
-// ClearPassword is a helper method to define mock.On call
+// ClearLegacyPassword is a helper method to define mock.On call
 //   - name string
-func (_e *MockCredentialConfig_Expecter) ClearPassword(name any) *MockCredentialConfig_ClearPassword_Call {
-	return &MockCredentialConfig_ClearPassword_Call{Call: _e.mock.On("ClearPassword", name)}
+func (_e *MockCredentialConfig_Expecter) ClearLegacyPassword(name any) *MockCredentialConfig_ClearLegacyPassword_Call {
+	return &MockCredentialConfig_ClearLegacyPassword_Call{Call: _e.mock.On("ClearLegacyPassword", name)}
 }
 
-func (_c *MockCredentialConfig_ClearPassword_Call) Run(run func(name string)) *MockCredentialConfig_ClearPassword_Call {
+func (_c *MockCredentialConfig_ClearLegacyPassword_Call) Run(run func(name string)) *MockCredentialConfig_ClearLegacyPassword_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -143,12 +143,63 @@ func (_c *MockCredentialConfig_ClearPassword_Call) Run(run func(name string)) *M
 	return _c
 }
 
-func (_c *MockCredentialConfig_ClearPassword_Call) Return(err error) *MockCredentialConfig_ClearPassword_Call {
+func (_c *MockCredentialConfig_ClearLegacyPassword_Call) Return(err error) *MockCredentialConfig_ClearLegacyPassword_Call {
 	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockCredentialConfig_ClearPassword_Call) RunAndReturn(run func(name string) error) *MockCredentialConfig_ClearPassword_Call {
+func (_c *MockCredentialConfig_ClearLegacyPassword_Call) RunAndReturn(run func(name string) error) *MockCredentialConfig_ClearLegacyPassword_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClearUsername provides a mock function for the type MockCredentialConfig
+func (_mock *MockCredentialConfig) ClearUsername(name string) error {
+	ret := _mock.Called(name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearUsername")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
+		r0 = returnFunc(name)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCredentialConfig_ClearUsername_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearUsername'
+type MockCredentialConfig_ClearUsername_Call struct {
+	*mock.Call
+}
+
+// ClearUsername is a helper method to define mock.On call
+//   - name string
+func (_e *MockCredentialConfig_Expecter) ClearUsername(name any) *MockCredentialConfig_ClearUsername_Call {
+	return &MockCredentialConfig_ClearUsername_Call{Call: _e.mock.On("ClearUsername", name)}
+}
+
+func (_c *MockCredentialConfig_ClearUsername_Call) Run(run func(name string)) *MockCredentialConfig_ClearUsername_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCredentialConfig_ClearUsername_Call) Return(err error) *MockCredentialConfig_ClearUsername_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCredentialConfig_ClearUsername_Call) RunAndReturn(run func(name string) error) *MockCredentialConfig_ClearUsername_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -386,6 +437,63 @@ func (_c *MockCredentialConfig_SetCredential_Call) Return(err error) *MockCreden
 }
 
 func (_c *MockCredentialConfig_SetCredential_Call) RunAndReturn(run func(name string, ref instance.CredentialRef) error) *MockCredentialConfig_SetCredential_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetUsername provides a mock function for the type MockCredentialConfig
+func (_mock *MockCredentialConfig) SetUsername(name string, username string) error {
+	ret := _mock.Called(name, username)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetUsername")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(name, username)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCredentialConfig_SetUsername_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetUsername'
+type MockCredentialConfig_SetUsername_Call struct {
+	*mock.Call
+}
+
+// SetUsername is a helper method to define mock.On call
+//   - name string
+//   - username string
+func (_e *MockCredentialConfig_Expecter) SetUsername(name any, username any) *MockCredentialConfig_SetUsername_Call {
+	return &MockCredentialConfig_SetUsername_Call{Call: _e.mock.On("SetUsername", name, username)}
+}
+
+func (_c *MockCredentialConfig_SetUsername_Call) Run(run func(name string, username string)) *MockCredentialConfig_SetUsername_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCredentialConfig_SetUsername_Call) Return(err error) *MockCredentialConfig_SetUsername_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCredentialConfig_SetUsername_Call) RunAndReturn(run func(name string, username string) error) *MockCredentialConfig_SetUsername_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -46,14 +46,15 @@ type CredentialConfig interface {
 	// Returns:
 	//   - error: a wrapped error when the instance is unknown.
 	SetCredential(name string, ref instance.CredentialRef) error
-	// ClearPassword removes the plaintext password of one instance in memory.
+	// ClearLegacyPassword removes the legacy plaintext password of one instance
+	// in memory.
 	//
 	// Parameters:
 	//   - name: instance identifier to update.
 	//
 	// Returns:
 	//   - error: a wrapped error when the instance is unknown.
-	ClearPassword(name string) error
+	ClearLegacyPassword(name string) error
 	// ClearCredential removes the credential reference of one instance in memory.
 	//
 	// Parameters:
@@ -62,6 +63,23 @@ type CredentialConfig interface {
 	// Returns:
 	//   - error: a wrapped error when the instance is unknown.
 	ClearCredential(name string) error
+	// ClearUsername removes the administrator username of one instance in memory.
+	//
+	// Parameters:
+	//   - name: instance identifier to update.
+	//
+	// Returns:
+	//   - error: a wrapped error when the instance is unknown.
+	ClearUsername(name string) error
+	// SetUsername records the administrator username of one instance in memory.
+	//
+	// Parameters:
+	//   - name: instance identifier to update.
+	//   - username: AdGuard Home administrator username.
+	//
+	// Returns:
+	//   - error: a wrapped error when the instance is unknown.
+	SetUsername(name, username string) error
 	// Save writes the current in-memory configuration to its source file.
 	//
 	// Returns:
@@ -84,12 +102,12 @@ type Credentials struct {
 	local CredentialConfig
 }
 
-// SetResult reports the outcome of storing one credential.
+// PasswordSetResult reports the outcome of storing one instance password.
 //
 // The result describes configuration state only. It never carries the secret or a
 // value derived from it.
-type SetResult struct {
-	// Instance is the instance whose credential was written and now referenced.
+type PasswordSetResult struct {
+	// Instance is the instance whose password was written and now referenced.
 	Instance string
 	// Backend is the credential store backend name.
 	Backend string
@@ -104,11 +122,12 @@ type SetResult struct {
 	Saved bool
 }
 
-// ClearResult reports the outcome of clearing one credential or one service.
+// PasswordClearResult reports the outcome of clearing one instance password or
+// every password of the configured service.
 //
 // The result describes configuration state only. It never carries the secret or a
 // value derived from it.
-type ClearResult struct {
+type PasswordClearResult struct {
 	// Instance is the cleared instance name. It is empty for a service-wide
 	// clear.
 	Instance string
@@ -180,7 +199,35 @@ func NewCredentials(store credentials.Store, local CredentialConfig) *Credential
 	return &Credentials{store: store, local: local}
 }
 
-// Clear removes the stored credential of one configured instance and detaches the
+// ClearAllPasswords removes every credential stored under the configured service.
+//
+// Only the configured service is affected, so credentials belonging to other
+// applications are never touched. The configuration is deliberately left alone:
+// a credential reference survives the deletion, so every affected instance is
+// detached with an explicit clear instead of a silent change of source.
+//
+// Parameters:
+//   - ctx: context checked before the credential store call.
+//
+// Returns:
+//   - PasswordClearResult: the cleared service.
+//   - error: a wrapped error when the store rejects the delete.
+func (a *Credentials) ClearAllPasswords(ctx context.Context) (PasswordClearResult, error) {
+	service := a.service()
+
+	err := a.store.DeleteAll(ctx, service)
+	if err != nil {
+		return PasswordClearResult{}, fmt.Errorf(
+			"delete credentials in service %q: %w",
+			service,
+			err,
+		)
+	}
+
+	return PasswordClearResult{Service: service, Removed: true, All: true}, nil
+}
+
+// ClearPassword removes the stored credential of one configured instance and detaches the
 // instance from its credential source.
 //
 // The order is the guarantee. The credential store entry is deleted first, and
@@ -206,21 +253,24 @@ func NewCredentials(store credentials.Store, local CredentialConfig) *Credential
 //   - name: configured instance name supplying the credential key.
 //
 // Returns:
-//   - ClearResult: the cleared identity, whether a credential was removed, and
-//     whether the configuration was rewritten.
+//   - PasswordClearResult: the cleared identity, whether a credential was
+//     removed, and whether the configuration was rewritten.
 //   - error: a wrapped [ErrExternalCredentialSource] for a file or environment
 //     instance, a wrapped config.ErrInstanceNotFound for an unknown name, or a
 //     wrapped error when the store rejects the read or the delete, or the
 //     configuration cannot be written.
-func (a *Credentials) Clear(ctx context.Context, name string) (ClearResult, error) {
+func (a *Credentials) ClearPassword(
+	ctx context.Context,
+	name string,
+) (PasswordClearResult, error) {
 	cfg, exists := a.local.Instances()[name]
 	if !exists {
-		return ClearResult{}, fmt.Errorf("instance %q %w", name, config.ErrInstanceNotFound)
+		return PasswordClearResult{}, fmt.Errorf("instance %q %w", name, config.ErrInstanceNotFound)
 	}
 
 	source, _ := credentialIdentity(cfg)
 	if isExternalSource(source) {
-		return ClearResult{}, fmt.Errorf(
+		return PasswordClearResult{}, fmt.Errorf(
 			"clear credential of %q: %w: source is %q",
 			name,
 			ErrExternalCredentialSource,
@@ -231,7 +281,7 @@ func (a *Credentials) Clear(ctx context.Context, name string) (ClearResult, erro
 	service := a.service()
 	credentialKey := credentialKeyFor(cfg, "")
 
-	result := ClearResult{Instance: name, Service: service, Key: credentialKey}
+	result := PasswordClearResult{Instance: name, Service: service, Key: credentialKey}
 
 	removed, err := a.deleteStoredCredential(ctx, service, credentialKey)
 	if err != nil {
@@ -253,36 +303,8 @@ func (a *Credentials) Clear(ctx context.Context, name string) (ClearResult, erro
 	return result, nil
 }
 
-// ClearAll removes every credential stored under the configured service.
-//
-// Only the configured service is affected, so credentials belonging to other
-// applications are never touched. The configuration is deliberately left alone:
-// a credential reference survives the deletion, so every affected instance is
-// detached with an explicit clear instead of a silent change of source.
-//
-// Parameters:
-//   - ctx: context checked before the credential store call.
-//
-// Returns:
-//   - ClearResult: the cleared service.
-//   - error: a wrapped error when the store rejects the delete.
-func (a *Credentials) ClearAll(ctx context.Context) (ClearResult, error) {
-	service := a.service()
-
-	err := a.store.DeleteAll(ctx, service)
-	if err != nil {
-		return ClearResult{}, fmt.Errorf(
-			"delete credentials in service %q: %w",
-			service,
-			err,
-		)
-	}
-
-	return ClearResult{Service: service, Removed: true, All: true}, nil
-}
-
-// Set stores one credential in the operating system credential store and points
-// the configured instance at it.
+// SetPassword stores one instance password in the operating system credential
+// store and points the configured instance at it.
 //
 // The order is the guarantee. The credential store write happens first, and the
 // configuration only changes after a successful write, so a failed write leaves
@@ -298,6 +320,9 @@ func (a *Credentials) ClearAll(ctx context.Context) (ClearResult, error) {
 // already holds the key, so the second attempt reports Replaced and saves
 // successfully.
 //
+// The configured username is left untouched, because a username is configuration
+// and a password is a secret, and the two are managed independently.
+//
 // Parameters:
 //   - ctx: context checked before the credential store calls.
 //   - name: configured instance name supplying the default credential key.
@@ -306,34 +331,34 @@ func (a *Credentials) ClearAll(ctx context.Context) (ClearResult, error) {
 //     an error.
 //
 // Returns:
-//   - SetResult: the written identity, whether it replaced a credential, and
-//     whether the configuration was rewritten.
+//   - PasswordSetResult: the written identity, whether it replaced a credential,
+//     and whether the configuration was rewritten.
 //   - error: a wrapped error when the instance is unknown, the store rejects the
 //     read or the write, or the configuration cannot be written.
-func (a *Credentials) Set(
+func (a *Credentials) SetPassword(
 	ctx context.Context,
 	name string,
 	key string,
 	secret string,
-) (SetResult, error) {
+) (PasswordSetResult, error) {
 	service := a.service()
 
 	credentialKey, err := a.credentialKey(name, key)
 	if err != nil {
-		return SetResult{}, fmt.Errorf("resolve credential key for %q: %w", name, err)
+		return PasswordSetResult{}, fmt.Errorf("resolve credential key for %q: %w", name, err)
 	}
 
 	replaced, err := a.stored(ctx, service, credentialKey)
 	if err != nil {
-		return SetResult{}, fmt.Errorf("check credential %q: %w", credentialKey, err)
+		return PasswordSetResult{}, fmt.Errorf("check credential %q: %w", credentialKey, err)
 	}
 
 	err = a.storeCredential(ctx, service, name, credentialKey, secret)
 	if err != nil {
-		return SetResult{}, fmt.Errorf("set credential %q: %w", credentialKey, err)
+		return PasswordSetResult{}, fmt.Errorf("set credential %q: %w", credentialKey, err)
 	}
 
-	result := SetResult{
+	result := PasswordSetResult{
 		Instance: name,
 		Backend:  a.store.Backend(),
 		Service:  service,
@@ -524,7 +549,7 @@ func (a *Credentials) storeCredential(
 		return fmt.Errorf("record keyring reference: %w", err)
 	}
 
-	err = a.local.ClearPassword(name)
+	err = a.local.ClearLegacyPassword(name)
 	if err != nil {
 		return fmt.Errorf("clear legacy password: %w", err)
 	}

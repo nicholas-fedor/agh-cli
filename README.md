@@ -127,14 +127,15 @@ go install github.com/nicholas-fedor/agh-cli@latest
 
 ## Quick Start
 
-By default, `agh-cli` looks for the per-user configuration file first and then `./config.yaml`. Add an instance without a password and store the secret in the operating system credential store:
+By default, `agh-cli` looks for the per-user configuration file first and then `./config.yaml`. Add an instance, then set its username and password through the credentials commands:
 
 ```bash
-agh-cli instance add default adguard.example.com --username admin
-agh-cli instance credentials set default
+agh-cli instance add default adguard.example.com
+agh-cli instance credentials username set default admin
+agh-cli instance credentials password set default
 ```
 
-The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `credentials set` reads the password from a hidden prompt, so it never appears in your shell history or in a process listing, then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
+The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `instance add` takes no credentials at all: the username and the password are set separately through the credential commands. No command accepts the password as an argument, and the hidden prompt keeps it out of your shell history and out of any process listing. When standard input is redirected instead, keep the literal out of the command line yourself. `credentials password set` then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
 
 Compare DNS rewrite rules between AdGuard Home instances:
 
@@ -235,25 +236,31 @@ Selection precedence:
 
 ## Credentials
 
-`agh-cli instance credentials` stores instance passwords in the operating system credential store: the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager, depending on the platform. A Linux host without a running Secret Service session reports the store as unavailable rather than falling back to another store.
+`agh-cli instance credentials` manages the two halves of instance authentication. A username is configuration and lives in the configuration file; a password is a secret and lives in the operating system credential store: the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager, depending on the platform. A Linux host without a running Secret Service session reports the store as unavailable rather than falling back to another store.
 
-| Command                                      | Description                                    |
-|----------------------------------------------|------------------------------------------------|
-| `agh-cli instance credentials set <name>`    | Store a secret and point the instance at it    |
-| `agh-cli instance credentials status [name]` | Report source and presence, never the secret   |
-| `agh-cli instance credentials clear <name>`  | Remove a stored credential and its reference   |
-| `agh-cli instance credentials clear --all`   | Remove every credential of the service         |
-| `agh-cli instance credentials migrate`       | Move legacy plaintext passwords into the store |
+Each half has its own `set`, `status`, and `clear`, so either can be changed without disturbing the other. `migrate` sits at the group level because it moves a whole instance from the legacy model, where a username was written at creation alongside a plaintext password.
+
+| Command                                                            | Description                                            |
+|--------------------------------------------------------------------|--------------------------------------------------------|
+| `agh-cli instance credentials username set <instance> <username>` | Set the administrator username in the config file      |
+| `agh-cli instance credentials username status [instance]`         | Report the configured username                         |
+| `agh-cli instance credentials username clear <instance>`          | Remove the administrator username                      |
+| `agh-cli instance credentials password set <instance>`            | Store a secret and point the instance at it            |
+| `agh-cli instance credentials password status [instance]`         | Report source, target, and presence, never the secret  |
+| `agh-cli instance credentials password clear <instance>`          | Remove a stored credential and its reference           |
+| `agh-cli instance credentials password clear --all`               | Remove every credential of the service                 |
+| `agh-cli instance credentials migrate`                            | Move an instance from the legacy model onto this one   |
 
 There is deliberately **no** `get` command. No command prints a stored secret, so `status` is safe to run in a shared terminal or a captured log. When an AdGuard Home request needs the password, agh-cli reads it from the store and sends it; the value never appears in output.
 
 ### Storing a Credential
 
-Add the instance first, without a password, then store the secret:
+Add the instance first, then set the username and store the secret:
 
 ```bash
-agh-cli instance add default adguard.example.com --username admin
-agh-cli instance credentials set default
+agh-cli instance add default adguard.example.com
+agh-cli instance credentials username set default admin
+agh-cli instance credentials password set default
 ```
 
 ```text
@@ -262,26 +269,26 @@ Store this credential for instance "default"? [y/N]: y
 Stored credential for instance "default" in keyring service "agh-cli" with key "default".
 ```
 
+The username and the password are managed independently. `credentials username set` writes the username to the configuration file and never touches the credential store, so changing a username leaves a stored password working. `credentials password set` writes only the credential store entry and the reference to it, so it never disturbs the username. The username is an ordinary argument because it is not a secret; the password is never an argument at all.
+
 `set` reads the password from a hidden prompt. When standard input is redirected, such as in a script, it reads the secret from standard input instead and echoes nothing:
 
 ```bash
-printf '%s' "$AGH_ADMIN_PASSWORD" | agh-cli instance credentials set default --yes
+printf '%s' "$AGH_ADMIN_PASSWORD" | agh-cli instance credentials password set default --yes
 ```
 
 The secret is read before the confirmation, so declining the prompt stores nothing and the value is dropped immediately. `--yes` (`-y`) pre-accepts the confirmation, which is the only way a redirected workflow can proceed, because a prompt needs a terminal. One trailing newline is stripped from a redirected secret, so a password that genuinely ends in a newline round-trips through a double redirect. An empty secret is refused before the store is touched.
 
 The command writes the credential store entry first and rewrites `config.yaml` only afterwards, so a failed write leaves the instance exactly as it was. Use `--key` to store the secret under a key other than the instance name.
 
-`agh-cli instance add --password` is **deprecated**. The flag still works so existing scripts keep running, but an argument value is visible in process listings and shell history, and agh-cli prints a deprecation notice on standard error when you use it.
-
 ### Inspecting Credentials
 
 ```bash
 # Every configured instance
-agh-cli instance credentials status
+agh-cli instance credentials password status
 
 # One instance, as JSON
-agh-cli instance credentials status default --json
+agh-cli instance credentials password status default --json
 ```
 
 ```text
@@ -300,7 +307,7 @@ Presence is `present`, `absent`, or `unknown`. A `file` or `env` source reports 
 Rotation is a second `set` for the same instance. The store is read first, so a write refuses to guess whether it would replace an existing credential, and the report names the outcome:
 
 ```bash
-agh-cli instance credentials set default
+agh-cli instance credentials password set default
 ```
 
 ```text
@@ -313,8 +320,8 @@ If the configuration file could not be rewritten, agh-cli warns that the plainte
 ### Removing a Credential
 
 ```bash
-agh-cli instance credentials clear default
-agh-cli instance credentials clear --all --yes
+agh-cli instance credentials password clear default
+agh-cli instance credentials password clear --all --yes
 ```
 
 `clear` deletes the store entry first and removes the configuration reference afterwards, so the file never points at a secret that still exists. Clearing an absent credential is not an error, which makes a repeated clear safe. `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error instead of a silent change of source; detach each instance with its own `clear`.
@@ -407,32 +414,35 @@ agh-cli [global flags] <command> [subcommand] [flags]
 
 Manage the AdGuard Home instance definitions in your config file.
 
-| Command                              | Description                    |
-|--------------------------------------|--------------------------------|
-| `agh-cli instance list [--all]`      | List configured instance names |
-| `agh-cli instance add <name> <host>` | Add a new instance             |
-| `agh-cli instance remove <name>`     | Remove an instance             |
+| Command                                 | Description                        |
+|-----------------------------------------|------------------------------------|
+| `agh-cli instance list [--all]`         | List configured instance names     |
+| `agh-cli instance add <instance> <host>` | Add a new instance, without credentials |
+| `agh-cli instance remove <instance>`    | Remove an instance                 |
 
-`instance add --password` is deprecated. Add the instance without a password and store the secret with `instance credentials set` instead.
+`instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands.
 
 #### `instance credentials`
 
-Manage the credentials of the configured instances in the operating system credential store. See [Credentials](#credentials) for the full workflow.
+Manage the two halves of instance authentication. See [Credentials](#credentials) for the full workflow.
 
-| Command                                      | Description                                                |
-|----------------------------------------------|------------------------------------------------------------|
-| `agh-cli instance credentials set <name>`    | Store a secret from a hidden prompt or standard input      |
-| `agh-cli instance credentials status [name]` | Report source, target, and presence, never the secret      |
-| `agh-cli instance credentials clear <name>`  | Remove a stored credential and its configuration reference |
-| `agh-cli instance credentials clear --all`   | Remove every credential of the configured service          |
-| `agh-cli instance credentials migrate`       | Move legacy plaintext passwords into the credential store  |
+| Command                                                            | Description                                                |
+|--------------------------------------------------------------------|------------------------------------------------------------|
+| `agh-cli instance credentials username set <instance> <username>` | Set the administrator username in the configuration file |
+| `agh-cli instance credentials username status [instance]`         | Report the configured username                            |
+| `agh-cli instance credentials username clear <instance>`          | Remove the administrator username                         |
+| `agh-cli instance credentials password set <instance>`            | Store a secret from a hidden prompt or standard input      |
+| `agh-cli instance credentials password status [instance]`         | Report source, target, and presence, never the secret      |
+| `agh-cli instance credentials password clear <instance>`          | Remove a stored credential and its configuration reference |
+| `agh-cli instance credentials password clear --all`               | Remove every credential of the configured service          |
+| `agh-cli instance credentials migrate`                            | Move an instance from the legacy model onto this one      |
 
 | Flag        | Commands       | Description                                                       |
 |-------------|----------------|-------------------------------------------------------------------|
-| `--key`     | `set`          | Credential key; defaults to the instance name                     |
-| `-y, --yes` | `set`, `clear` | Skip the confirmation, for non-interactive use                    |
-| `--all`     | `clear`        | Remove every credential of the configured service                 |
-| `--json`    | `status`       | Render the report as JSON                                         |
+| `--key`     | `password set` | Credential key; defaults to the instance name                     |
+| `-y, --yes` | `password set`, `password clear` | Skip the confirmation, for non-interactive use            |
+| `--all`     | `password clear` | Remove every credential of the configured service               |
+| `--json`    | `username status`, `password status` | Render the report as JSON                            |
 | `--dry-run` | `migrate`      | Report the change without writing to the store or the config file |
 
 There is no `get` command; no command prints a stored secret.
@@ -492,10 +502,10 @@ Print version and build information.
 agh-cli instance list --all
 
 # Store the credential of an instance in the OS credential store
-agh-cli instance credentials set default
+agh-cli instance credentials password set default
 
 # Report credential presence for every instance
-agh-cli instance credentials status
+agh-cli instance credentials password status
 
 # Show filtering status across all instances
 agh-cli filtering status --all

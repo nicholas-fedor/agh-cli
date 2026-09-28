@@ -40,8 +40,8 @@ var newRootCommand = func() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "agh-cli",
 		Short: "CLI for managing multiple AdGuard Home instances",
-		Long: `A Go CLI that provides CRUD operations for interacting with ` +
-			`multiple AdGuard Home instances simultaneously.`,
+		Long: `A Go CLI that provides CRUD operations for interacting with
+multiple AdGuard Home instances simultaneously.`,
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			return initConfig(cfgFile)
 		},

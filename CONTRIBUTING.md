@@ -256,7 +256,7 @@ Start from `example/config.yaml`, which documents every credential source. Never
 chmod 600 config.yaml
 ```
 
-If a credential is ever committed or exposed, remove it and rotate it immediately with `agh-cli instance credentials set <name>`.
+If a credential is ever committed or exposed, remove it and rotate it immediately with `agh-cli instance credentials password set <instance>`.
 
 ### Credential model
 
@@ -265,7 +265,9 @@ If a credential is ever committed or exposed, remove it and rotate it immediatel
 - Supported `credential.source` values are `keyring`, `file`, `env`, `plaintext`, and `none`. A configured source is the only source that is read, so an unreadable credential is an error rather than a fallback.
 - `file` and `env` sources are owned by Docker, Kubernetes, systemd, Vault, or the operator. `clear` refuses them, and no change to those instances may be made from the CLI.
 - A secret must never reach an error, a status value, a log line, a test fixture, or documentation. Errors may carry the service, the key, the file path, or the variable name.
-- `agh-cli instance credentials` deliberately has no `get` subcommand, and `agh-cli instance add --password` is deprecated. Do not reintroduce a command that prints a secret or a flag that takes one as an argument.
+- `agh-cli instance credentials` deliberately has no `get` subcommand, and `agh-cli instance add` publishes no username or password flag. Do not reintroduce a command that prints a secret or a flag that takes one as an argument.
+- A username is configuration rather than a secret. It is stored in the configuration file and changed with `agh-cli instance credentials username set <instance> <username>`; a password is a secret and lives only in the credential store. The two are managed independently, so a change to one must never rewrite the other.
+- The command tree mirrors that split. `username set`, `username status`, and `username clear` live under `agh-cli instance credentials username`, and the password equivalents under `agh-cli instance credentials password`, with one command package per subtree. `migrate` stays at the group level because it moves a whole instance from the legacy model, where a username was written at creation alongside a plaintext password, onto the current one.
 
 ### Documentation duties for a credential change
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package credentials
+package password
 
 import (
 	"encoding/json"
@@ -24,12 +24,12 @@ type statusValues struct {
 	json bool
 }
 
-// statusEntry is the machine-readable state of one instance credential.
+// passwordEntry is the machine-readable state of one instance credential.
 //
 // The entry describes configuration and presence only. It never carries a
 // secret, and it never carries a value derived from one.
-type statusEntry struct {
-	// Instance is the instance name whose credential was inspected.
+type passwordEntry struct {
+	// Instance is the instance name whose password was inspected.
 	Instance string `json:"instance"`
 	// Source is the configured credential source.
 	Source string `json:"source"`
@@ -44,8 +44,8 @@ type statusEntry struct {
 	Error string `json:"error,omitempty"`
 }
 
-// statusReport is the machine-readable credential status document.
-type statusReport struct {
+// passwordReport is the machine-readable credential status document.
+type passwordReport struct {
 	// Backend is the credential store backend name.
 	Backend string `json:"backend"`
 	// Service is the credential store namespace.
@@ -54,7 +54,7 @@ type statusReport struct {
 	Available bool `json:"available"`
 	// Instances contains one entry per inspected instance in configuration
 	// order.
-	Instances []statusEntry `json:"instances"`
+	Instances []passwordEntry `json:"instances"`
 }
 
 // presenceLabel renders one presence value for display.
@@ -78,7 +78,7 @@ func presenceLabel(presence app.Presence) string {
 	}
 }
 
-// newStatusCommand creates the credentials status command and binds its flags.
+// newStatusCommand creates the password status command and binds its flags.
 //
 // The command reports presence only. There is intentionally no command that
 // prints a stored secret, so an operator can inspect an instance safely in a
@@ -93,11 +93,11 @@ func newStatusCommand(seams *streams) *cobra.Command {
 	values := &statusValues{}
 
 	command := &cobra.Command{
-		Use:   "status [name]",
+		Use:   "status [instance]",
 		Short: "Report stored credential presence",
-		Long: `Report the credential store backend, its availability, and the ` +
-			`configured credential source and presence of one instance, or of every ` +
-			`configured instance. A stored secret is never reported.`,
+		Long: `Report the credential store backend, its availability, and the
+configured credential source and presence of one instance, or of every
+configured instance. A stored secret is never reported.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus(cmd, args, values, seams)
@@ -131,7 +131,7 @@ func runStatus(cmd *cobra.Command, args []string, values *statusValues, seams *s
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}
 
-	result, err := store.Status(cmd.Context(), selectedNames(args))
+	result, err := store.StatusPassword(cmd.Context(), selectedNames(args))
 	if err != nil {
 		return fmt.Errorf("report credential status: %w", err)
 	}
@@ -175,7 +175,7 @@ func selectedNames(args []string) []string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be written.
-func writeStatusText(out io.Writer, result app.StatusResult) error {
+func writeStatusText(out io.Writer, result app.PasswordReport) error {
 	lines := make([]string, 0, 3+len(result.Instances))
 
 	lines = append(
@@ -186,7 +186,7 @@ func writeStatusText(out io.Writer, result app.StatusResult) error {
 	)
 
 	for _, entry := range result.Instances {
-		lines = append(lines, statusLine(entry))
+		lines = append(lines, passwordLine(entry))
 	}
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
@@ -197,14 +197,14 @@ func writeStatusText(out io.Writer, result app.StatusResult) error {
 	return nil
 }
 
-// statusLine renders one instance credential state.
+// passwordLine renders one instance credential state.
 //
 // Parameters:
 //   - entry: reported state of one instance credential.
 //
 // Returns:
 //   - string: the rendered line.
-func statusLine(entry app.CredentialStatus) string {
+func passwordLine(entry app.PasswordStatus) string {
 	line := "instance " + strconv.Quote(entry.Instance) + ": source " + string(entry.Source)
 
 	if target := entry.TargetLabel(); target != "" {
@@ -231,15 +231,15 @@ func statusLine(entry app.CredentialStatus) string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be encoded or written.
-func writeStatusJSON(out io.Writer, result app.StatusResult) error {
+func writeStatusJSON(out io.Writer, result app.PasswordReport) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
-	err := encoder.Encode(statusReport{
+	err := encoder.Encode(passwordReport{
 		Backend:   result.Backend,
 		Service:   result.Service,
 		Available: result.Available,
-		Instances: statusEntries(result.Instances),
+		Instances: passwordEntries(result.Instances),
 	})
 	if err != nil {
 		return fmt.Errorf("encode credential status: %w", err)
@@ -248,18 +248,18 @@ func writeStatusJSON(out io.Writer, result app.StatusResult) error {
 	return nil
 }
 
-// statusEntries converts the reported states into the machine-readable shape.
+// passwordEntries converts the reported states into the machine-readable shape.
 //
 // Parameters:
 //   - states: reported states in configuration order.
 //
 // Returns:
-//   - []statusEntry: one entry per reported state in the same order.
-func statusEntries(states []app.CredentialStatus) []statusEntry {
-	entries := make([]statusEntry, 0, len(states))
+//   - []passwordEntry: one entry per reported state in the same order.
+func passwordEntries(states []app.PasswordStatus) []passwordEntry {
+	entries := make([]passwordEntry, 0, len(states))
 
 	for _, state := range states {
-		entries = append(entries, statusEntry{
+		entries = append(entries, passwordEntry{
 			Instance: state.Instance,
 			Source:   string(state.Source),
 			Target:   state.Target,
