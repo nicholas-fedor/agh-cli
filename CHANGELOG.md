@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Split username and password into command groups by @nicholas-fedor in [#33](https://github.com/nicholas-fedor/agh-cli/pull/33)
 - Skip workflow linting for release tags by @nicholas-fedor in [#27](https://github.com/nicholas-fedor/agh-cli/pull/27)
 
 ### Fixed
