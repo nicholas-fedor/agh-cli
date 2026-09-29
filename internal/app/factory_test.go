@@ -734,7 +734,14 @@ func TestRemoveInstanceReportsUnreadableFile(t *testing.T) {
 // retryable state of a failed configuration write. The credential is already
 // gone, so the instance is left in the file pointing at a key the store no longer
 // holds, and repeating the command converges.
+//
+// A read-only directory is how the write is refused, so the test is skipped where
+// that mode does not deny a write.
 func TestRemoveInstanceKeepsInstanceWhenConfigurationWriteFails(t *testing.T) {
+	if runtime.GOOS == windowsOS {
+		t.Skip("Windows emulates permission bits instead of enforcing POSIX modes")
+	}
+
 	if os.Geteuid() == 0 {
 		t.Skip("directory permissions do not restrict the root user")
 	}
