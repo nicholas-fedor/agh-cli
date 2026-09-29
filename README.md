@@ -135,7 +135,12 @@ agh-cli instance credentials username set default admin
 agh-cli instance credentials password set default
 ```
 
-The first command creates the configuration, so `instance add` is also the step that creates the per-user directory. `instance add` takes no credentials at all: the username and the password are set separately through the credential commands. No command accepts the password as an argument, and the hidden prompt keeps it out of your shell history and out of any process listing. When standard input is redirected instead, keep the literal out of the command line yourself. `credentials password set` then rewrites the configuration to reference the credential store instead of a plaintext password. See [Credentials](#credentials) for the complete workflow.
+- `instance add` creates the configuration file and its directory, and stores no credentials. The username and the password are set separately, below.
+- The username is an ordinary argument. The password is never an argument: it is read from a hidden prompt, so it stays out of your shell history and out of any process listing. If you redirect the prompt instead, keep the literal out of the command line yourself.
+- `credentials password set` then rewrites the configuration to point at the credential store instead of a plaintext password.
+- A configuration file with no content is treated as a missing one, so a stray tab or a trailing space never blocks a command.
+
+See [Credentials](#credentials) for the complete workflow.
 
 Compare DNS rewrite rules between AdGuard Home instances:
 
@@ -155,21 +160,28 @@ agh-cli filtering status --instance default
 
 `agh-cli` reads a YAML configuration file to discover AdGuard Home instances.
 
-| Flag           | Default | Description                                        |
-|----------------|---------|----------------------------------------------------|
-| `-c, --config` | none    | Path to configuration file                         |
-|                | per-user configuration file | Searched before `./config.yaml` |
-|                | `./config.yaml` | Searched when no per-user file exists     |
+| Flag           | Default                     | Description                           |
+|----------------|-----------------------------|---------------------------------------|
+| `-c, --config` | none                        | Path to configuration file            |
+|                | per-user configuration file | Searched before `./config.yaml`       |
+|                | `./config.yaml`             | Searched when no per-user file exists |
 
 The per-user configuration file is `agh-cli/config.yaml` under the platform configuration root:
 
-| Platform | Path |
-|----------|------|
+| Platform             | Path                                                                                  |
+|----------------------|---------------------------------------------------------------------------------------|
 | Linux and other Unix | `$XDG_CONFIG_HOME/agh-cli/config.yaml`, defaulting to `~/.config/agh-cli/config.yaml` |
-| macOS | `~/Library/Application Support/agh-cli/config.yaml` |
-| Windows | `%AppData%\agh-cli\config.yaml` |
+| macOS                | `~/Library/Application Support/agh-cli/config.yaml`                                   |
+| Windows              | `%AppData%\agh-cli\config.yaml`                                                       |
 
-Set `XDG_CONFIG_HOME` to relocate the per-user configuration on Linux and other Unix systems. The first command that writes a configuration creates this per-user file and its directory.
+- Set `XDG_CONFIG_HOME` to relocate the per-user file on Linux and other Unix systems.
+- The first write creates the per-user file and its directory. An explicit `--config` path behaves the same way, so a missing file in a directory that does not exist yet is created too.
+- A `--config` path that is a directory is refused by name.
+- A file with no content is treated as missing, so a stray tab or a trailing space never blocks a command.
+- Top-level keys `agh-cli` does not own are preserved, so an annotation or a key kept for another tool survives every write.
+- A symlinked configuration is written through to the file it names, rather than the link being replaced.
+- A file that changed after it was read is never overwritten, so a concurrent editor or a second `agh-cli` process cannot have its change discarded.
+- An instance that cannot be used is reported as a warning at load, and stays removable.
 
 ### Config File
 
@@ -236,7 +248,10 @@ Selection precedence:
 
 ## Credentials
 
-`agh-cli instance credentials` manages the two halves of instance authentication. A username is configuration and lives in the configuration file; a password is a secret and lives in the operating system credential store: the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager, depending on the platform. A Linux host without a running Secret Service session reports the store as unavailable rather than falling back to another store.
+`agh-cli instance credentials` manages the two halves of instance authentication:
+
+- A **username** is configuration. It lives in the configuration file.
+- A **password** is a secret. It lives in the operating system credential store: the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager, depending on the platform. A Linux host without a running Secret Service session reports the store as unavailable rather than falling back to another store.
 
 Each half has its own `set`, `status`, and `clear`, so either can be changed without disturbing the other. `migrate` sits at the group level because it moves a whole instance from the legacy model, where a username was written at creation alongside a plaintext password.
 
@@ -251,7 +266,10 @@ Each half has its own `set`, `status`, and `clear`, so either can be changed wit
 | `agh-cli instance credentials password clear --all`               | Remove every credential of the service                 |
 | `agh-cli instance credentials migrate`                            | Move an instance from the legacy model onto this one   |
 
-There is deliberately **no** `get` command. No command prints a stored secret, so `status` is safe to run in a shared terminal or a captured log. When an AdGuard Home request needs the password, agh-cli reads it from the store and sends it; the value never appears in output.
+There is deliberately **no** `get` command.
+
+- No command prints a stored secret, so `status` is safe to run in a shared terminal or a captured log.
+- When an AdGuard Home request needs the password, `agh-cli` reads it from the store and sends it. The value never appears in output.
 
 ### Storing a Credential
 
@@ -269,7 +287,11 @@ Store this credential for instance "default"? [y/N]: y
 Stored credential for instance "default" in keyring service "agh-cli" with key "default".
 ```
 
-The username and the password are managed independently. `credentials username set` writes the username to the configuration file and never touches the credential store, so changing a username leaves a stored password working. `credentials password set` writes only the credential store entry and the reference to it, so it never disturbs the username. The username is an ordinary argument because it is not a secret; the password is never an argument at all.
+The two halves are managed independently:
+
+- `credentials username set` writes the configuration file and never touches the credential store, so changing a username leaves a stored password working.
+- `credentials password set` writes the credential store entry and its reference, and never disturbs the username.
+- The username is an ordinary argument because it is not a secret. The password is never an argument at all.
 
 `set` reads the password from a hidden prompt. When standard input is redirected, such as in a script, it reads the secret from standard input instead and echoes nothing:
 
@@ -277,9 +299,12 @@ The username and the password are managed independently. `credentials username s
 printf '%s' "$AGH_ADMIN_PASSWORD" | agh-cli instance credentials password set default --yes
 ```
 
-The secret is read before the confirmation, so declining the prompt stores nothing and the value is dropped immediately. `--yes` (`-y`) pre-accepts the confirmation, which is the only way a redirected workflow can proceed, because a prompt needs a terminal. One trailing newline is stripped from a redirected secret, so a password that genuinely ends in a newline round-trips through a double redirect. An empty secret is refused before the store is touched.
-
-The command writes the credential store entry first and rewrites `config.yaml` only afterwards, so a failed write leaves the instance exactly as it was. Use `--key` to store the secret under a key other than the instance name.
+- The secret is read before the confirmation, so declining the prompt stores nothing.
+- `--yes` (`-y`) pre-accepts the confirmation. It is the only way a redirected workflow can proceed, because a prompt needs a terminal.
+- One trailing newline is stripped from a redirected secret, so a password that ends in a newline round-trips through a double redirect.
+- An empty secret is refused before the store is touched.
+- The store entry is written first and the configuration only afterwards, so a failed write leaves the instance as it was. A secret the configuration could not record is removed again.
+- `--key` stores the secret under a key other than the instance name.
 
 ### Inspecting Credentials
 
@@ -300,7 +325,10 @@ instance "office": source file, path "/run/secrets/agh-cli/office", unknown
 instance "backup": source plaintext, present
 ```
 
-Presence is `present`, `absent`, or `unknown`. A `file` or `env` source reports `unknown` because agh-cli does not read a secret owned by another system just to answer a status question, and `available: false` means a keyring read failed.
+Presence is `present`, `absent`, or `unknown`.
+
+- A `file` or `env` source reports `unknown`, because `agh-cli` does not read a secret owned by another system just to answer a status question.
+- `available: false` means a keyring read failed.
 
 ### Rotating a Credential
 
@@ -315,7 +343,7 @@ Password:
 Replaced credential for instance "default" in keyring service "agh-cli" with key "default".
 ```
 
-If the configuration file could not be rewritten, agh-cli warns that the plaintext password is still on disk and the command is retryable; run it again and the second attempt reports `Replaced` and saves successfully.
+- If the configuration file could not be rewritten, `agh-cli` warns that the plaintext password is still on disk and the command is retryable. Run it again and the second attempt reports `Replaced` and saves successfully.
 
 ### Removing a Credential
 
@@ -324,9 +352,11 @@ agh-cli instance credentials password clear default
 agh-cli instance credentials password clear --all --yes
 ```
 
-`clear` deletes the store entry first and removes the configuration reference afterwards, so the file never points at a secret that still exists. Clearing an absent credential is not an error, which makes a repeated clear safe. `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error instead of a silent change of source; detach each instance with its own `clear`.
+`clear` deletes the store entry first and removes the configuration reference afterwards, so the file never points at a secret that still exists.
 
-A `file` or `env` instance is refused, because agh-cli owns neither that secret nor the decision to stop using it. Change those instances by editing the configuration.
+- Clearing an absent credential is not an error, which makes a repeated clear safe.
+- `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error rather than a silent change of source. Detach each instance with its own `clear`.
+- A `file` or `env` instance is refused, because agh-cli owns neither that secret nor the decision to stop using it. Change those instances by editing the configuration.
 
 ### Migrating Legacy Plaintext Passwords
 
@@ -414,11 +444,11 @@ agh-cli [global flags] <command> [subcommand] [flags]
 
 Manage the AdGuard Home instance definitions in your config file.
 
-| Command                                 | Description                        |
-|-----------------------------------------|------------------------------------|
-| `agh-cli instance list [--all]`         | List configured instance names     |
+| Command                                  | Description                             |
+|------------------------------------------|-----------------------------------------|
+| `agh-cli instance list [--all]`          | List configured instance names          |
 | `agh-cli instance add <instance> <host>` | Add a new instance, without credentials |
-| `agh-cli instance remove <instance>`    | Remove an instance                 |
+| `agh-cli instance remove <instance>`     | Remove an instance                      |
 
 `instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands.
 
@@ -426,24 +456,24 @@ Manage the AdGuard Home instance definitions in your config file.
 
 Manage the two halves of instance authentication. See [Credentials](#credentials) for the full workflow.
 
-| Command                                                            | Description                                                |
-|--------------------------------------------------------------------|------------------------------------------------------------|
-| `agh-cli instance credentials username set <instance> <username>` | Set the administrator username in the configuration file |
-| `agh-cli instance credentials username status [instance]`         | Report the configured username                            |
-| `agh-cli instance credentials username clear <instance>`          | Remove the administrator username                         |
+| Command                                                           | Description                                                |
+|-------------------------------------------------------------------|------------------------------------------------------------|
+| `agh-cli instance credentials username set <instance> <username>` | Set the administrator username in the configuration file   |
+| `agh-cli instance credentials username status [instance]`         | Report the configured username                             |
+| `agh-cli instance credentials username clear <instance>`          | Remove the administrator username                          |
 | `agh-cli instance credentials password set <instance>`            | Store a secret from a hidden prompt or standard input      |
 | `agh-cli instance credentials password status [instance]`         | Report source, target, and presence, never the secret      |
 | `agh-cli instance credentials password clear <instance>`          | Remove a stored credential and its configuration reference |
 | `agh-cli instance credentials password clear --all`               | Remove every credential of the configured service          |
-| `agh-cli instance credentials migrate`                            | Move an instance from the legacy model onto this one      |
+| `agh-cli instance credentials migrate`                            | Move an instance from the legacy model onto this one       |
 
-| Flag        | Commands       | Description                                                       |
-|-------------|----------------|-------------------------------------------------------------------|
-| `--key`     | `password set` | Credential key; defaults to the instance name                     |
-| `-y, --yes` | `password set`, `password clear` | Skip the confirmation, for non-interactive use            |
-| `--all`     | `password clear` | Remove every credential of the configured service               |
-| `--json`    | `username status`, `password status` | Render the report as JSON                            |
-| `--dry-run` | `migrate`      | Report the change without writing to the store or the config file |
+| Flag        | Commands                             | Description                                                       |
+|-------------|--------------------------------------|-------------------------------------------------------------------|
+| `--key`     | `password set`                       | Credential key; defaults to the instance name                     |
+| `-y, --yes` | `password set`, `password clear`     | Skip the confirmation, for non-interactive use                    |
+| `--all`     | `password clear`                     | Remove every credential of the configured service                 |
+| `--json`    | `username status`, `password status` | Render the report as JSON                                         |
+| `--dry-run` | `migrate`                            | Report the change without writing to the store or the config file |
 
 There is no `get` command; no command prints a stored secret.
 

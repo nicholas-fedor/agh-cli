@@ -27,6 +27,14 @@ type credentialField struct {
 	value string
 }
 
+// ValidationProblem reports one configured instance that cannot be used.
+type ValidationProblem struct {
+	// Instance is the name of the instance that failed validation.
+	Instance string
+	// Err is the validation failure.
+	Err error
+}
+
 // DefaultCredentialService is the credential store service namespace applied
 // when the configuration omits credentials.service.
 const DefaultCredentialService = "agh-cli"
@@ -46,6 +54,9 @@ const tempFilePattern = ".tmp-*"
 
 // credentialsFieldName is the top-level key holding the credential settings.
 const credentialsFieldName = "credentials"
+
+// instancesFieldName is the top-level key holding the configured instances.
+const instancesFieldName = "instances"
 
 // serviceFieldName is the credentials key holding the service namespace.
 const serviceFieldName = "service"
@@ -142,6 +153,41 @@ func (m *Manager) ClearUsername(name string) error {
 	m.data.Instances[name] = cfg
 
 	return nil
+}
+
+// ValidationProblems reports the configured instances that cannot be used.
+//
+// Instances are validated when a command builds its catalog, so an invalid
+// instance otherwise surfaces long after the file was read. Reporting the
+// problems without failing keeps the configuration usable, because refusing the
+// load would make a broken instance impossible to remove.
+//
+// The failures are ordered by name, matching the catalog, so repeated runs report
+// the same problems in the same order.
+//
+// Returns:
+//   - []ValidationProblem: one entry per invalid instance, or nil when every
+//     instance is valid.
+func (m *Manager) ValidationProblems() []ValidationProblem {
+	problems := make([]ValidationProblem, 0, len(m.data.Instances))
+
+	for _, name := range m.nameOrder {
+		cfg, ok := m.data.Instances[name]
+		if !ok {
+			continue
+		}
+
+		_, err := cfg.Validate()
+		if err != nil {
+			problems = append(problems, ValidationProblem{Instance: name, Err: err})
+		}
+	}
+
+	if len(problems) == 0 {
+		return nil
+	}
+
+	return problems
 }
 
 // SetUsername records the AdGuard Home administrator username of one instance in

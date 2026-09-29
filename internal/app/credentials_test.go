@@ -168,6 +168,176 @@ func TestCredentialsMigrateReportsPartialOutcome(t *testing.T) {
 	assert.Empty(t, local.Instances()[zuluInstance].Password)
 }
 
+// TestCredentialsSetPasswordKeepsKeySharedByAnotherInstance verifies a rollback
+// does not delete a key another instance still references. A key is not exclusive
+// to one instance, so removing the entry this use case wrote would destroy a
+// working password belonging to a different instance.
+func TestCredentialsSetPasswordKeepsKeySharedByAnotherInstance(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("read-only filesystem")
+
+	// alpha carries no reference of its own, while zulu already points at the
+	// key this use case is about to write. The written instance therefore does not
+	// reference the key, but the key is still reachable through zulu.
+	local := newCredentialConfig(t, "credentials:\n  service: agh-cli\n"+
+		"instances:\n"+
+		"  "+alphaInstance+":\n    host: alpha.example.com\n    username: admin\n"+
+		"  "+zuluInstance+":\n    host: zulu.example.com\n    username: admin\n"+
+		"    credential:\n      source: keyring\n      key: "+alphaInstance+"\n")
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, "agh-cli", alphaInstance).Return("old", nil).Once()
+	store.EXPECT().Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").Return(nil).Once()
+
+	// No Delete is expected: zulu still references the key, so removing it would
+	// break zulu.
+	_, err := NewCredentials(store, local).SetPassword(
+		t.Context(),
+		alphaInstance,
+		"",
+		"alpha-secret",
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.NotErrorIs(t, err, ErrOrphanedCredential)
+	assert.Contains(t, err.Error(), "was replaced")
+}
+
+// TestCredentialsSetPasswordRemovesNewCredentialWhenConfigSaveFails verifies a
+// store write whose configuration write failed is undone. The configuration
+// still points at nothing, so leaving the entry behind would create a secret no
+// command reports and no command uses.
+func TestCredentialsSetPasswordRemovesNewCredentialWhenConfigSaveFails(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("read-only filesystem")
+	local := newCredentialConfig(t, plaintextConfig())
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, "agh-cli", alphaInstance).Return("", credentials.ErrNotFound).Once()
+	store.EXPECT().Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").Return(nil).Once()
+	store.EXPECT().Delete(mock.Anything, "agh-cli", alphaInstance).Return(nil).Once()
+
+	_, err := NewCredentials(store, local).SetPassword(
+		t.Context(),
+		alphaInstance,
+		"",
+		"alpha-secret",
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.NotErrorIs(t, err, ErrOrphanedCredential)
+	assert.Contains(t, err.Error(), "was removed again")
+}
+
+// TestCredentialsSetPasswordOrphansKeyThatNoInstanceReferences verifies the
+// orphan test is the configuration, not the store. Here the store already holds
+// an entry at the written key, so the write replaced it, yet no instance
+// references that key. Nothing can reach the entry, so it is removed again and
+// reported as an orphan.
+func TestCredentialsSetPasswordOrphansKeyThatNoInstanceReferences(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("read-only filesystem")
+
+	// alpha carries no credential reference, so the entry written under its own
+	// name is unreachable even though the store already holds one.
+	local := newCredentialConfig(t, plaintextConfig())
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, "agh-cli", alphaInstance).Return("old", nil).Once()
+	store.EXPECT().Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").Return(nil).Once()
+	store.EXPECT().
+		Delete(mock.Anything, "agh-cli", alphaInstance).
+		Return(errors.New("store locked")).
+		Once()
+
+	_, err := NewCredentials(store, local).SetPassword(
+		t.Context(),
+		alphaInstance,
+		"",
+		"alpha-secret",
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.ErrorIs(t, err, ErrOrphanedCredential)
+	assert.Contains(t, err.Error(), "no configured instance references it")
+}
+
+// TestCredentialsSetPasswordReportsOrphanWhenRollbackFails verifies a rollback
+// that cannot complete is reported with the key, so the leftover entry is
+// discoverable instead of invisible.
+func TestCredentialsSetPasswordReportsOrphanWhenRollbackFails(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("read-only filesystem")
+
+	local := newCredentialConfig(t, plaintextConfig())
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, "agh-cli", alphaInstance).Return("", credentials.ErrNotFound).Once()
+	store.EXPECT().Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").Return(nil).Once()
+	store.EXPECT().
+		Delete(mock.Anything, "agh-cli", alphaInstance).
+		Return(errors.New("store locked")).
+		Once()
+
+	_, err := NewCredentials(store, local).SetPassword(
+		t.Context(),
+		alphaInstance,
+		"",
+		"alpha-secret",
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.ErrorIs(t, err, ErrOrphanedCredential)
+	assert.Contains(t, err.Error(), alphaInstance)
+}
+
+// TestCredentialsSetPasswordKeepsReferencedCredentialWhenConfigSaveFails
+// verifies a key the configuration already referenced is not deleted. The file
+// on disk still points at that key, so removing the entry would leave a live
+// reference to nothing. The leftover is not an orphan, and the failure says so.
+func TestCredentialsSetPasswordKeepsReferencedCredentialWhenConfigSaveFails(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("read-only filesystem")
+
+	local := newCredentialConfig(t, keyringConfig())
+
+	local.saveErr = wantErr
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, "agh-cli", alphaInstance).Return("old-secret", nil).Once()
+	store.EXPECT().Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").Return(nil).Once()
+
+	_, err := NewCredentials(store, local).SetPassword(
+		t.Context(),
+		alphaInstance,
+		"",
+		"alpha-secret",
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.NotErrorIs(t, err, ErrOrphanedCredential)
+	assert.Contains(t, err.Error(), "was replaced")
+	assert.Contains(t, err.Error(), alphaInstance)
+}
+
 // TestCredentialsMigrateSaveFailureLeavesPlaintextOnDisk verifies a failed
 // configuration write is reported, keeps every password on disk, and stays safe to
 // repeat.
@@ -862,6 +1032,12 @@ func TestCredentialsSetSaveFailureLeavesPlaintextOnDisk(t *testing.T) {
 		Once()
 	store.EXPECT().
 		Set(mock.Anything, "agh-cli", alphaInstance, "alpha-secret").
+		Return(nil).
+		Once()
+	// The new entry is rolled back, because the configuration still points at
+	// nothing and an unreferenced secret is worse than no write at all.
+	store.EXPECT().
+		Delete(mock.Anything, "agh-cli", alphaInstance).
 		Return(nil).
 		Once()
 

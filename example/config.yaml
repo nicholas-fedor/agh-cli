@@ -8,6 +8,10 @@
 credentials:
   service: agh-cli
 
+# Top-level keys outside `credentials` and `instances` are preserved verbatim
+# across every write, so an annotation or a key kept for another tool is never
+# discarded. They are written back above the keys agh-cli owns.
+
 instances:
   # Preferred shape: no password in the file. Set the username with
   # `agh-cli instance credentials username set default your-username` and

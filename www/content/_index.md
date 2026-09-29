@@ -72,7 +72,8 @@ While a Docker image is available, **agh-cli** is primarily intended for install
           key: default
     ```
 
-    The first `instance add` creates the per-user configuration file and its directory. `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
+    - The first `instance add` creates the per-user configuration file and its directory.
+    - `agh-cli` also searches `./config.yaml`, which lets a project pin its own configuration.
 
 5. Check the result:
 
@@ -80,7 +81,8 @@ While a Docker image is available, **agh-cli** is primarily intended for install
     agh-cli instance credentials password status
     ```
 
-    No command prints a stored secret. `status` reports the backend, the service, and whether each instance's credential is `present`, `absent`, or `unknown`.
+    - No command prints a stored secret.
+    - `status` reports the backend, the service, and whether each instance's credential is `present`, `absent`, or `unknown`.
 
 6. Run your first command:
 

@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
@@ -414,6 +416,458 @@ func TestWriteFileAtomicReportsUnusableConfigDirectory(t *testing.T) {
 	require.NoError(t, readErr)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "blocked", entries[0].Name())
+}
+
+// TestSaveWritesThroughSymlinkedConfig verifies a symlinked configuration keeps
+// its link and that the file it names receives the change. A rename onto the
+// literal link path would replace the link instead and leave the real file
+// untouched, which silently sends the change to a file the operator does not
+// read.
+func TestSaveWritesThroughSymlinkedConfig(t *testing.T) {
+	t.Parallel()
+
+	realPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, realPath, "instances:\n  a:\n    host: a.example.com\n")
+
+	linkPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	err := os.Symlink(realPath, linkPath)
+	if err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	manager, err := Load(linkPath)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("b", "b.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	info, err := os.Lstat(linkPath)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSymlink, "the configuration link was replaced")
+
+	assert.Contains(t, readConfigFile(t, realPath), "b.example.com")
+}
+
+// TestSaveUsesDanglingSymlinkPath verifies a symlink whose target does not exist
+// is used as given, so the link is repaired rather than failing the write.
+func TestSaveUsesDanglingSymlinkPath(t *testing.T) {
+	t.Parallel()
+
+	linkPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	err := os.Symlink(filepath.Join(t.TempDir(), "absent.yaml"), linkPath)
+	if err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	manager, err := Load(linkPath)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("a", "a.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	assert.Contains(t, readConfigFile(t, linkPath), "a.example.com")
+}
+
+// TestSavePreservesForeignFields verifies a top-level key agh-cli does not own
+// survives a save. A configuration that carries an annotation, or a key another
+// tool reads, must not lose it on the next write.
+func TestSavePreservesForeignFields(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "my_setting: keep-me\ninstances:\n"+
+		"  home:\n    host: home.example.com\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("second", "second.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	written := readConfigFile(t, path)
+
+	assert.Contains(t, written, "my_setting: keep-me")
+	assert.Contains(t, written, "second.example.com")
+
+	// A second cycle must not drop the key either, so the ordering the writer
+	// chose is stable.
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, reloaded.Add("third", "third.example.com", ""))
+	require.NoError(t, reloaded.Save())
+
+	assert.Contains(t, readConfigFile(t, path), "my_setting: keep-me")
+	assert.Contains(t, readConfigFile(t, path), "third.example.com")
+}
+
+// TestSavePreservesForeignScalarStyles verifies a foreign scalar keeps the value
+// it was written with.
+//
+// Writing a decoded scalar as text would corrupt each of these: a quoted value
+// containing a colon would produce a broken document, an empty value would
+// become a null, a value opening with a number sign would become a comment, and
+// a literal block would collapse onto one line.
+//
+// The comparison is on the decoded value rather than the bytes, because the YAML
+// encoder is free to reindent a block scalar. The value is what the next reader
+// of the file sees, and reindenting it keeps the document valid.
+func TestSavePreservesForeignScalarStyles(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		key     string
+		foreign string
+	}{
+		"quoted colon":  {"quoted", "quoted: \"key: value\"\n"},
+		"empty string":  {"blank", "blank: \"\"\n"},
+		"hash prefixed": {"tag", "tag: \"#not-a-comment\"\n"},
+		"block scalar":  {"literal", "literal: |\n  first line\n  second line\n"},
+		"folded scalar": {"folded", "folded: >\n  folded text\n"},
+		"star prefixed": {"star", "star: \"*not-an-alias\"\n"},
+		"bool looking":  {"looks_bool", "looks_bool: \"true\"\n"},
+		"leading digit": {"numeric", "numeric: \"0755\"\n"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+			document := tc.foreign + "instances: {}\n"
+			writeConfigFile(t, path, document)
+
+			original := decodeForeignValue(t, document, tc.key)
+
+			manager, err := Load(path)
+			require.NoError(t, err)
+			require.NoError(t, manager.Add("home", "home.example.com", ""))
+			require.NoError(t, manager.Save())
+
+			// A second cycle proves the document is still valid YAML and that the
+			// value is not degraded on the way through.
+			reloaded, err := Load(path)
+			require.NoError(t, err, "the saved document must remain parseable")
+			assert.Equal(t, []string{"home"}, reloaded.OrderedNames())
+
+			require.NoError(t, reloaded.Add("second", "second.example.com", ""))
+			require.NoError(t, reloaded.Save())
+
+			written := readConfigFile(t, path)
+			assert.Equal(t, original, decodeForeignValue(t, written, tc.key))
+			assert.Contains(t, written, "second.example.com")
+		})
+	}
+}
+
+// decodeForeignValue reads one top-level key out of a configuration document.
+//
+// Parameters:
+//   - t: active test requiring the document to be readable.
+//   - document: complete configuration document.
+//   - key: top-level key whose value is read.
+//
+// Returns:
+//   - any: the decoded value, or nil when the key is absent.
+func decodeForeignValue(t *testing.T, document, key string) any {
+	t.Helper()
+
+	var decoded map[string]any
+
+	require.NoError(t, yaml.Unmarshal([]byte(document), &decoded))
+	require.Contains(t, decoded, key, "the foreign key must survive the write")
+
+	return decoded[key]
+}
+
+// TestSavePreservesForeignMappingAndSequence verifies a foreign key holding a
+// nested mapping or a sequence is re-emitted as valid YAML rather than flattened
+// onto the key line.
+func TestSavePreservesForeignMappingAndSequence(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "labels:\n  env: prod\n  team: dns\n"+
+		"hosts:\n  - one.example.com\n  - two.example.com\ninstances: {}\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"home"}, reloaded.OrderedNames())
+
+	written := readConfigFile(t, path)
+
+	assert.Contains(t, written, "  env: prod")
+	assert.Contains(t, written, "  - one.example.com")
+	assert.Contains(t, written, "home.example.com")
+}
+
+// TestSaveLeavesOwnedFieldsUnchanged verifies a configuration without foreign keys
+// serializes exactly as before, so the preservation adds no output to the common
+// case.
+func TestSaveLeavesOwnedFieldsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "credentials:\n  service: agh-cli\ninstances:\n"+
+		"  home:\n    host: home.example.com\n    username: admin\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Save())
+
+	assert.Equal(
+		t,
+		"credentials:\n  service: agh-cli\ninstances:\n"+
+			"  home:\n    host: home.example.com\n    username: admin\n",
+		readConfigFile(t, path),
+	)
+}
+
+// TestValidationProblemsReportsUnusableInstances verifies an invalid instance is
+// reported by name without failing the load, because refusing the load would
+// make the broken instance impossible to remove.
+func TestValidationProblemsReportsUnusableInstances(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  good:\n    host: good.example.com\n"+
+		"  broken:\n    host: broken.example.com\n    credential:\n      source: bogus\n"+
+		"  hostless:\n    host: \"\"\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"good", "broken", "hostless"}, manager.OrderedNames())
+
+	problems := manager.ValidationProblems()
+
+	require.Len(t, problems, 2)
+	assert.Equal(t, "broken", problems[0].Instance)
+	assert.Contains(t, problems[0].Err.Error(), "invalid credential source")
+	assert.Equal(t, "hostless", problems[1].Instance)
+	assert.Contains(t, problems[1].Err.Error(), "no host")
+}
+
+// TestValidationProblemsReportsNoneForValidConfig verifies a healthy
+// configuration produces no problems, so the warning stays silent.
+func TestValidationProblemsReportsNoneForValidConfig(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n  home:\n    host: home.example.com\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Nil(t, manager.ValidationProblems())
+}
+
+// TestLoadAcceptsBlankDocument verifies a file with no content is treated as an
+// empty configuration, so a stray tab cannot block the first write. A tab is the
+// case that matters, because YAML forbids it as indentation and would otherwise
+// reject a file that is visually empty.
+func TestLoadAcceptsBlankDocument(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"zero bytes":      "",
+		"single newline":  "\n",
+		"blank lines":     "\n\n\n",
+		"spaces":          "   ",
+		"trailing tab":    "\t",
+		"newline and tab": "\n\t",
+		"mixed blanks":    "\n\n  \n\t\n",
+	}
+
+	for name, contents := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+			require.NoError(t, os.WriteFile(path, []byte(contents), configFileMode))
+
+			manager, err := Load(path)
+
+			require.NoError(t, err)
+			assert.Empty(t, manager.OrderedNames())
+			assert.Nil(t, manager.ValidationProblems())
+		})
+	}
+}
+
+// TestLoadReadsCommentOnlyDocument verifies a document holding only a comment has
+// content and is parsed, so a comment is not treated as blank.
+func TestLoadReadsCommentOnlyDocument(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "# managed by hand\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, manager.OrderedNames())
+}
+
+// TestLoadRejectsDirectoryPath verifies a directory is refused by name rather
+// than surfacing an opaque configuration-type error.
+func TestLoadRejectsDirectoryPath(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+
+	_, err := Load(directory)
+
+	require.ErrorIs(t, err, ErrConfigNotRegular)
+	assert.Contains(t, err.Error(), strconv.Quote(directory))
+}
+
+// TestHasContentSeparatesAbsentBlankAndRead verifies the content predicate
+// separates the three states configuration resolution depends on.
+func TestHasContentSeparatesAbsentBlankAndRead(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	hasContent, err := HasContent(filepath.Join(dir, "absent.yaml"))
+	require.NoError(t, err)
+	assert.False(t, hasContent, "an absent file has no content")
+
+	blank := filepath.Join(dir, "blank.yaml")
+	require.NoError(t, os.WriteFile(blank, []byte("\t"), configFileMode))
+
+	hasContent, err = HasContent(blank)
+	require.NoError(t, err)
+	assert.False(t, hasContent, "a blank file has no content")
+
+	full := filepath.Join(dir, "full.yaml")
+	require.NoError(t, os.WriteFile(full, []byte("instances: {}\n"), configFileMode))
+
+	hasContent, err = HasContent(full)
+	require.NoError(t, err)
+	assert.True(t, hasContent, "a file with content is read")
+}
+
+// TestHasContentRejectsDirectory verifies a directory is refused rather than
+// reported as a blank configuration.
+func TestHasContentRejectsDirectory(t *testing.T) {
+	t.Parallel()
+
+	_, err := HasContent(t.TempDir())
+
+	require.ErrorIs(t, err, ErrConfigNotRegular)
+}
+
+// TestSaveRefusesChangedConfig verifies a save refuses to overwrite a
+// configuration that changed after it was read, so a concurrent editor or a
+// second agh-cli process cannot have its change discarded silently.
+func TestSaveRefusesChangedConfig(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n  home:\n    host: home.example.com\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	// An external writer replaces the file between the load and the save.
+	writeConfigFile(t, path, "instances:\n  external:\n    host: external.example.com\n")
+
+	err = manager.Add("added", "added.example.com", "")
+	require.NoError(t, err)
+
+	err = manager.Save()
+
+	require.ErrorIs(t, err, ErrConfigChanged)
+	assert.NotContains(t, readConfigFile(t, path), "added.example.com")
+	assert.Contains(t, readConfigFile(t, path), "external.example.com")
+}
+
+// TestSaveRefusesSameSizeRewrite verifies a rewrite that preserved both the size
+// and the modification time is still detected. A tool that restores the
+// timestamp, or a filesystem with a coarse clock, produces exactly this case, and
+// comparing only size and time would silently discard the change.
+func TestSaveRefusesSameSizeRewrite(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	original := "instances:\n  one:\n    host: aaa.example.com\n"
+	rewritten := "instances:\n  two:\n    host: bbb.example.com\n"
+	require.Len(t, rewritten, len(original), "the fixture must be the same size")
+	writeConfigFile(t, path, original)
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+
+	// Rewrite the file, then restore the size and the timestamp the load saw.
+	writeConfigFile(t, path, rewritten)
+	require.NoError(t, os.Chtimes(path, info.ModTime(), info.ModTime()))
+
+	stamped, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, info.Size(), stamped.Size())
+	require.Equal(t, info.ModTime(), stamped.ModTime())
+
+	require.NoError(t, manager.Add("three", "ccc.example.com", ""))
+
+	err = manager.Save()
+
+	require.ErrorIs(t, err, ErrConfigChanged)
+
+	// The refused save must leave the external rewrite intact and must not have
+	// added the instance this manager was holding.
+	written := readConfigFile(t, path)
+
+	assert.Contains(t, written, "bbb.example.com")
+	assert.NotContains(t, written, "ccc.example.com")
+}
+
+// TestSaveAcceptsSecondWriteFromSameManager verifies a manager may save twice.
+// The first save changes the file, which must not read as an external change on
+// the second.
+func TestSaveAcceptsSecondWriteFromSameManager(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("first", "first.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	require.NoError(t, manager.Add("second", "second.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	written := readConfigFile(t, path)
+
+	assert.Contains(t, written, "first.example.com")
+	assert.Contains(t, written, "second.example.com")
+}
+
+// TestSaveOverwritesConfigThatAppearedAfterLoad verifies a file created between
+// the load and the save is a first write, not a change this run must respect. A
+// bootstrap run loads an absent file and then creates it, and refusing that
+// would make a fresh install impossible.
+func TestSaveOverwritesConfigThatAppearedAfterLoad(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	writeConfigFile(t, path, "instances:\n  appeared:\n    host: appeared.example.com\n")
+
+	require.NoError(t, manager.Add("added", "added.example.com", ""))
+
+	err = manager.Save()
+
+	require.NoError(t, err)
+	assert.Contains(t, readConfigFile(t, path), "added.example.com")
 }
 
 // writeConfigFile writes initial configuration contents for a test.
