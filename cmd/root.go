@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -19,14 +18,6 @@ import (
 	"github.com/nicholas-fedor/agh-cli/cmd/version"
 	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
-
-// configFileStem is the configuration file name looked up in every default
-// search path.
-const configFileStem = "config"
-
-// configFileType is the configuration format of the files found in the default
-// search paths.
-const configFileType = "yaml"
 
 // newRootCommand creates the root command with fresh subcommands and flags.
 //
@@ -105,51 +96,49 @@ func ExecuteContext(ctx context.Context) error {
 	return nil
 }
 
-// registerConfigSearchPaths points Viper at the default configuration locations.
-//
-// The per-user configuration directory is registered before the current
-// directory, so a configuration created by the quickstart keeps applying
-// regardless of the working directory.
-func registerConfigSearchPaths() {
-	viper.SetConfigName(configFileStem)
-	viper.SetConfigType(configFileType)
-
-	for _, path := range app.ConfigSearchPaths() {
-		viper.AddConfigPath(path)
-	}
-}
-
 // initConfig reads the Viper configuration.
 //
-// An explicit path is used as given. Otherwise the default search paths are
-// registered and an absent file is a warning rather than a failure, because the
-// first write creates it.
+// The configuration file is resolved once, here, and the outcome is published so
+// that every later read and every write agree on one file. Resolution decides
+// between an explicit path and the default search locations, and a blank
+// document is treated as no configuration so the first write creates it.
+//
+// A file that cannot be read is fatal and names the path, because an operator
+// must know which file failed. A file that does not exist is a warning, since
+// the first write creates it.
 //
 // Parameters:
 //   - cfgFile: explicit configuration file path, or an empty value that selects
 //     the default configuration locations.
 //
 // Returns:
-//   - error: non-nil when the configuration cannot be read.
+//   - error: non-nil when the configuration cannot be resolved or read.
 func initConfig(cfgFile string) error {
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
-	} else {
-		registerConfigSearchPaths()
+	resolution, err := app.ResolveConfigPath(cfgFile)
+	if err != nil {
+		return fmt.Errorf("resolve config: %w", err)
 	}
 
-	err := viper.ReadInConfig()
-	if err != nil {
-		if configErr, ok := errors.AsType[viper.ConfigFileNotFoundError](err); ok {
-			_, writeErr := fmt.Fprintf(os.Stderr, "Warning: could not read config: %v\n", configErr)
-			if writeErr != nil {
-				return fmt.Errorf("write config warning: %w", writeErr)
-			}
+	app.PublishConfigResolution(resolution)
 
-			return nil
+	if !resolution.Exists {
+		_, writeErr := fmt.Fprintf(
+			os.Stderr,
+			"Warning: no configuration file at %s; one will be created on first write\n",
+			resolution.Path,
+		)
+		if writeErr != nil {
+			return fmt.Errorf("write config warning: %w", writeErr)
 		}
 
-		return fmt.Errorf("read config: %w", err)
+		return nil
+	}
+
+	viper.SetConfigFile(resolution.Path)
+
+	err = viper.ReadInConfig()
+	if err != nil {
+		return fmt.Errorf("read config %q: %w", resolution.Path, err)
 	}
 
 	return nil

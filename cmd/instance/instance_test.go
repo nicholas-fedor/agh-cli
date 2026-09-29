@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
 
 // instanceFlagExpectation describes one expected flag registration.
@@ -624,6 +626,8 @@ func readInstanceConfig(t *testing.T, configPath string) string {
 func useConfigFile(t *testing.T, configPath string) {
 	t.Helper()
 
+	// Mirrors the root pre-run: publish the resolution, then read the file.
+	app.PublishConfigResolution(app.ConfigResolution{Path: configPath, Exists: true})
 	viper.SetConfigFile(configPath)
 	require.NoError(t, viper.ReadInConfig())
 }

@@ -250,6 +250,10 @@ The per-user file is `agh-cli/config.yaml` under the platform configuration root
 
 The first command that writes a configuration creates the per-user file in step 2, including its directory, so a fresh install never drops a configuration into whatever directory it was run from. Step 3 exists so a project can pin its own configuration.
 
+Resolution happens once, in `internal/app`, and the outcome is published for both the read and the write. An explicit `--config` path therefore behaves exactly like the default: a missing file is created on first write, and a path that is a directory is refused by name. A file with no content is not an error, so a stray tab or a trailing space cannot block every command.
+
+The configuration file is treated as owned by the operator. A write preserves top-level keys agh-cli does not own, follows a symlink to the file it names rather than replacing the link, and refuses to overwrite a file that changed after it was read. An instance that fails validation is reported as a warning at load rather than failing the load, so a broken instance can still be removed.
+
 Start from `example/config.yaml`, which documents every credential source. Never commit a real `config.yaml`, credentials, tokens, or private instance endpoints. Configuration files containing credentials must be readable only by their owner:
 
 ```bash

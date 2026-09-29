@@ -110,6 +110,13 @@ Every command tree must be constructed fresh:
 - Use `example/config.yaml` as the starting template. It documents every credential source.
 - The lookup order is explicit `--config`, the per-user configuration file, then `./config.yaml`. The per-user file is `agh-cli/config.yaml` under the platform configuration root: `$XDG_CONFIG_HOME/agh-cli/config.yaml` (defaulting to `~/.config/agh-cli/config.yaml`) on Unix, `~/Library/Application Support/agh-cli/config.yaml` on macOS, and `%AppData%\agh-cli\config.yaml` on Windows. Resolve it with [os.UserConfigDir], never a hardcoded home path.
 - The first write creates the per-user configuration file and its directory. A write never invents a path in the current working directory.
+- Resolve the configuration file exactly once, in `internal/app`, and publish the outcome for both the read and the write. The root command must not configure a second search of its own, because two resolutions drift and the explicit path then behaves differently from the default one.
+- A file with no content is not an error. Whitespace alone, including a tab, is an empty configuration that the first write replaces, because YAML forbids a tab as indentation and would otherwise reject a file that is visually empty.
+- Every configuration error names the file that failed.
+- A write preserves top-level keys agh-cli does not own, re-emitting them ahead of the keys it owns. Never silently drop an annotation or a key another tool reads.
+- A write follows a symlinked configuration to its target. A rename onto the link path would replace the link and leave the file the operator named unchanged.
+- A write refuses to overwrite a file that changed after it was read, so a concurrent editor or a second process cannot have its change discarded silently.
+- Instances that fail validation are reported as a warning at load, never as a load failure, because a hard failure would make a broken instance impossible to remove.
 - Use `chmod 600 config.yaml` for files containing credentials. The configuration manager already writes mode 600.
 - Never treat local test credentials as repository content, and never include them in output, tests, or commits.
 

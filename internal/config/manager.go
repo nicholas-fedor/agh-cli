@@ -6,12 +6,16 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v4"
 
@@ -36,6 +40,21 @@ type instanceNode struct {
 	Instances yaml.Node `yaml:"instances"`
 }
 
+// configField is one top-level configuration key that agh-cli does not own,
+// preserved so a save never discards what an operator wrote.
+//
+// The key and the value are kept as parsed nodes rather than as decoded text. A
+// decoded string loses the quoting, the tag, and the block style that made the
+// original document valid, so writing it back verbatim would corrupt a value such
+// as a quoted string containing a colon, an empty string, a leading number sign,
+// or a literal block.
+type configField struct {
+	// Key is the raw key node, which preserves quoting and style.
+	Key yaml.Node
+	// Value is the raw value node, which preserves quoting, tags, and style.
+	Value yaml.Node
+}
+
 // Manager owns the in-memory configuration state and its source file path.
 // Mutations remain in memory until Save is called.
 type Manager struct {
@@ -49,6 +68,28 @@ type Manager struct {
 	// credentials mapping. Save writes that mapping only when it was present,
 	// so a configuration without it round-trips unchanged.
 	credentialsSet bool
+	// foreign holds the top-level keys agh-cli does not own, in file order. Save
+	// re-emits them ahead of the keys it owns, so an annotation or a key kept for
+	// another tool survives every write.
+	foreign []configField
+	// stamp is the size and modification time the source file had when it was
+	// read. Save refuses to write when they differ, because a rewrite would
+	// discard whatever changed the file in the meantime.
+	stamp fileStamp
+}
+
+// fileStamp is the observable state of a configuration file at a point in time.
+//
+// Size and modification time are used together because either alone is
+// insufficient: a change can preserve the size, and a modification time can be
+// coarse enough to miss two writes in the same tick.
+type fileStamp struct {
+	// size is the file length in bytes.
+	size int64
+	// modified is the last modification time.
+	modified time.Time
+	// exists reports whether the file was present when the stamp was taken.
+	exists bool
 }
 
 // DefaultConfigDirName is the configuration directory name created under a
@@ -71,18 +112,24 @@ var (
 	ErrInvalidInstanceMap = errors.New("instances must be a mapping")
 	// ErrInvalidCredentialsMap indicates that credentials is not a YAML mapping.
 	ErrInvalidCredentialsMap = errors.New("credentials must be a mapping")
+	// ErrConfigChanged indicates that the configuration file was modified after it
+	// was read, so a save would discard whatever changed it.
+	ErrConfigChanged = errors.New("config file changed since it was read")
 )
 
 // Load reads and parses the config file at path.
 //
-// If the file does not exist, an empty manager is returned. If it exists but
-// is invalid, an error is returned.
+// If the file does not exist, an empty manager is returned. A file that exists
+// but holds no content is treated the same way, so a document left empty by an
+// editor or a redirect does not block the first write. If it exists but cannot
+// be parsed, an error is returned.
 //
 // Parameters:
 //   - path: filesystem path to the YAML config file.
 //
 // Returns:
-//   - *Manager: parsed manager, or an empty manager when the file is absent.
+//   - *Manager: parsed manager, or an empty manager when the file is absent or
+//     holds no content.
 //   - error: non-nil when the file exists but cannot be read or parsed.
 func Load(path string) (*Manager, error) {
 	manager := &Manager{
@@ -93,35 +140,201 @@ func Load(path string) (*Manager, error) {
 		},
 		nameOrder:      nil,
 		credentialsSet: false,
+		foreign:        nil,
+		stamp:          fileStamp{},
 	}
-	_, pathErr := os.Stat(path)
-	if os.IsNotExist(pathErr) {
+
+	// The file is opened once and every observation comes from that handle, so
+	// the bytes parsed and the recorded stamp describe the same content. Reading
+	// the path again could observe a different file, and a save would then
+	// compare against a state it never loaded.
+	contents, info, readErr := readConfigSource(path)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			return manager, nil
+		}
+
+		return nil, fmt.Errorf("%w", readErr)
+	}
+
+	// The blank test uses the same bytes the parse uses, so a document with no
+	// content is never handed to the decoder.
+	if len(bytes.TrimSpace(contents)) == 0 {
 		return manager, nil
 	}
 
-	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		return nil, fmt.Errorf("read config: %w", readErr)
-	}
-
-	var node instanceNode
-
-	parseErr := yaml.Unmarshal(data, &node)
-	if parseErr != nil {
-		return nil, fmt.Errorf("parse config: %w", parseErr)
-	}
-
-	loadErr := manager.loadCredentials(&node.Credentials)
+	loadErr := manager.decode(contents)
 	if loadErr != nil {
-		return nil, fmt.Errorf("load credentials: %w", loadErr)
+		return nil, fmt.Errorf("%w", loadErr)
 	}
 
-	loadErr = manager.loadInstances(&node.Instances)
-	if loadErr != nil {
-		return nil, fmt.Errorf("load instances: %w", loadErr)
-	}
+	manager.foreign = captureForeignFields(contents)
+	manager.stamp = stampFrom(info)
 
 	return manager, nil
+}
+
+// readConfigFile opens a configuration file once and reads it whole.
+//
+// The returned information comes from the same handle the contents were read
+// through, so a caller that records a stamp from it describes exactly the bytes
+// it parsed.
+//
+// Parameters:
+//   - path: filesystem path of the configuration file.
+//
+// Returns:
+//   - []byte: the file contents.
+//   - [os.FileInfo]: the information observed while reading.
+//   - error: a wrapped error when the file is missing, is not a regular file, or
+//     cannot be read.
+func readConfigSource(path string) ([]byte, fs.FileInfo, error) {
+	file, openErr := os.Open(path)
+	if openErr != nil {
+		return nil, nil, fmt.Errorf("open config %q: %w", path, openErr)
+	}
+
+	defer func() { _ = file.Close() }()
+
+	info, statErr := file.Stat()
+	if statErr != nil {
+		return nil, nil, fmt.Errorf("inspect config %q: %w", path, statErr)
+	}
+
+	if !info.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("inspect config %q: %w", path, ErrConfigNotRegular)
+	}
+
+	contents, readErr := io.ReadAll(file)
+	if readErr != nil {
+		return nil, nil, fmt.Errorf("read config %q: %w", path, readErr)
+	}
+
+	return contents, info, nil
+}
+
+// stampFrom records the observable state of an already-inspected file.
+//
+// The information comes from the handle the contents were read through, so the
+// stamp cannot describe a different file than the one that was parsed.
+//
+// Parameters:
+//   - info: file information obtained while reading the contents.
+//
+// Returns:
+//   - fileStamp: the recorded state.
+func stampFrom(info fs.FileInfo) fileStamp {
+	return fileStamp{
+		size:     info.Size(),
+		modified: info.ModTime(),
+		exists:   true,
+	}
+}
+
+// stampFile records the observable state of a configuration file.
+//
+// Parameters:
+//   - path: filesystem path to stamp.
+//
+// Returns:
+//   - fileStamp: the state observed, or an absent stamp when the file cannot be
+//     inspected.
+func stampFile(path string) fileStamp {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}
+	}
+
+	return fileStamp{
+		size:     info.Size(),
+		modified: info.ModTime(),
+		exists:   true,
+	}
+}
+
+// unchanged reports whether a file still matches a previously taken stamp.
+//
+// Parameters:
+//   - stamp: the state recorded when the file was read.
+//   - path: filesystem path to re-inspect.
+//
+// Returns:
+//   - bool: true when the file still matches the recorded state.
+func (s fileStamp) unchanged(path string) bool {
+	return s == stampFile(path)
+}
+
+// captureForeignFields returns the top-level keys agh-cli does not own, in file
+// order.
+//
+// The document is re-read as a node rather than the typed view, because the
+// typed view is exactly the set of keys that would otherwise be dropped. A
+// configuration that carries an annotation, or a key another tool reads, keeps
+// it across every save.
+//
+// Parameters:
+//   - data: raw configuration file contents.
+//
+// Returns:
+//   - []configField: the foreign keys in file order, or nil when the document is
+//     not a top-level mapping.
+func captureForeignFields(data []byte) []configField {
+	var document yaml.Node
+
+	if yaml.Unmarshal(data, &document) != nil {
+		return nil
+	}
+
+	mapping := documentMapping(&document)
+	if mapping == nil {
+		return nil
+	}
+
+	fields := make([]configField, 0, len(mapping.Content)/2)
+
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		key := mapping.Content[index].Value
+
+		if key == credentialsFieldName || key == instancesFieldName {
+			continue
+		}
+
+		fields = append(fields, configField{
+			Key:   *mapping.Content[index],
+			Value: *mapping.Content[index+1],
+		})
+	}
+
+	if len(fields) == 0 {
+		return nil
+	}
+
+	return fields
+}
+
+// documentMapping returns the top-level mapping of a parsed document, or nil
+// when the document is empty or is not a mapping.
+//
+// Parameters:
+//   - document: parsed document node.
+//
+// Returns:
+//   - *yaml.Node: the mapping node, or nil.
+func documentMapping(document *yaml.Node) *yaml.Node {
+	node := document
+	if node.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
+			return nil
+		}
+
+		node = node.Content[0]
+	}
+
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	return node
 }
 
 // Add inserts a new instance configuration into the manager's in-memory state.
@@ -373,25 +586,83 @@ func writeInstance(builder *strings.Builder, name string, cfg instance.Config) e
 // Returns:
 //   - error: a wrapped error when formatting or writing the file fails.
 func (m *Manager) Save() error {
-	var builder strings.Builder
-
-	if m.credentialsSet {
-		writeErr := writeCredentials(&builder, m.data.Credentials)
-		if writeErr != nil {
-			return fmt.Errorf("write credentials: %w", writeErr)
-		}
+	// A file that appeared after the load is not a change this run caused, so it
+	// is reported as a change rather than overwritten.
+	if m.stamp.exists && !m.stamp.unchanged(resolveWriteTarget(m.path)) {
+		return fmt.Errorf("write config %q: %w", m.path, ErrConfigChanged)
 	}
 
-	_, _ = builder.WriteString("instances:\n")
+	var builder strings.Builder
 
-	err := m.writeInstances(&builder)
+	err := m.writeDocument(&builder)
 	if err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("serialize config %q: %w", m.path, err)
 	}
 
 	err = writeFileAtomic(m.path, []byte(builder.String()))
 	if err != nil {
 		return fmt.Errorf("write config: %w", err)
+	}
+
+	// The manager now matches the file, so a second save in the same run is not
+	// mistaken for an external change.
+	m.stamp = stampFile(resolveWriteTarget(m.path))
+
+	return nil
+}
+
+// writeForeignFields re-emits the top-level keys agh-cli does not own.
+//
+// They are written ahead of the keys agh-cli owns, in file order relative to one
+// another. A scalar follows its key on the same line; a mapping or a sequence is
+// nested under it, so the document stays valid YAML in either case.
+//
+// Parameters:
+//   - builder: destination for the serialized fields.
+//   - fields: the foreign fields in file order.
+//
+// Returns:
+//   - error: a wrapped error when a field value cannot be serialized.
+func writeForeignFields(builder *strings.Builder, fields []configField) error {
+	for index := range fields {
+		err := writeForeignField(builder, &fields[index])
+		if err != nil {
+			return fmt.Errorf("write field %q: %w", fields[index].Key.Value, err)
+		}
+	}
+
+	return nil
+}
+
+// writeForeignField re-emits one foreign top-level key.
+//
+// The field is encoded as a one-entry mapping and handed to the YAML encoder, so
+// the key and the value keep the quoting, tag, and style they were read with.
+// Encoding the value as text instead would turn a quoted string containing a
+// colon into a broken document, an empty string into a null, a value beginning
+// with a number sign into a comment, and a literal block into a mangled scalar.
+//
+// Parameters:
+//   - builder: destination for the serialized field.
+//   - field: the foreign field.
+//
+// Returns:
+//   - error: a wrapped error when the value cannot be serialized.
+func writeForeignField(builder *strings.Builder, field *configField) error {
+	document := &yaml.Node{
+		Kind:    yaml.MappingNode,
+		Tag:     "!!map",
+		Content: []*yaml.Node{&field.Key, &field.Value},
+	}
+
+	raw, err := yaml.Marshal(document)
+	if err != nil {
+		return fmt.Errorf("encode value: %w", err)
+	}
+
+	_, writeErr := builder.Write(raw)
+	if writeErr != nil {
+		return fmt.Errorf("write encoded value: %w", writeErr)
 	}
 
 	return nil
@@ -460,6 +731,11 @@ func writeTempFile(path string, data []byte) (string, error) {
 // tightened explicitly, so a configuration that was world-readable before the
 // save is private afterwards.
 //
+// A symlinked destination is resolved before the replace. A rename acts on the
+// link itself rather than writing through it, so renaming onto the literal path
+// would destroy the link and leave the file the operator pointed at unchanged.
+// Resolving first keeps the link intact and updates the file it names.
+//
 // Parameters:
 //   - path: destination file path.
 //   - data: complete file contents.
@@ -469,27 +745,51 @@ func writeTempFile(path string, data []byte) (string, error) {
 //     temporary file cannot be created, the rename fails, or the destination
 //     permissions cannot be tightened.
 func writeFileAtomic(path string, data []byte) error {
-	err := os.MkdirAll(filepath.Dir(path), configDirMode)
+	target := resolveWriteTarget(path)
+
+	err := os.MkdirAll(filepath.Dir(target), configDirMode)
 	if err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	tempName, err := writeTempFile(path, data)
+	tempName, err := writeTempFile(target, data)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	err = os.Rename(tempName, path)
+	err = os.Rename(tempName, target)
 	if err != nil {
 		return errors.Join(fmt.Errorf("replace config: %w", err), os.Remove(tempName))
 	}
 
-	err = os.Chmod(path, configFileMode)
+	err = os.Chmod(target, configFileMode)
 	if err != nil {
 		return fmt.Errorf("tighten config permissions: %w", err)
 	}
 
 	return nil
+}
+
+// resolveWriteTarget returns the file a save should actually replace.
+//
+// A symlink is followed so the replace lands on the file the operator named.
+// Resolution is best effort: a path that cannot be resolved, such as a symlink
+// whose target does not exist, is used as given, which preserves the behavior
+// of creating a new file at that path.
+//
+// Parameters:
+//   - path: destination file path.
+//
+// Returns:
+//   - string: the path to replace, which is the resolved target when path is a
+//     symlink.
+func resolveWriteTarget(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+
+	return resolved
 }
 
 // wrapTempError wraps a temporary-file error with its failing stage.
@@ -539,6 +839,34 @@ func (m *Manager) addLoadedInstance(name string, node *yaml.Node) error {
 	return nil
 }
 
+// decode fills the manager from a parsed configuration document.
+//
+// Parameters:
+//   - contents: complete configuration file contents.
+//
+// Returns:
+//   - error: a wrapped error when the document cannot be parsed or decoded.
+func (m *Manager) decode(contents []byte) error {
+	var node instanceNode
+
+	parseErr := yaml.Unmarshal(contents, &node)
+	if parseErr != nil {
+		return fmt.Errorf("parse config: %w", parseErr)
+	}
+
+	loadErr := m.loadCredentials(&node.Credentials)
+	if loadErr != nil {
+		return fmt.Errorf("load credentials: %w", loadErr)
+	}
+
+	loadErr = m.loadInstances(&node.Instances)
+	if loadErr != nil {
+		return fmt.Errorf("load instances: %w", loadErr)
+	}
+
+	return nil
+}
+
 // loadInstances replaces manager instances from a YAML instances mapping.
 //
 // Mapping order is retained in nameOrder. A missing instances value is treated
@@ -567,6 +895,36 @@ func (m *Manager) loadInstances(node *yaml.Node) error {
 		if err != nil {
 			return fmt.Errorf("add loaded instance: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// writeDocument serializes the whole configuration, foreign keys first.
+//
+// Parameters:
+//   - builder: destination for the serialized document.
+//
+// Returns:
+//   - error: a wrapped error when a section cannot be serialized.
+func (m *Manager) writeDocument(builder *strings.Builder) error {
+	err := writeForeignFields(builder, m.foreign)
+	if err != nil {
+		return fmt.Errorf("write foreign fields: %w", err)
+	}
+
+	if m.credentialsSet {
+		writeErr := writeCredentials(builder, m.data.Credentials)
+		if writeErr != nil {
+			return fmt.Errorf("write credentials: %w", writeErr)
+		}
+	}
+
+	_, _ = builder.WriteString("instances:\n")
+
+	err = m.writeInstances(builder)
+	if err != nil {
+		return fmt.Errorf("write instances: %w", err)
 	}
 
 	return nil

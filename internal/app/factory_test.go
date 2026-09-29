@@ -9,10 +9,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
@@ -114,7 +114,13 @@ func TestUserConfigPathReportsUnavailableRoot(t *testing.T) {
 func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
 	configRoot := isolateUserConfigRoot(t)
 
-	expected := []string{filepath.Join(configRoot, DefaultConfigDirName), localConfigDir}
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+
+	expected := []string{
+		filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName),
+		filepath.Join(workingDirectory, DefaultConfigFileName),
+	}
 
 	assert.Equal(t, expected, ConfigSearchPaths())
 }
@@ -125,21 +131,184 @@ func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
 //
 //nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable(t *testing.T) {
-	clearUserConfigRoot(t)
+	clearUserConfigEnv(t)
 
-	assert.Equal(t, []string{localConfigDir}, ConfigSearchPaths())
+	workingDirectory := t.TempDir()
+
+	t.Chdir(workingDirectory)
+
+	assert.Equal(
+		t,
+		[]string{filepath.Join(workingDirectory, DefaultConfigFileName)},
+		ConfigSearchPaths(),
+	)
 }
 
-// TestConfigPathUsesResolvedFile verifies that the resolved Viper path wins.
-func TestConfigPathUsesResolvedFile(t *testing.T) {
-	t.Parallel()
-
+// TestConfigPathUsesPublishedResolution verifies that the published resolution is
+// the source of truth, so a read and a write always agree on one file.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestConfigPathUsesPublishedResolution(t *testing.T) {
 	lockViper(t)
 
 	configPath := writeFactoryConfig(t, "instances: {}\n")
-	viper.SetConfigFile(configPath)
+	PublishConfigResolution(ConfigResolution{Path: configPath, Exists: true})
 
 	assert.Equal(t, configPath, ConfigPath())
+}
+
+// TestConfigPathUsesExplicitMissingPath verifies an explicit path that does not
+// exist yet is still the write destination, so the first write lands where the
+// operator asked rather than in the per-user location.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestConfigPathUsesExplicitMissingPath(t *testing.T) {
+	lockViper(t)
+
+	isolateUserConfigRoot(t)
+
+	configPath := filepath.Join(t.TempDir(), "nested", factoryTestConfigName)
+
+	resolution, err := ResolveConfigPath(configPath)
+	require.NoError(t, err)
+	assert.False(t, resolution.Exists)
+
+	PublishConfigResolution(resolution)
+
+	assert.Equal(t, configPath, ConfigPath())
+}
+
+// TestConfigPathFallsBackToPerUserPath verifies an unresolved run writes to the
+// per-user location, which is what keeps a first run out of the working
+// directory.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestConfigPathFallsBackToPerUserPath(t *testing.T) {
+	lockViper(t)
+
+	configRoot := isolateUserConfigRoot(t)
+
+	assert.Equal(
+		t,
+		filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName),
+		ConfigPath(),
+	)
+}
+
+// TestResolveConfigPathTreatsBlankFileAsAbsent verifies a document with no
+// content is not read, so a stray tab cannot block the first write, while its
+// path remains the destination.
+func TestResolveConfigPathTreatsBlankFileAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), factoryTestConfigName)
+	require.NoError(t, os.WriteFile(configPath, []byte("\t"), 0o600))
+
+	resolution, err := ResolveConfigPath(configPath)
+
+	require.NoError(t, err)
+	assert.Equal(t, configPath, resolution.Path)
+	assert.False(t, resolution.Exists)
+}
+
+// TestResolveConfigPathReadsContentFile verifies a file with content is read.
+func TestResolveConfigPathReadsContentFile(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t, "instances: {}\n")
+
+	resolution, err := ResolveConfigPath(configPath)
+
+	require.NoError(t, err)
+	assert.Equal(t, configPath, resolution.Path)
+	assert.True(t, resolution.Exists)
+}
+
+// TestResolveConfigPathAcceptsMissingFile verifies a missing explicit file is not
+// an error, because the first write creates it.
+func TestResolveConfigPathAcceptsMissingFile(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), "absent", factoryTestConfigName)
+
+	resolution, err := ResolveConfigPath(configPath)
+
+	require.NoError(t, err)
+	assert.Equal(t, configPath, resolution.Path)
+	assert.False(t, resolution.Exists)
+}
+
+// TestResolveConfigPathRejectsDirectory verifies a directory is refused by name
+// rather than surfacing an opaque configuration-type error.
+func TestResolveConfigPathRejectsDirectory(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+
+	_, err := ResolveConfigPath(directory)
+
+	require.ErrorIs(t, err, config.ErrConfigNotRegular)
+	assert.Contains(t, err.Error(), directory)
+}
+
+// TestResolveConfigPathSearchesInOrder verifies the per-user location wins over
+// the current directory, and the current directory is used when the per-user file
+// is absent.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestResolveConfigPathSearchesInOrder(t *testing.T) {
+	configRoot := isolateUserConfigRoot(t)
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+
+	userConfig := filepath.Join(configRoot, DefaultConfigDirName, factoryTestConfigName)
+	require.NoError(t, os.MkdirAll(filepath.Dir(userConfig), 0o700))
+	require.NoError(t, os.WriteFile(userConfig, []byte("instances: {}\n"), 0o600))
+
+	resolution, err := ResolveConfigPath("")
+
+	require.NoError(t, err)
+	assert.Equal(t, userConfig, resolution.Path)
+	assert.True(t, resolution.Exists)
+}
+
+// TestResolveConfigPathFallsBackToCurrentDirectory verifies the current
+// directory is searched when no per-user configuration exists.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestResolveConfigPathFallsBackToCurrentDirectory(t *testing.T) {
+	isolateUserConfigRoot(t)
+
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+
+	localConfig := filepath.Join(workingDirectory, factoryTestConfigName)
+	require.NoError(t, os.WriteFile(localConfig, []byte("instances: {}\n"), 0o600))
+
+	resolution, err := ResolveConfigPath("")
+
+	require.NoError(t, err)
+	assert.Equal(t, localConfig, resolution.Path)
+	assert.True(t, resolution.Exists)
+}
+
+// TestResolveConfigPathSearchMissUsesPerUserWriteTarget verifies a search miss
+// resolves to the per-user path so the first write has a destination.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestResolveConfigPathSearchMissUsesPerUserWriteTarget(t *testing.T) {
+	configRoot := isolateUserConfigRoot(t)
+	t.Chdir(t.TempDir())
+
+	resolution, err := ResolveConfigPath("")
+
+	require.NoError(t, err)
+	assert.Equal(
+		t,
+		filepath.Join(configRoot, DefaultConfigDirName, factoryTestConfigName),
+		resolution.Path,
+	)
+	assert.False(t, resolution.Exists)
 }
 
 // TestLoadConfigReadsInstances verifies that a loaded configuration exposes its
@@ -339,7 +508,7 @@ func TestNewCredentialsCoordinatorUsesResolvedFile(t *testing.T) {
 		"instances:\n"+
 			"  default:\n    host: "+factoryTestHost+"\n    password: "+factoryTestPassword+"\n",
 	)
-	viper.SetConfigFile(configPath)
+	PublishConfigResolution(ConfigResolution{Path: configPath, Exists: true})
 
 	coordinator, err := NewCredentialsCoordinator()
 	require.NoError(t, err)
@@ -363,7 +532,8 @@ func TestNewCredentialsCoordinatorReportsUnreadableFile(t *testing.T) {
 
 	lockViper(t)
 
-	viper.SetConfigFile(t.TempDir())
+	directory := t.TempDir()
+	PublishConfigResolution(ConfigResolution{Path: directory, Exists: true})
 
 	coordinator, err := NewCredentialsCoordinator()
 
@@ -416,6 +586,21 @@ func isolateUserConfigRoot(t *testing.T) string {
 	return root
 }
 
+// clearUserConfigEnv empties the variable that [os.UserConfigDir] reads on the
+// host platform, so the root is reported as unavailable.
+//
+// The home directory is cleared alongside it because [os.UserConfigDir] falls
+// back to that variable on Unix systems that do not honor XDG_CONFIG_HOME.
+//
+// Parameters:
+//   - t: active test requiring an unavailable per-user configuration root.
+func clearUserConfigEnv(t *testing.T) {
+	t.Helper()
+
+	t.Setenv(userConfigRootEnv(runtime.GOOS), "")
+	t.Setenv(userConfigHomeEnv, "")
+}
+
 // clearUserConfigRoot empties the variable that [os.UserConfigDir] reads on the
 // host platform, so the root is reported as unavailable.
 //
@@ -429,6 +614,51 @@ func clearUserConfigRoot(t *testing.T) {
 
 	t.Setenv(userConfigRootEnv(runtime.GOOS), "")
 	t.Setenv(userConfigHomeEnv, "")
+}
+
+// TestResolveConfigPathReportsBrokenSearchLocation verifies a search location
+// that exists but cannot be read is reported rather than skipped. Silently
+// falling through to a later location would use a file the operator did not
+// expect, which is the failure the single resolution point exists to prevent.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestResolveConfigPathReportsBrokenSearchLocation(t *testing.T) {
+	configRoot := isolateUserConfigRoot(t)
+	workingDirectory := t.TempDir()
+
+	t.Chdir(workingDirectory)
+
+	// The per-user location holds a directory where the file belongs, which can
+	// never be a configuration document.
+	blocked := filepath.Join(configRoot, DefaultConfigDirName, DefaultConfigFileName)
+	require.NoError(t, os.MkdirAll(blocked, 0o700))
+
+	_, err := ResolveConfigPath("")
+
+	require.ErrorIs(t, err, config.ErrConfigNotRegular)
+	assert.Contains(t, err.Error(), blocked)
+}
+
+// TestResolveConfigPathContinuesPastAbsentLocations verifies the search moves on
+// when a location simply has no file yet, because a missing file is created on
+// first write rather than reported.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestResolveConfigPathContinuesPastAbsentLocations(t *testing.T) {
+	isolateUserConfigRoot(t)
+
+	workingDirectory := t.TempDir()
+
+	t.Chdir(workingDirectory)
+
+	localConfig := filepath.Join(workingDirectory, DefaultConfigFileName)
+	require.NoError(t, os.WriteFile(localConfig, []byte("instances: {}\n"), 0o600))
+
+	resolution, err := ResolveConfigPath("")
+
+	require.NoError(t, err)
+	assert.Equal(t, localConfig, resolution.Path)
+	assert.True(t, resolution.Exists)
 }
 
 // writeFactoryConfig writes a configuration document for the factory tests.

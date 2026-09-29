@@ -161,6 +161,25 @@ var ErrExternalCredentialSource = errors.New(
 	"credential belongs to an external source, not the credential store",
 )
 
+// ErrOrphanedCredential indicates that a credential exists in the store while the
+// configuration does not reference it, so no command would ever use it.
+//
+// The error names the service and key, because an unreferenced entry is
+// otherwise invisible: the instance reports the source it is configured for, not
+// the entries the store happens to hold.
+var ErrOrphanedCredential = errors.New("credential is stored but unreferenced")
+
+// ErrCredentialReplacedUnrecorded indicates that a stored secret was replaced
+// while the configuration still describes the previous one.
+//
+// This is not an orphan: the file on disk references the key, so the instance
+// will authenticate with the new secret as though the command had succeeded. The
+// change simply is not recorded, which is why the command reports it instead of
+// removing the entry.
+var ErrCredentialReplacedUnrecorded = errors.New(
+	"stored secret was replaced but the configuration is unchanged",
+)
+
 // NewCredentialResolver builds the production credential resolver.
 //
 // The namespace comes from the Viper configuration, because the root command
@@ -348,6 +367,10 @@ func (a *Credentials) SetPassword(
 		return PasswordSetResult{}, fmt.Errorf("resolve credential key for %q: %w", name, err)
 	}
 
+	// Captured before the write, because storeCredential replaces the reference
+	// and the rollback needs to know what the configuration said on disk.
+	previous := credentialReference(a.local.Instances()[name])
+
 	replaced, err := a.stored(ctx, service, credentialKey)
 	if err != nil {
 		return PasswordSetResult{}, fmt.Errorf("check credential %q: %w", credentialKey, err)
@@ -368,10 +391,52 @@ func (a *Credentials) SetPassword(
 
 	result.Saved, err = a.save()
 	if err != nil {
-		return result, fmt.Errorf("set credential %q: %w", credentialKey, err)
+		return result, fmt.Errorf(
+			"set credential %q: %w",
+			result.Key,
+			a.rollbackCredential(ctx, service, result, previous, err),
+		)
 	}
 
 	return result, nil
+}
+
+// credentialReference copies the credential reference of one instance.
+//
+// The copy is taken before a write replaces the reference, so the pre-write
+// state survives the mutation it describes.
+//
+// Parameters:
+//   - cfg: configured instance whose reference is copied.
+//
+// Returns:
+//   - *instance.CredentialRef: an independent copy, or nil when the instance has
+//     no reference.
+func credentialReference(cfg instance.Config) *instance.CredentialRef {
+	if cfg.Credential == nil {
+		return nil
+	}
+
+	copied := *cfg.Credential
+
+	return &copied
+}
+
+// referencesKey reports whether a configuration reference points at one
+// credential key through the keyring.
+//
+// This is what decides whether a stored entry is reachable. A credential source
+// other than the keyring resolves its secret elsewhere, so a reference to it
+// never reaches a store entry.
+//
+// Parameters:
+//   - ref: configuration reference, or nil when the instance has none.
+//   - key: credential key to test for.
+//
+// Returns:
+//   - bool: true when the reference resolves key through the keyring.
+func referencesKey(ref *instance.CredentialRef, key string) bool {
+	return ref != nil && ref.Source == instance.KeyringSource && ref.Key == key
 }
 
 // credentialKey resolves the credential key written for one configured instance.
@@ -453,6 +518,81 @@ func (a *Credentials) deleteStoredCredential(
 	}
 
 	return true, nil
+}
+
+// rollbackCredential undoes a credential store write whose configuration write
+// failed.
+//
+// The configuration is written after the store precisely so a failed store write
+// leaves the instance unchanged. The reverse failure, a store write that
+// succeeds and a configuration write that does not, would otherwise leave a
+// secret nothing references, and no command reports an unreferenced entry.
+//
+// A newly created entry is deleted, which restores the state before the command
+// ran. An entry the configuration already referenced is not deleted: the file on
+// disk still points at that key, so removing the entry would leave a live
+// reference to nothing. That case is reported instead, naming the instance and
+// the key so the operator can re-run the command to record the change.
+//
+// The orphan test is the configuration, not the store. Whether an entry existed
+// before the write says nothing about whether the configuration points at it: a
+// key can be present in the store while the instance references another key, and
+// a referenced key can be absent from the store. Only the reference decides
+// whether the entry is reachable.
+//
+// Parameters:
+//   - ctx: context governing the compensating store call.
+//   - service: credential store namespace that was written.
+//   - written: the result of the store write, which records the key and the
+//     instance.
+//   - previous: the credential reference the configuration held before the write,
+//     or nil when the instance had none.
+//   - saveErr: the configuration write failure that triggered the rollback.
+//
+// Returns:
+//   - error: the configuration failure, joined with the rollback outcome.
+func (a *Credentials) rollbackCredential(
+	ctx context.Context,
+	service string,
+	written PasswordSetResult,
+	previous *instance.CredentialRef,
+	saveErr error,
+) error {
+	saveFailure := fmt.Errorf("write config %q: %w", written.Instance, saveErr)
+
+	if referencesKey(previous, written.Key) {
+		return errors.Join(
+			saveFailure,
+			fmt.Errorf(
+				"%w: key %q in service %q",
+				ErrCredentialReplacedUnrecorded,
+				written.Key,
+				service,
+			),
+		)
+	}
+
+	deleteErr := a.store.Delete(ctx, service, written.Key)
+	if deleteErr != nil {
+		return errors.Join(
+			saveFailure,
+			fmt.Errorf(
+				"%w: key %q in service %q is stored but no configured instance "+
+					"references it, and it could not be removed automatically",
+				ErrOrphanedCredential,
+				written.Key,
+				service,
+			),
+			fmt.Errorf("remove rolled back credential %q: %w", written.Key, deleteErr),
+		)
+	}
+
+	return fmt.Errorf(
+		"write config %q: %w; the credential written for key %q was removed again",
+		written.Instance,
+		saveErr,
+		written.Key,
+	)
 }
 
 // save writes the in-memory configuration to its source file.

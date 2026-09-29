@@ -169,7 +169,10 @@ func (cfg Config) Identity() ID {
 // Returns:
 //   - Config: validated instance configuration.
 //   - error: wrapped validation error when a required field is missing or the
-//     credential reference is invalid.
+//     credential reference is invalid. The instance name is deliberately absent
+//     from the message: the caller that knows the name adds it once, so the
+//     operator reads the instance and the cause rather than the same name three
+//     times.
 func ConfigFromMap(name string, raw map[string]any) (Config, error) {
 	cfg := Config{
 		Name:       name,
@@ -184,7 +187,7 @@ func ConfigFromMap(name string, raw map[string]any) (Config, error) {
 	if hasCredential {
 		credential, err := credentialFromMap(stanza)
 		if err != nil {
-			return Config{}, fmt.Errorf("validate instance %q: %w", name, err)
+			return Config{}, fmt.Errorf("credential: %w", err)
 		}
 
 		cfg.Credential = credential
@@ -192,7 +195,7 @@ func ConfigFromMap(name string, raw map[string]any) (Config, error) {
 
 	validated, err := cfg.Validate()
 	if err != nil {
-		return Config{}, fmt.Errorf("validate instance %q: %w", name, err)
+		return Config{}, fmt.Errorf("%w", err)
 	}
 
 	return validated, nil
@@ -235,7 +238,7 @@ func (cfg Config) Validate() (Config, error) {
 
 	err := credential.validate(cfg.Name, cfg.Password)
 	if err != nil {
-		return Config{}, fmt.Errorf("instance %q credential: %w", cfg.Name, err)
+		return Config{}, fmt.Errorf("credential: %w", err)
 	}
 
 	cfg.Credential = &credential
