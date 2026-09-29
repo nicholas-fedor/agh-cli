@@ -164,7 +164,7 @@ agh-cli instance add default adguard.example.com
 agh-cli instance remove backup
 ```
 
-`agh-cli instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands: `agh-cli instance credentials username set <instance> <username>` writes the username to the configuration file, and `agh-cli instance credentials password set <instance>` stores the password in the operating system credential store. The two are independent, so either can be changed without touching the other.
+`agh-cli instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands: `agh-cli instance credentials username set <instance> <username>` writes the username to the configuration file, and `agh-cli instance credentials password set <instance>` stores the password in the operating system credential store. The two are independent, so either can be changed without touching the other. `agh-cli instance remove <instance>` also deletes the password it kept in the credential store, so removing an instance never leaves its secret behind.
 
 ### Credential Sources
 
@@ -297,6 +297,23 @@ agh-cli instance credentials password clear --all --yes
 - Clearing an absent credential is not an error, which makes a repeated clear safe.
 - `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error instead of a silent change of source. Detach each instance with its own `clear`.
 - A `file` or `env` instance is refused, because `agh-cli` owns neither that secret nor the decision to stop using it. Change those instances by editing the configuration.
+
+Removing an instance takes its stored password with it:
+
+```bash
+agh-cli instance remove backup
+```
+
+```text
+Instance "backup" removed
+Removed credential for instance "backup" with key "backup" from service "agh-cli".
+```
+
+- The credential store entry is deleted before the configuration entry, so no secret is left behind without the instance that made it reachable.
+- A `file`, `env`, or `plaintext` instance keeps its secret. Those credentials belong to another system or to the configuration file, and the credential store is never contacted for them.
+- A key another configured instance still reads is kept and reported, because a key is not exclusive to one instance.
+- A credential the store no longer holds is not an error, so a repeated removal is safe.
+- If the configuration file cannot be rewritten, the command reports the failure and the instance stays configured. The credential is already gone at that point, so running the command again finishes the removal.
 
 ### Migrating Legacy Plaintext Passwords
 

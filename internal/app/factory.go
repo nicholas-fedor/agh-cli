@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/internal/config"
-	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // ConfigResolution is the outcome of resolving which configuration file a run
@@ -344,5 +343,5 @@ func NewCredentialsCoordinator() (*Credentials, error) {
 		return nil, fmt.Errorf("create credential coordinator: %w", err)
 	}
 
-	return NewCredentials(credentials.NewSystemStore(), manager), nil
+	return NewCredentials(NewCredentialStore(), manager), nil
 }

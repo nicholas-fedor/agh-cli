@@ -180,6 +180,17 @@ var ErrCredentialReplacedUnrecorded = errors.New(
 	"stored secret was replaced but the configuration is unchanged",
 )
 
+// NewCredentialStore returns the operating system credential store.
+//
+// The command layer never names the credential store package, so the adapter is
+// constructed here and handed to the use cases that write to it.
+//
+// Returns:
+//   - *credentials.SystemStore: credential store over the platform provider.
+func NewCredentialStore() *credentials.SystemStore {
+	return credentials.NewSystemStore()
+}
+
 // NewCredentialResolver builds the production credential resolver.
 //
 // The namespace comes from the Viper configuration, because the root command
@@ -262,10 +273,11 @@ func (a *Credentials) ClearAllPasswords(ctx context.Context) (PasswordClearResul
 // instance, and a legacy instance without a credential reference all remain
 // clearable.
 //
-// Removing an instance from the configuration does not remove its stored
-// credential, so clearing is always explicit. Clearing an absent credential is
-// not an error, which makes a repeated clear safe. The reference removal is
-// idempotent for the same reason, so a repeated clear also converges.
+// Removing an instance from the configuration deletes its stored credential, so
+// clearing an instance is for detaching a password an operator keeps. Clearing an
+// absent credential is not an error, which makes a repeated clear safe. The
+// reference removal is idempotent for the same reason, so a repeated clear also
+// converges.
 //
 // Parameters:
 //   - ctx: context checked before the credential store calls.
@@ -302,7 +314,7 @@ func (a *Credentials) ClearPassword(
 
 	result := PasswordClearResult{Instance: name, Service: service, Key: credentialKey}
 
-	removed, err := a.deleteStoredCredential(ctx, service, credentialKey)
+	removed, err := deleteStoredCredential(ctx, a.store, service, credentialKey)
 	if err != nil {
 		return result, fmt.Errorf("clear credential %q: %w", credentialKey, err)
 	}
@@ -492,18 +504,20 @@ func credentialKeyFor(cfg instance.Config, key string) string {
 //
 // Parameters:
 //   - ctx: context checked before the credential store calls.
+//   - store: credential store holding the entry.
 //   - service: credential store namespace.
 //   - key: credential key to remove.
 //
 // Returns:
 //   - bool: true when an entry was deleted.
 //   - error: a wrapped error when the store cannot be read or the delete fails.
-func (a *Credentials) deleteStoredCredential(
+func deleteStoredCredential(
 	ctx context.Context,
+	store credentials.Store,
 	service string,
 	key string,
 ) (bool, error) {
-	_, err := a.store.Get(ctx, service, key)
+	_, err := store.Get(ctx, service, key)
 	if errors.Is(err, credentials.ErrNotFound) {
 		return false, nil
 	}
@@ -512,12 +526,34 @@ func (a *Credentials) deleteStoredCredential(
 		return false, fmt.Errorf("read store: %w", err)
 	}
 
-	err = a.store.Delete(ctx, service, key)
+	err = store.Delete(ctx, service, key)
 	if err != nil {
 		return false, fmt.Errorf("delete store entry: %w", err)
 	}
 
 	return true, nil
+}
+
+// keyringCredentialKey returns the credential store key one instance reads its
+// password through.
+//
+// Only a keyring reference names an entry agh-cli owns, so every other source
+// reports false. An empty configured key resolves to the instance name, which
+// matches the keyring key default applied by instance validation and is applied
+// here because a configuration manager holds the raw document.
+//
+// Parameters:
+//   - cfg: configured instance whose credential reference is resolved.
+//
+// Returns:
+//   - string: the credential key the instance reads its password through.
+//   - bool: true when the instance reads its password from the credential store.
+func keyringCredentialKey(cfg instance.Config) (string, bool) {
+	if cfg.Credential == nil || cfg.Credential.Source != instance.KeyringSource {
+		return "", false
+	}
+
+	return credentialKeyFor(cfg, ""), true
 }
 
 // otherInstanceReferencesKey reports whether a credential key is referenced by
@@ -529,18 +565,24 @@ func (a *Credentials) deleteStoredCredential(
 // memory, so it would always match and mask the real answer.
 //
 // Parameters:
+//   - instances: configured instances searched for the key.
 //   - exclude: instance name to leave out of the search.
 //   - key: credential key to look for.
 //
 // Returns:
 //   - bool: true when another configured instance references the key.
-func (a *Credentials) otherInstanceReferencesKey(exclude, key string) bool {
-	for name, cfg := range a.local.Instances() {
+func otherInstanceReferencesKey(
+	instances map[string]instance.Config,
+	exclude string,
+	key string,
+) bool {
+	for name, cfg := range instances {
 		if name == exclude {
 			continue
 		}
 
-		if referencesKey(cfg.Credential, key) {
+		otherKey, resolves := keyringCredentialKey(cfg)
+		if resolves && otherKey == key {
 			return true
 		}
 	}
@@ -589,7 +631,7 @@ func (a *Credentials) rollbackCredential(
 	saveFailure := fmt.Errorf("write config %q: %w", written.Instance, saveErr)
 
 	if referencesKey(previous, written.Key) ||
-		a.otherInstanceReferencesKey(written.Instance, written.Key) {
+		otherInstanceReferencesKey(a.local.Instances(), written.Instance, written.Key) {
 		return errors.Join(
 			saveFailure,
 			fmt.Errorf(
@@ -644,18 +686,28 @@ func (a *Credentials) save() (bool, error) {
 
 // service returns the credential store namespace used by every use case.
 //
-// An empty configured service falls back to [credentials.DefaultService],
-// because the namespace must never be empty.
-//
 // Returns:
 //   - string: the credential store namespace.
 func (a *Credentials) service() string {
-	service := a.local.Credentials().Service
-	if service == "" {
+	return credentialServiceOf(a.local.Credentials())
+}
+
+// credentialServiceOf resolves the credential store namespace from settings.
+//
+// An empty configured service falls back to [credentials.DefaultService],
+// because the namespace must never be empty.
+//
+// Parameters:
+//   - settings: configured credential store settings.
+//
+// Returns:
+//   - string: the credential store namespace.
+func credentialServiceOf(settings config.CredentialsSettings) string {
+	if settings.Service == "" {
 		return credentials.DefaultService
 	}
 
-	return service
+	return settings.Service
 }
 
 // credentialService returns the credential store namespace from the Viper

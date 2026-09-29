@@ -6,6 +6,7 @@ package instance
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,7 +125,7 @@ func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
 		{
 			Name:  InstanceRemoveName,
 			Use:   "remove <instance>",
-			Short: "Remove an instance configuration",
+			Short: "Remove an instance configuration and its stored password",
 			Flags: map[string]instanceFlagExpectation{},
 		},
 		{
@@ -511,6 +512,192 @@ func TestNewCommandRemoveRejectsUnknownInstance(t *testing.T) {
 
 	require.Error(t, run.err)
 	assert.Contains(t, run.err.Error(), "not found")
+}
+
+// TestInstanceRemoveReportsCredentialOutcome verifies the rendered outcome of a
+// removal, so the operator learns whether the stored password went with the
+// instance. An instance that kept no credential in the store reports one line.
+func TestInstanceRemoveReportsCredentialOutcome(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		result app.InstanceRemoveResult
+		want   string
+		name   string
+	}{
+		{
+			name:   "removed credential",
+			result: app.InstanceRemoveResult{Key: "alpha", Service: "agh-cli", Removed: true},
+			want: "Instance \"alpha\" removed\n" +
+				"Removed credential for instance \"alpha\" with key \"alpha\" " +
+				"from service \"agh-cli\".\n",
+		},
+		{
+			name:   "absent credential",
+			result: app.InstanceRemoveResult{Key: "alpha", Service: "agh-cli"},
+			want: "Instance \"alpha\" removed\n" +
+				"No stored credential for instance \"alpha\" with key \"alpha\" " +
+				"in service \"agh-cli\".\n",
+		},
+		{
+			name:   "credential shared with another instance",
+			result: app.InstanceRemoveResult{Key: "shared", Service: "agh-cli", Shared: true},
+			want: "Instance \"alpha\" removed\n" +
+				"Kept credential with key \"shared\" in service \"agh-cli\": another " +
+				"configured instance still reads its password through it.\n",
+		},
+		{
+			name:   "credential owned by another system",
+			result: app.InstanceRemoveResult{Service: "agh-cli"},
+			want:   "Instance \"alpha\" removed\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The command reads the resolved configuration path, which lives in
+			// the process-global Viper instance the other command tests write.
+			lockInstanceCommandState(t)
+
+			result := test.result
+
+			result.Instance = "alpha"
+
+			run := runInstanceRemoveCommand(t, stubRemoval(result, nil), "alpha")
+
+			require.NoError(t, run.err)
+			assert.Equal(t, test.want, run.out)
+		})
+	}
+}
+
+// TestInstanceRemoveUsesResolvedConfigurationPath verifies that the command
+// removes from the file the executed run resolved rather than from a path of its
+// own.
+func TestInstanceRemoveUsesResolvedConfigurationPath(t *testing.T) {
+	t.Parallel()
+
+	lockInstanceCommandState(t)
+	resetInstanceCommandState(t)
+
+	configPath := writeInstanceConfig(t, instanceConfigEntry{
+		name: instanceCommandAlphaName,
+		host: InstanceAddedHost,
+	})
+	useConfigFile(t, configPath)
+
+	observed := make([]app.InstanceRemoveRequest, 0, 1)
+	remove := func(_ context.Context, request app.InstanceRemoveRequest) (app.InstanceRemoveResult, error) {
+		observed = append(observed, request)
+
+		return app.InstanceRemoveResult{Instance: request.Name}, nil
+	}
+
+	run := runInstanceRemoveCommand(t, remove, instanceCommandAlphaName)
+
+	require.NoError(t, run.err)
+	require.Len(t, observed, 1)
+	assert.Equal(t, configPath, observed[0].ConfigPath)
+	assert.Equal(t, instanceCommandAlphaName, observed[0].Name)
+}
+
+// TestInstanceRemoveReportsFailure verifies that a refusal from the use case is
+// surfaced rather than reported as a completed removal.
+func TestInstanceRemoveReportsFailure(t *testing.T) {
+	t.Parallel()
+
+	lockInstanceCommandState(t)
+
+	wantErr := errors.New("credential store unavailable")
+	run := runInstanceRemoveCommand(t, stubRemoval(app.InstanceRemoveResult{}, wantErr), "alpha")
+
+	require.ErrorIs(t, run.err, wantErr)
+	assert.Contains(t, run.err.Error(), "remove instance")
+	assert.NotContains(t, run.out, "removed")
+}
+
+// TestInstanceRemoveReportsCredentialRemovedWithFailure verifies that a removal
+// whose credential was deleted before the configuration write failed says so.
+// The instance stays configured while its password is already gone, and the
+// operator cannot infer that state from the error alone.
+func TestInstanceRemoveReportsCredentialRemovedWithFailure(t *testing.T) {
+	t.Parallel()
+
+	lockInstanceCommandState(t)
+
+	wantErr := errors.New(`write configuration: write config: permission denied`)
+	run := runInstanceRemoveCommand(
+		t,
+		stubRemoval(
+			app.InstanceRemoveResult{
+				Instance: "alpha",
+				Service:  "agh-cli",
+				Key:      "alpha-key",
+				Removed:  true,
+			},
+			wantErr,
+		),
+		"alpha",
+	)
+
+	require.ErrorIs(t, run.err, wantErr)
+	assert.Contains(t, run.err.Error(), "remove instance")
+	assert.Contains(
+		t,
+		run.out,
+		"Removed credential for instance \"alpha\" with key \"alpha-key\" from "+
+			"service \"agh-cli\".",
+	)
+	assert.Contains(t, run.out, "Instance \"alpha\" remains configured")
+	assert.NotContains(t, run.out, "Instance \"alpha\" removed")
+}
+
+// stubRemoval builds an instance removal returning a fixed outcome.
+//
+// Parameters:
+//   - result: outcome reported by the removal.
+//   - err: failure reported by the removal.
+//
+// Returns:
+//   - removal: instance removal used by the command under test.
+func stubRemoval(result app.InstanceRemoveResult, err error) removal {
+	return func(_ context.Context, _ app.InstanceRemoveRequest) (app.InstanceRemoveResult, error) {
+		return result, err
+	}
+}
+
+// runInstanceRemove executes a remove command bound to an injected removal.
+//
+// Parameters:
+//   - t: active test requiring command construction and error assertions.
+//   - remove: instance removal used by the command.
+//   - args: command line arguments passed to the remove command.
+//
+// Returns:
+//   - instanceRun: the rendered output streams and the execution error.
+func runInstanceRemoveCommand(
+	t *testing.T,
+	remove removal,
+	args ...string,
+) instanceRun {
+	t.Helper()
+
+	output := &bytes.Buffer{}
+	errorsOut := &bytes.Buffer{}
+	command := newInstanceRemoveCommand(remove)
+	command.SetOut(output)
+	command.SetErr(errorsOut)
+	command.SetArgs(args)
+
+	runErr := command.Execute()
+
+	return instanceRun{
+		out:    output.String(),
+		errOut: errorsOut.String(),
+		err:    runErr,
+	}
 }
 
 // lockInstanceCommandState serializes one test against the other tests that

@@ -1,12 +1,13 @@
 ---
 title: Remove
-description: Remove an instance configuration. The stored credential of the instance is kept, so clear it before removing the instance with 'agh-cli instance credentials ...
+description: Remove an instance configuration and the password it kept in the operating system credential store. A mounted secret file, an environment variable, and a pas...
 type: docs
 ---
 
-Remove an instance configuration. The stored credential of the
-instance is kept, so clear it before removing the instance with 'agh-cli
-instance credentials password clear <instance>'.
+Remove an instance configuration and the password it kept in the
+operating system credential store. A mounted secret file, an environment
+variable, and a password kept in the configuration file belong to the
+operator or to another system, so nothing is deleted for them.
 
 ### Usage
 
