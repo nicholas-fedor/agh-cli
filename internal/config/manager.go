@@ -7,6 +7,7 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -72,22 +73,30 @@ type Manager struct {
 	// re-emits them ahead of the keys it owns, so an annotation or a key kept for
 	// another tool survives every write.
 	foreign []configField
-	// stamp is the size and modification time the source file had when it was
-	// read. Save refuses to write when they differ, because a rewrite would
-	// discard whatever changed the file in the meantime.
+	// stamp is the observable state the source file had when it was read. Save
+	// refuses to write when the file no longer matches, because a rewrite would
+	// discard whatever changed it in the meantime.
 	stamp fileStamp
 }
 
 // fileStamp is the observable state of a configuration file at a point in time.
 //
-// Size and modification time are used together because either alone is
-// insufficient: a change can preserve the size, and a modification time can be
-// coarse enough to miss two writes in the same tick.
+// Size and modification time are compared first because either alone is
+// insufficient and because they are cheap: a change can preserve the size, and a
+// modification time can be coarse enough to miss two writes in the same tick, or
+// can be preserved deliberately by a tool that rewrites a file. Only when both
+// match is the content digest compared, so the common stale case costs a single
+// stat and the ambiguous case costs one read of a small file.
 type fileStamp struct {
 	// size is the file length in bytes.
 	size int64
 	// modified is the last modification time.
 	modified time.Time
+	// digest is a hash of the contents the file held when it was read.
+	digest [sha256.Size]byte
+	// hashed reports whether the digest was taken, which is false for a file
+	// whose contents could not be read.
+	hashed bool
 	// exists reports whether the file was present when the stamp was taken.
 	exists bool
 }
@@ -158,8 +167,12 @@ func Load(path string) (*Manager, error) {
 	}
 
 	// The blank test uses the same bytes the parse uses, so a document with no
-	// content is never handed to the decoder.
+	// content is never handed to the decoder. The stamp is still recorded, so a
+	// blank file written by someone else between this load and the first write is
+	// reported as a change rather than silently replaced.
 	if len(bytes.TrimSpace(contents)) == 0 {
+		manager.stamp = stampFrom(info, contents)
+
 		return manager, nil
 	}
 
@@ -169,12 +182,12 @@ func Load(path string) (*Manager, error) {
 	}
 
 	manager.foreign = captureForeignFields(contents)
-	manager.stamp = stampFrom(info)
+	manager.stamp = stampFrom(info, contents)
 
 	return manager, nil
 }
 
-// readConfigFile opens a configuration file once and reads it whole.
+// readConfigSource opens a configuration file once and reads it whole.
 //
 // The returned information comes from the same handle the contents were read
 // through, so a caller that records a stamp from it describes exactly the bytes
@@ -213,46 +226,37 @@ func readConfigSource(path string) ([]byte, fs.FileInfo, error) {
 	return contents, info, nil
 }
 
-// stampFrom records the observable state of an already-inspected file.
+// stampFrom records the observable state of an already-read file.
 //
-// The information comes from the handle the contents were read through, so the
-// stamp cannot describe a different file than the one that was parsed.
+// The information and the contents come from the same handle, so the stamp
+// cannot describe a different file than the one that was parsed.
 //
 // Parameters:
 //   - info: file information obtained while reading the contents.
+//   - contents: the contents the information describes.
 //
 // Returns:
-//   - fileStamp: the recorded state.
-func stampFrom(info fs.FileInfo) fileStamp {
+//   - fileStamp: the recorded state, including a digest of the contents.
+func stampFrom(info fs.FileInfo, contents []byte) fileStamp {
 	return fileStamp{
 		size:     info.Size(),
 		modified: info.ModTime(),
-		exists:   true,
-	}
-}
-
-// stampFile records the observable state of a configuration file.
-//
-// Parameters:
-//   - path: filesystem path to stamp.
-//
-// Returns:
-//   - fileStamp: the state observed, or an absent stamp when the file cannot be
-//     inspected.
-func stampFile(path string) fileStamp {
-	info, err := os.Stat(path)
-	if err != nil {
-		return fileStamp{}
-	}
-
-	return fileStamp{
-		size:     info.Size(),
-		modified: info.ModTime(),
+		digest:   sha256.Sum256(contents),
+		hashed:   true,
 		exists:   true,
 	}
 }
 
 // unchanged reports whether a file still matches a previously taken stamp.
+//
+// Size and modification time are compared first, because a difference in either
+// settles the question without reading the file. When both match, the contents
+// are hashed and compared, which is what catches a rewrite that preserved the
+// size and the timestamp.
+//
+// A file that cannot be read is reported as changed. Guessing that an
+// unreadable file is unchanged would let a save overwrite it, which is exactly
+// the loss this guard exists to prevent.
 //
 // Parameters:
 //   - stamp: the state recorded when the file was read.
@@ -261,7 +265,65 @@ func stampFile(path string) fileStamp {
 // Returns:
 //   - bool: true when the file still matches the recorded state.
 func (s fileStamp) unchanged(path string) bool {
-	return s == stampFile(path)
+	latest, err := stampPath(path)
+	if err != nil {
+		return false
+	}
+
+	if s.size != latest.size || !s.modified.Equal(latest.modified) || s.exists != latest.exists {
+		return false
+	}
+
+	// Both cheap observations match, so the contents decide. A stamp taken
+	// without a digest cannot be compared this way, and reports unchanged rather
+	// than blocking every save over a file that is almost certainly the same.
+	if !s.hashed || !latest.hashed {
+		return true
+	}
+
+	return s.digest == latest.digest
+}
+
+// stampPath records the observable state of a configuration file on disk.
+//
+// Parameters:
+//   - path: filesystem path to stamp.
+//
+// Returns:
+//   - fileStamp: the state observed.
+//   - error: a wrapped error when the file cannot be inspected or read.
+func stampPath(path string) (fileStamp, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}, fmt.Errorf("inspect config %q: %w", path, err)
+	}
+
+	contents, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return fileStamp{}, fmt.Errorf("read config %q: %w", path, readErr)
+	}
+
+	return stampFrom(info, contents), nil
+}
+
+// stampWritten records the state of a file this manager has just written.
+//
+// A file that cannot be stamped leaves the manager with an absent stamp, which
+// makes a later save treat the path as a first write rather than block on a
+// state it cannot confirm.
+//
+// Parameters:
+//   - path: filesystem path that was written.
+//
+// Returns:
+//   - fileStamp: the state observed, or an absent stamp.
+func stampWritten(path string) fileStamp {
+	stamp, err := stampPath(resolveWriteTarget(path))
+	if err != nil {
+		return fileStamp{}
+	}
+
+	return stamp
 }
 
 // captureForeignFields returns the top-level keys agh-cli does not own, in file
@@ -586,8 +648,10 @@ func writeInstance(builder *strings.Builder, name string, cfg instance.Config) e
 // Returns:
 //   - error: a wrapped error when formatting or writing the file fails.
 func (m *Manager) Save() error {
-	// A file that appeared after the load is not a change this run caused, so it
-	// is reported as a change rather than overwritten.
+	// A file that existed when this manager was loaded must still be the file
+	// that was read, or a rewrite would discard whatever changed it since. A
+	// file that was absent at load is a first write, not a stale one, so it is
+	// created rather than refused.
 	if m.stamp.exists && !m.stamp.unchanged(resolveWriteTarget(m.path)) {
 		return fmt.Errorf("write config %q: %w", m.path, ErrConfigChanged)
 	}
@@ -606,7 +670,7 @@ func (m *Manager) Save() error {
 
 	// The manager now matches the file, so a second save in the same run is not
 	// mistaken for an external change.
-	m.stamp = stampFile(resolveWriteTarget(m.path))
+	m.stamp = stampWritten(m.path)
 
 	return nil
 }

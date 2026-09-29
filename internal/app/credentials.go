@@ -520,6 +520,34 @@ func (a *Credentials) deleteStoredCredential(
 	return true, nil
 }
 
+// otherInstanceReferencesKey reports whether a credential key is referenced by
+// any instance other than the one being written.
+//
+// A key is not exclusive to an instance, so removing the entry a use case wrote
+// would destroy another instance's working password. The instance being written
+// is excluded because the store write has already attached the key to it in
+// memory, so it would always match and mask the real answer.
+//
+// Parameters:
+//   - exclude: instance name to leave out of the search.
+//   - key: credential key to look for.
+//
+// Returns:
+//   - bool: true when another configured instance references the key.
+func (a *Credentials) otherInstanceReferencesKey(exclude, key string) bool {
+	for name, cfg := range a.local.Instances() {
+		if name == exclude {
+			continue
+		}
+
+		if referencesKey(cfg.Credential, key) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // rollbackCredential undoes a credential store write whose configuration write
 // failed.
 //
@@ -560,7 +588,8 @@ func (a *Credentials) rollbackCredential(
 ) error {
 	saveFailure := fmt.Errorf("write config %q: %w", written.Instance, saveErr)
 
-	if referencesKey(previous, written.Key) {
+	if referencesKey(previous, written.Key) ||
+		a.otherInstanceReferencesKey(written.Instance, written.Key) {
 		return errors.Join(
 			saveFailure,
 			fmt.Errorf(

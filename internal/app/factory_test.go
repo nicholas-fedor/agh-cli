@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -248,7 +249,7 @@ func TestResolveConfigPathRejectsDirectory(t *testing.T) {
 	_, err := ResolveConfigPath(directory)
 
 	require.ErrorIs(t, err, config.ErrConfigNotRegular)
-	assert.Contains(t, err.Error(), directory)
+	assert.Contains(t, err.Error(), strconv.Quote(directory))
 }
 
 // TestResolveConfigPathSearchesInOrder verifies the per-user location wins over
@@ -636,7 +637,7 @@ func TestResolveConfigPathReportsBrokenSearchLocation(t *testing.T) {
 	_, err := ResolveConfigPath("")
 
 	require.ErrorIs(t, err, config.ErrConfigNotRegular)
-	assert.Contains(t, err.Error(), blocked)
+	assert.Contains(t, err.Error(), strconv.Quote(blocked))
 }
 
 // TestResolveConfigPathContinuesPastAbsentLocations verifies the search moves on

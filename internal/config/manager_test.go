@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -719,7 +720,7 @@ func TestLoadRejectsDirectoryPath(t *testing.T) {
 	_, err := Load(directory)
 
 	require.ErrorIs(t, err, ErrConfigNotRegular)
-	assert.Contains(t, err.Error(), directory)
+	assert.Contains(t, err.Error(), strconv.Quote(directory))
 }
 
 // TestHasContentSeparatesAbsentBlankAndRead verifies the content predicate
@@ -781,6 +782,48 @@ func TestSaveRefusesChangedConfig(t *testing.T) {
 	require.ErrorIs(t, err, ErrConfigChanged)
 	assert.NotContains(t, readConfigFile(t, path), "added.example.com")
 	assert.Contains(t, readConfigFile(t, path), "external.example.com")
+}
+
+// TestSaveRefusesSameSizeRewrite verifies a rewrite that preserved both the size
+// and the modification time is still detected. A tool that restores the
+// timestamp, or a filesystem with a coarse clock, produces exactly this case, and
+// comparing only size and time would silently discard the change.
+func TestSaveRefusesSameSizeRewrite(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	original := "instances:\n  one:\n    host: aaa.example.com\n"
+	rewritten := "instances:\n  two:\n    host: bbb.example.com\n"
+	require.Len(t, rewritten, len(original), "the fixture must be the same size")
+	writeConfigFile(t, path, original)
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+
+	// Rewrite the file, then restore the size and the timestamp the load saw.
+	writeConfigFile(t, path, rewritten)
+	require.NoError(t, os.Chtimes(path, info.ModTime(), info.ModTime()))
+
+	stamped, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, info.Size(), stamped.Size())
+	require.Equal(t, info.ModTime(), stamped.ModTime())
+
+	require.NoError(t, manager.Add("three", "ccc.example.com", ""))
+
+	err = manager.Save()
+
+	require.ErrorIs(t, err, ErrConfigChanged)
+
+	// The refused save must leave the external rewrite intact and must not have
+	// added the instance this manager was holding.
+	written := readConfigFile(t, path)
+
+	assert.Contains(t, written, "bbb.example.com")
+	assert.NotContains(t, written, "ccc.example.com")
 }
 
 // TestSaveAcceptsSecondWriteFromSameManager verifies a manager may save twice.
