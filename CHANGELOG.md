@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stop the configuration from losing data or blocking a command by @nicholas-fedor in [#35](https://github.com/nicholas-fedor/agh-cli/pull/35)
 - Create the first config in the per-user configuration directory by @nicholas-fedor in [#31](https://github.com/nicholas-fedor/agh-cli/pull/31)
 
 ## [0.1.0] - 2026-09-27
