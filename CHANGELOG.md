@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split username and password into command groups by @nicholas-fedor in [#33](https://github.com/nicholas-fedor/agh-cli/pull/33)
 - Skip workflow linting for release tags by @nicholas-fedor in [#27](https://github.com/nicholas-fedor/agh-cli/pull/27)
 
+### Chores
+
+- Update nicholas-fedor/go-proxy-pull-action action to v1.1.52 by @renovate[bot] in [#37](https://github.com/nicholas-fedor/agh-cli/pull/37)
+
 ### Fixed
 
 - Stop the configuration from losing data or blocking a command by @nicholas-fedor in [#35](https://github.com/nicholas-fedor/agh-cli/pull/35)
