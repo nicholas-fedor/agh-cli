@@ -38,7 +38,7 @@ List, add, and remove AdGuard Home instance configurations, and manage the crede
 | [add](/cli-reference/instance/add/) | Add a new instance configuration |
 | [credentials](/cli-reference/instance/credentials/) | Manage instance authentication |
 | [list](/cli-reference/instance/list/) | List configured instances |
-| [remove](/cli-reference/instance/remove/) | Remove an instance configuration |
+| [remove](/cli-reference/instance/remove/) | Remove an instance configuration and its stored password |
 
 
 ## DNS rewrite rule operations

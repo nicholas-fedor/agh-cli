@@ -36,7 +36,7 @@ manage the credentials those instances use.`,
 	instanceCmd.AddCommand(
 		newInstanceListCommand(),
 		newInstanceAddCommand(),
-		newInstanceRemoveCommand(),
+		newInstanceRemoveCommand(removeInstance),
 		credentials.NewCommand(),
 	)
 

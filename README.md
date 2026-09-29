@@ -357,6 +357,7 @@ agh-cli instance credentials password clear --all --yes
 - Clearing an absent credential is not an error, which makes a repeated clear safe.
 - `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error rather than a silent change of source. Detach each instance with its own `clear`.
 - A `file` or `env` instance is refused, because agh-cli owns neither that secret nor the decision to stop using it. Change those instances by editing the configuration.
+- `agh-cli instance remove <instance>` takes the stored password with the instance, so removing an instance never leaves its secret behind. The credential store entry is deleted first, so a failed configuration write is reported and repeating the command converges. A key another configured instance still reads is kept and reported.
 
 ### Migrating Legacy Plaintext Passwords
 
@@ -444,11 +445,11 @@ agh-cli [global flags] <command> [subcommand] [flags]
 
 Manage the AdGuard Home instance definitions in your config file.
 
-| Command                                  | Description                             |
-|------------------------------------------|-----------------------------------------|
-| `agh-cli instance list [--all]`          | List configured instance names          |
-| `agh-cli instance add <instance> <host>` | Add a new instance, without credentials |
-| `agh-cli instance remove <instance>`     | Remove an instance                      |
+| Command                                  | Description                                |
+|------------------------------------------|--------------------------------------------|
+| `agh-cli instance list [--all]`          | List configured instance names             |
+| `agh-cli instance add <instance> <host>` | Add a new instance, without credentials    |
+| `agh-cli instance remove <instance>`     | Remove an instance and its stored password |
 
 `instance add` publishes no username or password flag. Both are authentication details, so they are set through the credentials commands.
 

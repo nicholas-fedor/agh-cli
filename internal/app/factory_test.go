@@ -4,6 +4,7 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,9 +12,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/config"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	mockCredentials "github.com/nicholas-fedor/agh-cli/internal/credentials/mocks"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
@@ -452,7 +456,8 @@ func TestAddInstanceReportsUnreadableFile(t *testing.T) {
 }
 
 // TestRemoveInstanceDeletesEntry verifies that removal rewrites the file and
-// keeps the remaining instances.
+// keeps the remaining instances. Neither instance kept its password in the
+// credential store, so the store is never contacted.
 func TestRemoveInstanceDeletesEntry(t *testing.T) {
 	t.Parallel()
 
@@ -462,9 +467,14 @@ func TestRemoveInstanceDeletesEntry(t *testing.T) {
 			"  default:\n    host: "+factoryTestHost+"\n",
 	)
 
-	err := RemoveInstance(InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"})
+	result, err := RemoveInstance(
+		t.Context(),
+		mockCredentials.NewMockStore(t),
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
 
 	require.NoError(t, err)
+	assert.Equal(t, InstanceRemoveResult{Instance: "alpha", Service: credentials.DefaultService}, result)
 
 	written := readFactoryConfig(t, configPath)
 
@@ -472,15 +482,233 @@ func TestRemoveInstanceDeletesEntry(t *testing.T) {
 	assert.Contains(t, written, "  default:")
 }
 
+// TestRemoveInstanceDeletesStoredCredential verifies that removal takes the
+// password agh-cli stored for the instance with it, so removing an instance never
+// leaves its secret behind in the operating system credential store.
+func TestRemoveInstanceDeletesStoredCredential(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"credentials:\n  service: agh-cli\n"+
+			"instances:\n"+
+			"  alpha:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n      key: alpha-key\n",
+	)
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, "agh-cli", "alpha-key").Return("stored-secret", nil).Once()
+	store.EXPECT().Delete(mock.Anything, "agh-cli", "alpha-key").Return(nil).Once()
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, InstanceRemoveResult{
+		Instance: "alpha",
+		Service:  "agh-cli",
+		Key:      "alpha-key",
+		Removed:  true,
+	}, result)
+	assert.NotContains(t, readFactoryConfig(t, configPath), "  alpha:")
+}
+
+// TestRemoveInstanceDefaultsEmptyKeyToInstanceName verifies that an instance
+// whose keyring key is the implicit default is reached under its own name. The
+// configuration manager holds the raw document, so the keyring key default is
+// resolved here rather than read from the file.
+func TestRemoveInstanceDefaultsEmptyKeyToInstanceName(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"instances:\n"+
+			"  alpha:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n",
+	)
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
+	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(nil).Once()
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.NoError(t, err)
+	assert.True(t, result.Removed)
+	assert.Equal(t, "alpha", result.Key)
+}
+
+// TestRemoveInstanceKeepsCredentialSharedByAnotherInstance verifies that a key
+// another instance still reads survives the removal. A key is not exclusive to
+// one instance, so deleting it would leave that instance without a password.
+func TestRemoveInstanceKeepsCredentialSharedByAnotherInstance(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"instances:\n"+
+			"  alpha:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n      key: shared\n"+
+			"  zulu:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n      key: shared\n",
+	)
+
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, InstanceRemoveResult{
+		Instance: "alpha",
+		Service:  credentials.DefaultService,
+		Key:      "shared",
+		Shared:   true,
+	}, result)
+
+	written := readFactoryConfig(t, configPath)
+
+	assert.NotContains(t, written, "  alpha:")
+	assert.Contains(t, written, "  zulu:")
+}
+
+// TestRemoveInstanceTreatsAbsentCredentialAsRemoved verifies that a credential
+// the store no longer holds is not an error, so a repeated removal converges.
+func TestRemoveInstanceTreatsAbsentCredentialAsRemoved(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"instances:\n"+
+			"  alpha:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n",
+	)
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").
+		Return("", credentials.ErrNotFound).
+		Once()
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.NoError(t, err)
+	assert.False(t, result.Removed)
+	assert.Equal(t, "alpha", result.Key)
+	assert.NotContains(t, readFactoryConfig(t, configPath), "  alpha:")
+}
+
+// TestRemoveInstanceKeepsInstanceWhenCredentialDeleteFails verifies that a
+// refusal to delete the credential keeps the instance. Removing the
+// configuration entry first would strand a secret no command reports.
+func TestRemoveInstanceKeepsInstanceWhenCredentialDeleteFails(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("secret service locked")
+
+	document := "instances:\n" +
+		"  alpha:\n    host: " + factoryTestHost + "\n" +
+		"    credential:\n      source: keyring\n"
+	configPath := writeFactoryConfig(t, document)
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
+	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(wantErr).Once()
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	assert.Contains(t, err.Error(), "leaving the instance configured")
+	assert.False(t, result.Removed)
+	assert.Equal(t, document, readFactoryConfig(t, configPath))
+}
+
+// TestRemoveInstanceReportsUnreadableStore verifies that an unusable credential
+// store is reported before the configuration entry is removed.
+func TestRemoveInstanceReportsUnreadableStore(t *testing.T) {
+	t.Parallel()
+
+	document := "instances:\n" +
+		"  alpha:\n    host: " + factoryTestHost + "\n" +
+		"    credential:\n      source: keyring\n"
+	configPath := writeFactoryConfig(t, document)
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").
+		Return("", credentials.ErrStoreUnavailable).
+		Once()
+
+	_, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.ErrorIs(t, err, credentials.ErrStoreUnavailable)
+	assert.Equal(t, document, readFactoryConfig(t, configPath))
+}
+
+// TestRemoveInstanceKeepsCredentialOfExternalSource verifies that a password
+// agh-cli does not own is never deleted. A mounted secret file, an environment
+// variable, and a plaintext password all resolve outside the credential store, so
+// the store is left untouched and a host without one is never blocked.
+func TestRemoveInstanceKeepsCredentialOfExternalSource(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"instances:\n"+
+			"  mounted:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: file\n      path: /run/secrets/agh-cli/admin\n"+
+			"  legacy:\n    host: "+factoryTestHost+"\n    password: "+factoryTestPassword+"\n",
+	)
+
+	for _, name := range []string{"mounted", "legacy"} {
+		result, err := RemoveInstance(
+			t.Context(),
+			mockCredentials.NewMockStore(t),
+			InstanceRemoveRequest{ConfigPath: configPath, Name: name},
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, InstanceRemoveResult{
+			Instance: name,
+			Service:  credentials.DefaultService,
+		}, result)
+	}
+
+	written := readFactoryConfig(t, configPath)
+
+	assert.NotContains(t, written, "  mounted:")
+	assert.NotContains(t, written, "  legacy:")
+}
+
 // TestRemoveInstanceRejectsUnknown verifies that an unknown name is refused
-// before the file is rewritten.
+// before the file is rewritten, and before the credential store is contacted: an
+// instance that is not configured cannot own a credential.
 func TestRemoveInstanceRejectsUnknown(t *testing.T) {
 	t.Parallel()
 
 	document := "instances:\n  default:\n    host: " + factoryTestHost + "\n"
 	configPath := writeFactoryConfig(t, document)
 
-	err := RemoveInstance(InstanceRemoveRequest{ConfigPath: configPath, Name: "zulu"})
+	_, err := RemoveInstance(
+		t.Context(),
+		mockCredentials.NewMockStore(t),
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "zulu"},
+	)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
@@ -492,10 +720,53 @@ func TestRemoveInstanceRejectsUnknown(t *testing.T) {
 func TestRemoveInstanceReportsUnreadableFile(t *testing.T) {
 	t.Parallel()
 
-	err := RemoveInstance(InstanceRemoveRequest{ConfigPath: t.TempDir(), Name: "default"})
+	_, err := RemoveInstance(
+		t.Context(),
+		mockCredentials.NewMockStore(t),
+		InstanceRemoveRequest{ConfigPath: t.TempDir(), Name: "default"},
+	)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read configuration")
+}
+
+// TestRemoveInstanceKeepsInstanceWhenConfigurationWriteFails verifies the
+// retryable state of a failed configuration write. The credential is already
+// gone, so the instance is left in the file pointing at a key the store no longer
+// holds, and repeating the command converges.
+func TestRemoveInstanceKeepsInstanceWhenConfigurationWriteFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("directory permissions do not restrict the root user")
+	}
+
+	t.Parallel()
+
+	configPath := writeFactoryConfig(t,
+		"instances:\n"+
+			"  alpha:\n    host: "+factoryTestHost+"\n"+
+			"    credential:\n      source: keyring\n",
+	)
+	documentDirectory := filepath.Dir(configPath)
+	require.NoError(t, os.Chmod(documentDirectory, 0o500))
+
+	// The temporary directory is removed after this test, so the write permission
+	// is restored first.
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(documentDirectory, 0o700)) })
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
+	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(nil).Once()
+
+	result, err := RemoveInstance(
+		t.Context(),
+		store,
+		InstanceRemoveRequest{ConfigPath: configPath, Name: "alpha"},
+	)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "write configuration")
+	assert.True(t, result.Removed)
+	assert.Contains(t, readFactoryConfig(t, configPath), "  alpha:")
 }
 
 // TestNewCredentialsCoordinatorUsesResolvedFile verifies that the coordinator
