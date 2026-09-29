@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Delete the stored password when removing an instance by @nicholas-fedor in [#39](https://github.com/nicholas-fedor/agh-cli/pull/39)
 - Stop the configuration from losing data or blocking a command by @nicholas-fedor in [#35](https://github.com/nicholas-fedor/agh-cli/pull/35)
 - Create the first config in the per-user configuration directory by @nicholas-fedor in [#31](https://github.com/nicholas-fedor/agh-cli/pull/31)
 
