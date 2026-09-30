@@ -115,7 +115,7 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: "release --config build/goreleaser/${{ inputs.build-type }}.yaml ${{ inputs.build-type == 'nightly' && '--skip=archive' || '' }} --clean ${{ inputs.dry-run && '--snapshot' || '' }}"
+          args: "release --config build/goreleaser/${{ inputs.build-type }}.yaml ${{ inputs.build-type == 'nightly' && '--skip=validate,archive' || '' }} --clean ${{ inputs.dry-run && '--snapshot' || '' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_NAMESPACE: ${{ inputs.docker_namespace }}
