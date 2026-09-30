@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Skip git validation on nightly builds by @nicholas-fedor in [#43](https://github.com/nicholas-fedor/agh-cli/pull/43)
+
 ### Chores
 
 - Update module github.com/imfing/hextra to v0.13.0 by @renovate[bot] in [#41](https://github.com/nicholas-fedor/agh-cli/pull/41)
