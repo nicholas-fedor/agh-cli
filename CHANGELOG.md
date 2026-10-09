@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update module golang.org/x/sys to v0.49.0 by @renovate[bot] in [#61](https://github.com/nicholas-fedor/agh-cli/pull/61)
+- Update nicholas-fedor/actionlint-action action to v1.0.19 by @renovate[bot] in [#57](https://github.com/nicholas-fedor/agh-cli/pull/57)
 - Update nicholas-fedor/govulncheck-action action to v1.1.0 by @renovate[bot] in [#58](https://github.com/nicholas-fedor/agh-cli/pull/58)
 - Lock file maintenance by @renovate[bot] in [#47](https://github.com/nicholas-fedor/agh-cli/pull/47)
 - Update github/codeql-action digest to 24c5418 by @renovate[bot] in [#54](https://github.com/nicholas-fedor/agh-cli/pull/54)
