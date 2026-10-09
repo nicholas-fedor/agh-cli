@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update nicholas-fedor/govulncheck-action action to v1.1.0 by @renovate[bot] in [#58](https://github.com/nicholas-fedor/agh-cli/pull/58)
 - Lock file maintenance by @renovate[bot] in [#47](https://github.com/nicholas-fedor/agh-cli/pull/47)
 - Update github/codeql-action digest to 24c5418 by @renovate[bot] in [#54](https://github.com/nicholas-fedor/agh-cli/pull/54)
 - Update step-security/harden-runner action to v2.22.1 by @renovate[bot] in [#52](https://github.com/nicholas-fedor/agh-cli/pull/52)
