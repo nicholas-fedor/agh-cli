@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update module github.com/stretchr/objx to v0.7.0 by @renovate[bot] in [#76](https://github.com/nicholas-fedor/agh-cli/pull/76)
 - Update nicholas-fedor/govulncheck-action action to v1.1.1 by @renovate[bot] in [#74](https://github.com/nicholas-fedor/agh-cli/pull/74)
 - Update goreleaser/goreleaser-action digest to a4f02ab by @renovate[bot] in [#72](https://github.com/nicholas-fedor/agh-cli/pull/72)
 - Update ossf/scorecard-action action to v2.5.0 by @renovate[bot] in [#70](https://github.com/nicholas-fedor/agh-cli/pull/70)
