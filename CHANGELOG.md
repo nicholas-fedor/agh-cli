@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update goreleaser/goreleaser-action digest to a4f02ab by @renovate[bot] in [#72](https://github.com/nicholas-fedor/agh-cli/pull/72)
 - Update ossf/scorecard-action action to v2.5.0 by @renovate[bot] in [#70](https://github.com/nicholas-fedor/agh-cli/pull/70)
 - Update module github.com/godbus/dbus/v5 to v5.2.3 by @renovate[bot] in [#67](https://github.com/nicholas-fedor/agh-cli/pull/67)
 - Update module golang.org/x/term to v0.47.0 by @renovate[bot] in [#66](https://github.com/nicholas-fedor/agh-cli/pull/66)
