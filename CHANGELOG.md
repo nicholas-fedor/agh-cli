@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update github/codeql-action digest to 6f2ac81 by @renovate[bot] in [#82](https://github.com/nicholas-fedor/agh-cli/pull/82)
 - Update module github.com/stretchr/objx to v0.8.0 by @renovate[bot] in [#80](https://github.com/nicholas-fedor/agh-cli/pull/80)
 - Update module github.com/godbus/dbus/v5 to v5.2.4 by @renovate[bot] in [#78](https://github.com/nicholas-fedor/agh-cli/pull/78)
 - Update module github.com/stretchr/objx to v0.7.0 by @renovate[bot] in [#76](https://github.com/nicholas-fedor/agh-cli/pull/76)
