@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update commitlint monorepo to v21.2.4 by @renovate[bot] in [#89](https://github.com/nicholas-fedor/agh-cli/pull/89)
 - Update cimg/go docker tag to v1.27.3 by @renovate[bot] in [#87](https://github.com/nicholas-fedor/agh-cli/pull/87)
 - Update step-security/harden-runner action to v2.22.2 by @renovate[bot] in [#86](https://github.com/nicholas-fedor/agh-cli/pull/86)
 - Update dependency @types/bun to v1.4.3 by @renovate[bot] in [#83](https://github.com/nicholas-fedor/agh-cli/pull/83)
