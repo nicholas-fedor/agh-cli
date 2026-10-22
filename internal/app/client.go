@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/nicholas-fedor/agh-cli/internal/client"
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/execution"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
@@ -33,18 +32,6 @@ type ClientMutation struct {
 	ParentalEnabled bool
 	// SafebrowsingEnabled reports whether the safe-browsing filter is enabled.
 	SafebrowsingEnabled bool
-}
-
-// ClientSelection contains the instance-selection inputs for a client operation.
-type ClientSelection struct {
-	// Instances contains the configured instance mappings.
-	Instances instance.Source
-	// Names contains explicit instance names in first-occurrence order.
-	Names []string
-	// All selects every configured instance when true.
-	All bool
-	// ConfigPath identifies the configuration file used to order list results.
-	ConfigPath string
 }
 
 // ClientListResult contains the successfully retrieved rows for one instance.
@@ -95,11 +82,14 @@ const clientRequestTimeout = 30 * time.Second
 // mounted-file, or environment instance is served without the command layer
 // reading a secret.
 //
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
 // Returns:
 //   - *ClientManagement: management bound to the production service factory and
 //     the production credential resolver.
-func NewClientManagement() *ClientManagement {
-	return NewClientManagementWithResolver(NewCredentialResolver())
+func NewClientManagement(ctx context.Context) *ClientManagement {
+	return NewClientManagementWithResolver(NewCredentialResolver(ctx))
 }
 
 // NewClientManagementWithResolver creates client-management wiring that resolves
@@ -132,7 +122,7 @@ func NewClientManagementWithResolver(
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Add(
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 	mutation ClientMutation,
 ) ([]ClientMutationResult, error) {
 	request := client.AddRequest{
@@ -177,7 +167,7 @@ func (a *ClientManagement) Add(
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Delete(
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 	name string,
 ) ([]ClientMutationResult, error) {
 	results, err := a.runMutation(
@@ -212,7 +202,7 @@ func (a *ClientManagement) Delete(
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) List(
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 ) ([]ClientListResult, error) {
 	nextIndex := 0
 	results, instanceCount, err := runClientOperation(
@@ -241,7 +231,7 @@ func (a *ClientManagement) List(
 		results[index].InstanceCount = instanceCount
 	}
 
-	orderedResults := orderClientListResults(results, selection)
+	orderedResults := orderClientListResults(ctx, results)
 	if err != nil {
 		return orderedResults, fmt.Errorf("list clients across instances: %w", err)
 	}
@@ -261,7 +251,7 @@ func (a *ClientManagement) List(
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Update(
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 	mutation ClientMutation,
 ) ([]ClientMutationResult, error) {
 	request := client.UpdateRequest{
@@ -308,7 +298,7 @@ func (a *ClientManagement) Update(
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) runMutation(
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 	operationName string,
 	successMessage string,
 	operation clientMutationOperation,
@@ -425,11 +415,11 @@ func newAdguardClientsServiceWithHTTPClient(
 //   - error: a wrapped resolution or execution error.
 func runClientOperation[T any](
 	ctx context.Context,
-	selection ClientSelection,
+	selection Selection,
 	resolve instance.CredentialResolver,
 	operation func(context.Context, execution.Target[instance.Config]) (T, error),
 ) ([]T, int, error) {
-	targets, err := clientTargets(ctx, selection, resolve)
+	targets, err := selectTargets(ctx, selection, resolve)
 	if err != nil {
 		return nil, 0, fmt.Errorf("resolve client targets: %w", err)
 	}
@@ -442,65 +432,23 @@ func runClientOperation[T any](
 	return results, count, nil
 }
 
-// clientTargets resolves instance configurations in operation order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: resolved targets in execution order.
-//   - error: a wrapped catalog or selection error.
-func clientTargets(
-	ctx context.Context,
-	selection ClientSelection,
-	resolve instance.CredentialResolver,
-) ([]execution.Target[instance.Config], error) {
-	catalog, err := instance.CatalogFromSourceResolved(ctx, selection.Instances, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("build client catalog: %w", err)
-	}
-
-	mode := instance.ExplicitOrDefaultSelection
-	if selection.All {
-		mode = instance.AllSelection
-	}
-
-	selected, err := catalog.Select(selection.Names, mode)
-	if err != nil {
-		return nil, fmt.Errorf("select client targets: %w", err)
-	}
-
-	targets := make([]execution.Target[instance.Config], 0, len(selected))
-	for _, cfg := range selected {
-		targets = append(targets, execution.Target[instance.Config]{Name: cfg.Name, Value: cfg})
-	}
-
-	return targets, nil
-}
-
 // orderClientListResults applies configuration order to successful list results.
 //
 // Parameters:
+//   - ctx: context carrying the configuration of the run.
 //   - results: retrieved rows keyed by instance in completion order.
-//   - selection: instance-selection inputs providing the configuration path.
 //
 // Returns:
 //   - []ClientListResult: results in configuration order, or sorted by instance
-//     name when the configured order is unavailable.
-func orderClientListResults(
-	results []ClientListResult,
-	selection ClientSelection,
-) []ClientListResult {
+//     name when ctx carries no configuration.
+func orderClientListResults(ctx context.Context, results []ClientListResult) []ClientListResult {
 	byInstance := make(map[string]ClientListResult, len(results))
 	for _, result := range results {
 		byInstance[result.Instance] = result
 	}
 
-	names, ordered := configuredClientOrder(selection.ConfigPath)
-	if !ordered {
+	names := configuredOrder(ctx)
+	if names == nil {
 		names = slices.Sorted(maps.Keys(byInstance))
 	}
 
@@ -512,25 +460,4 @@ func orderClientListResults(
 	}
 
 	return orderedResults
-}
-
-// configuredClientOrder loads instance names in configuration-file order.
-//
-// Parameters:
-//   - configPath: path to the configuration file; an empty path loads nothing.
-//
-// Returns:
-//   - []string: instance names in configuration-file order.
-//   - bool: false when the configuration order is unavailable.
-func configuredClientOrder(configPath string) ([]string, bool) {
-	if configPath == "" {
-		return nil, false
-	}
-
-	manager, err := config.Load(configPath)
-	if err != nil {
-		return nil, false
-	}
-
-	return manager.OrderedNames(), true
 }

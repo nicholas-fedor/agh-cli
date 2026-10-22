@@ -44,12 +44,9 @@ func newRewriteSettingsGetCommand() *cobra.Command {
 //   - error: An error when a selection, per-instance request, or the settings
 //     output fails.
 func runRewriteSettingsGet(cmd *cobra.Command, _ []string, values *flagValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, getErr := app.NewRewriteManagement().GetSettings(
+	results, getErr := app.NewRewriteManagement(cmd.Context()).GetSettings(
 		cmd.Context(),
 		selection,
 	)

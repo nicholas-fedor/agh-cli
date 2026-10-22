@@ -48,9 +48,8 @@ func TestFilteringManagementStatusContinuesAfterFailure(t *testing.T) {
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestBadInstance:  badService,
 		filteringTestGoodInstance: goodService,
-	}).Status(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestBadInstance, filteringTestGoodInstance},
+	}).Status(filteringTestContext(t), Selection{
+		Names: []string{filteringTestBadInstance, filteringTestGoodInstance},
 	})
 
 	require.ErrorIs(t, err, wantErr)
@@ -73,9 +72,8 @@ func TestFilteringManagementStatusPreservesEmptyLists(t *testing.T) {
 
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestGoodInstance: service,
-	}).Status(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestGoodInstance},
+	}).Status(filteringTestContext(t), Selection{
+		Names: []string{filteringTestGoodInstance},
 	})
 
 	require.NoError(t, err)
@@ -120,10 +118,8 @@ func TestFilteringManagementStatusUsesConfigurationOrder(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
 
-	results, err := management.Status(t.Context(), FilteringSelection{
-		Instances:  filteringTestInstances(),
-		All:        true,
-		ConfigPath: configPath,
+	results, err := management.Status(contextWithConfigFile(t.Context(), t, configPath), Selection{
+		All: true,
 	})
 
 	require.NoError(t, err)
@@ -146,9 +142,8 @@ func TestFilteringManagementUpdateConfigPreservesFalseAndZero(t *testing.T) {
 
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestGoodInstance: service,
-	}).UpdateConfig(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestGoodInstance},
+	}).UpdateConfig(filteringTestContext(t), Selection{
+		Names: []string{filteringTestGoodInstance},
 	}, false, 0)
 
 	require.NoError(t, err)
@@ -171,9 +166,8 @@ func TestFilteringManagementAddURLPreservesEmptyAndFalse(t *testing.T) {
 
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestGoodInstance: service,
-	}).AddURL(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestGoodInstance},
+	}).AddURL(filteringTestContext(t), Selection{
+		Names: []string{filteringTestGoodInstance},
 	}, "", "", false)
 
 	require.NoError(t, err)
@@ -195,9 +189,8 @@ func TestFilteringManagementRemoveURLPreservesFalse(t *testing.T) {
 
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestGoodInstance: service,
-	}).RemoveURL(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestGoodInstance},
+	}).RemoveURL(filteringTestContext(t), Selection{
+		Names: []string{filteringTestGoodInstance},
 	}, "")
 
 	require.NoError(t, err)
@@ -221,9 +214,8 @@ func TestFilteringManagementMutationContinuesAfterFailure(t *testing.T) {
 	results, err := testFilteringManagement(t, map[string]*mockAdguard.MockFilteringService{
 		filteringTestBadInstance:  badService,
 		filteringTestGoodInstance: goodService,
-	}).AddURL(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
-		Names:     []string{filteringTestBadInstance, filteringTestGoodInstance},
+	}).AddURL(filteringTestContext(t), Selection{
+		Names: []string{filteringTestBadInstance, filteringTestGoodInstance},
 	}, "filters", "https://filters.example/list.txt", false)
 
 	require.ErrorIs(t, err, wantErr)
@@ -237,7 +229,7 @@ func TestFilteringManagementMutationContinuesAfterFailure(t *testing.T) {
 func TestFilteringManagementCancellationStopsRemainingTargets(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(filteringTestContext(t))
 	service := mockAdguard.NewMockFilteringService(t)
 	service.EXPECT().FilteringStatus(mock.Anything).RunAndReturn(
 		func(context.Context) (*adguard.FilteringStatus, error) {
@@ -254,9 +246,8 @@ func TestFilteringManagementCancellationStopsRemainingTargets(t *testing.T) {
 		return service, nil
 	}}
 
-	results, err := management.Status(ctx, FilteringSelection{
-		Instances: filteringTestInstances(),
-		All:       true,
+	results, err := management.Status(ctx, Selection{
+		All: true,
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -287,8 +278,7 @@ func TestFilteringManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 		return service, nil
 	}}
 
-	results, err := management.AddURL(t.Context(), FilteringSelection{
-		Instances: filteringTestInstances(),
+	results, err := management.AddURL(filteringTestContext(t), Selection{
 		Names: []string{
 			filteringTestZuluInstance,
 			filteringTestAlphaInstance,
@@ -327,23 +317,18 @@ func testFilteringManagement(
 	}}
 }
 
-// filteringTestInstances returns the instance source for filtering tests.
+// filteringTestContext returns a context carrying the shared filtering
+// instances.
 //
 // Returns:
-//   - instance.Source: instance mappings for the shared filtering instances.
-func filteringTestInstances() instance.Source {
-	return instance.Source{
-		filteringTestAlphaInstance: map[string]any{
-			testHostKey: testAlphaHost,
-		},
-		filteringTestBadInstance: map[string]any{
-			testHostKey: testBadHost,
-		},
-		filteringTestGoodInstance: map[string]any{
-			testHostKey: testGoodHost,
-		},
-		filteringTestZuluInstance: map[string]any{
-			testHostKey: testZuluHost,
-		},
-	}
+//   - [context.Context]: test context carrying the shared filtering instances.
+func filteringTestContext(t *testing.T) context.Context {
+	t.Helper()
+
+	return runContext(t, instancesDocument(map[string]string{
+		filteringTestAlphaInstance: testAlphaHost,
+		filteringTestBadInstance:   testBadHost,
+		filteringTestGoodInstance:  testGoodHost,
+		filteringTestZuluInstance:  testZuluHost,
+	}))
 }

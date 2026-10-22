@@ -51,7 +51,7 @@ without disturbing the username.`,
 func runSet(cmd *cobra.Command, args []string, seams *streams) error {
 	name, username := args[0], args[1]
 
-	store, err := seams.coordinator()
+	store, err := seams.coordinator(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}

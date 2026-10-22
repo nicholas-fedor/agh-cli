@@ -42,12 +42,9 @@ func newClientDeleteCommand() *cobra.Command {
 // Returns:
 //   - error: An error when a selection or per-instance request fails.
 func runClientDelete(cmd *cobra.Command, args []string, values *selectionValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select client instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, operationErr := app.NewClientManagement().Delete(
+	results, operationErr := app.NewClientManagement(cmd.Context()).Delete(
 		cmd.Context(),
 		selection,
 		args[0],

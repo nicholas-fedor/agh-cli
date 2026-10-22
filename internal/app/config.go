@@ -4,12 +4,13 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
@@ -28,6 +29,20 @@ type ConfigResolution struct {
 	// Exists reports whether the file existed and held content to read.
 	Exists bool
 }
+
+// RunConfig is the configuration one run resolved and loaded.
+//
+// The root command loads it once with [LoadRunConfig] and attaches it to the
+// command context with [WithRunConfig]. Every read and every write of the run
+// then uses the same loaded file, so they always agree on one file, and a write
+// refuses to replace a file that changed after the run read it.
+type RunConfig struct {
+	// manager is the loaded configuration shared by the whole run.
+	manager *config.Manager
+}
+
+// runConfigKey is the context key carrying the [RunConfig] of a run.
+type runConfigKey struct{}
 
 // DefaultConfigDirName is the agh-cli directory under the per-user
 // configuration root.
@@ -52,9 +67,8 @@ const DefaultConfigFileName = config.DefaultConfigFileName
 // that survives an unresolvable per-user configuration root.
 const localConfigDir = "."
 
-// configPathKey is the private Viper key holding the resolved configuration
-// file for the run. The key is private so no configuration file can shadow it.
-const configPathKey = "agh-cli.configPath"
+// ErrNoRunConfig indicates that an operation ran without a loaded configuration.
+var ErrNoRunConfig = errors.New("no configuration loaded for the run")
 
 // UserConfigDir returns the per-user agh-cli configuration directory.
 //
@@ -119,10 +133,9 @@ func ConfigSearchPaths() []string {
 
 // ResolveConfigPath decides which configuration file a run uses.
 //
-// Resolution happens once, here, and both the root command and [ConfigPath]
-// consume the result. Letting the configuration search run in two places is what
-// let an explicit path behave differently from the default: an explicit missing
-// file failed where the default created one.
+// Resolution happens once, here, and the root command loads the result with
+// [LoadRunConfig]. Nothing else searches, because a second search could choose
+// another file and make an explicit path behave differently from the default.
 //
 // An explicit path is used as given. A missing file is not an error, because the
 // first write creates it, and a directory or another non-regular file is refused
@@ -156,9 +169,6 @@ func ResolveConfigPath(explicit string) (ConfigResolution, error) {
 
 // resolveSearchPath walks the default search locations in order and takes the
 // first file that holds content.
-//
-// Parameters:
-//   - none.
 //
 // Returns:
 //   - ConfigResolution: the first readable configuration, otherwise the per-user
@@ -211,9 +221,6 @@ func inspectPath(path string) (ConfigResolution, error) {
 // perUserWritePath returns the per-user path, or a bare name when the platform
 // reports no configuration root.
 //
-// Parameters:
-//   - none.
-//
 // Returns:
 //   - string: the per-user configuration path.
 func perUserWritePath() string {
@@ -225,85 +232,83 @@ func perUserWritePath() string {
 	return userPath
 }
 
-// PublishConfigResolution records the resolved configuration file for the run.
+// LoadRunConfig loads the resolved configuration file for the run.
 //
-// The root command resolves the configuration once in its persistent pre-run and
-// publishes the outcome here, so the read and the write always agree on one
-// file. The value lives in Viper alongside the rest of the process-global
-// configuration state rather than in a second global.
+// An absent or blank file yields an empty configuration, and the first write
+// creates the file. The path is part of the error because an operator must know
+// which file failed.
+//
+// Problems with configured instances are written as warnings rather than failing
+// the load, because refusing it would leave no way to remove the very instance
+// that is broken. A missing file is reported the same way.
 //
 // Parameters:
 //   - resolution: the outcome produced by [ResolveConfigPath].
+//   - warnings: destination of the configuration warnings.
 //
 // Returns:
-//   - none.
-func PublishConfigResolution(resolution ConfigResolution) {
-	viper.Set(configPathKey, resolution.Path)
-}
-
-// ConfigPath returns the effective configuration file path.
-//
-// The root command publishes the resolution before any subcommand runs, so the
-// value recorded here is the source of truth. Commands never build a path of
-// their own.
-//
-// The result is always usable as a write destination. When no configuration has
-// been published, such as in a test that exercises a command in isolation, the
-// per-user path is the destination of the first write. That keeps a first run
-// from dropping a configuration into whatever directory it happened to run from.
-// A bare [DefaultConfigFileName] is the last resort for a run whose per-user
-// configuration root is unavailable.
-//
-// Returns:
-//   - string: the resolved configuration file path.
-func ConfigPath() string {
-	if path := viper.GetString(configPathKey); path != "" {
-		return path
+//   - RunConfig: the loaded configuration.
+//   - error: a wrapped error when the file cannot be read or parsed.
+func LoadRunConfig(resolution ConfigResolution, warnings io.Writer) (RunConfig, error) {
+	manager, err := config.Load(resolution.Path)
+	if err != nil {
+		return RunConfig{}, fmt.Errorf("load config %q: %w", resolution.Path, err)
 	}
 
-	return perUserWritePath()
+	if !resolution.Exists {
+		_, _ = fmt.Fprintf(
+			warnings,
+			"Warning: no configuration file at %s; one will be created on first write\n",
+			resolution.Path,
+		)
+	}
+
+	warnInstanceProblems(warnings, resolution.Path, manager.ValidationProblems())
+
+	return RunConfig{manager: manager}, nil
 }
 
-// LoadConfig loads the configuration file at path.
-//
-// An absent file yields an empty configuration, so the first write creates it.
-// The path is part of the error because an operator must know which file failed.
-//
-// Instances that cannot be used are reported as a warning on standard error
-// rather than failing the load. The load must still succeed, because refusing it
-// would leave no way to remove the very instance that is broken.
+// WithRunConfig returns a copy of ctx carrying the configuration of the run.
 //
 // Parameters:
-//   - path: filesystem path of the YAML configuration file.
+//   - ctx: parent context.
+//   - runConfig: the configuration produced by [LoadRunConfig].
 //
 // Returns:
-//   - *config.Manager: the loaded configuration, or an empty configuration when
-//     the file is absent.
-//   - error: a wrapped error when the file cannot be read or parsed.
-func LoadConfig(path string) (*config.Manager, error) {
-	manager, err := config.Load(path)
-	if err != nil {
-		return nil, fmt.Errorf("load config %q: %w", path, err)
-	}
-
-	warnInvalidInstances(path, manager.ValidationProblems())
-
-	return manager, nil
+//   - [context.Context]: a context from which the application layer reads the
+//     configuration.
+func WithRunConfig(ctx context.Context, runConfig RunConfig) context.Context {
+	return context.WithValue(ctx, runConfigKey{}, runConfig)
 }
 
-// warnInvalidInstances reports unusable instances on standard error.
+// configFrom returns the configuration of the run carried by ctx.
+//
+// Parameters:
+//   - ctx: context produced by [WithRunConfig].
+//
+// Returns:
+//   - *config.Manager: the loaded configuration of the run.
+//   - error: ErrNoRunConfig when ctx carries no configuration.
+func configFrom(ctx context.Context) (*config.Manager, error) {
+	runConfig, ok := ctx.Value(runConfigKey{}).(RunConfig)
+	if !ok || runConfig.manager == nil {
+		return nil, ErrNoRunConfig
+	}
+
+	return runConfig.manager, nil
+}
+
+// warnInstanceProblems reports the problems with configured instances.
 //
 // The warning names the file and every offending instance so the operator can
 // repair the configuration without tracing a failure that would otherwise
 // surface only when a command reaches that instance.
 //
 // Parameters:
+//   - warnings: destination of the warning.
 //   - path: filesystem path of the loaded configuration file.
-//   - problems: the instances that failed validation.
-//
-// Returns:
-//   - none.
-func warnInvalidInstances(path string, problems []config.ValidationProblem) {
+//   - problems: the problems found with the configured instances.
+func warnInstanceProblems(warnings io.Writer, path string, problems []config.ValidationProblem) {
 	if len(problems) == 0 {
 		return
 	}
@@ -314,34 +319,9 @@ func warnInvalidInstances(path string, problems []config.ValidationProblem) {
 	}
 
 	_, _ = fmt.Fprintf(
-		os.Stderr,
-		"Warning: %s has %d instance(s) that cannot be used: %s\n",
+		warnings,
+		"Warning: %s has instance problems: %s\n",
 		path,
-		len(problems),
 		strings.Join(details, "; "),
 	)
-}
-
-// NewCredentialsCoordinator builds the production credential coordinator.
-//
-// Construction only assembles dependencies. The configuration file is read but
-// never written, and the credential store is not probed, so building a
-// coordinator cannot prompt, cannot block on an unavailable keyring, and cannot
-// discard a pending change.
-//
-// The configuration path comes from Viper and the store is the operating system
-// credential store, so the command layer depends on neither the configuration
-// package nor the credential store adapter.
-//
-// Returns:
-//   - *Credentials: coordinator bound to the resolved configuration file and the
-//     operating system credential store.
-//   - error: a wrapped error when the configuration file cannot be read.
-func NewCredentialsCoordinator() (*Credentials, error) {
-	manager, err := LoadConfig(ConfigPath())
-	if err != nil {
-		return nil, fmt.Errorf("create credential coordinator: %w", err)
-	}
-
-	return NewCredentials(NewCredentialStore(), manager), nil
 }

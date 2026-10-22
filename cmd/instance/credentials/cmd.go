@@ -36,8 +36,9 @@ type coordinator interface {
 	Migrate(ctx context.Context, request app.MigrationRequest) (app.MigrationReport, error)
 }
 
-// factory builds the credential coordinator for one command execution.
-type factory func() (coordinator, error)
+// factory builds the credential coordinator for one command execution from
+// the command context.
+type factory func(ctx context.Context) (coordinator, error)
 
 // streams carries the coordinator factory the commands use.
 //
@@ -57,8 +58,8 @@ const dryRunFlagName = "dry-run"
 //   - *streams: production dependencies for the credentials commands.
 func newStreams() *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
-			return app.NewCredentialsCoordinator()
+		coordinator: func(ctx context.Context) (coordinator, error) {
+			return app.NewCredentialsCoordinator(ctx)
 		},
 	}
 }

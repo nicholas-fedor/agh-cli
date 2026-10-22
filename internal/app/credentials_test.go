@@ -18,6 +18,7 @@ import (
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 	mockCredentials "github.com/nicholas-fedor/agh-cli/internal/credentials/mocks"
+	"github.com/nicholas-fedor/agh-cli/internal/execution"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
@@ -33,6 +34,16 @@ type fakeCredentialConfig struct {
 	// saves counts the Save calls made by the coordinator.
 	saves int
 }
+
+// keyringHomeDocument is a configuration whose only instance reads its password
+// from an explicit keyring key.
+const keyringHomeDocument = "instances:\n" +
+	"  home:\n" +
+	"    host: " + testAlphaHost + "\n" +
+	"    username: admin\n" +
+	"    credential:\n" +
+	"      source: keyring\n" +
+	"      key: adguard-admin\n"
 
 // fakeCredentialConfig satisfies the credential configuration contract.
 var _ CredentialConfig = (*fakeCredentialConfig)(nil)
@@ -1462,81 +1473,24 @@ func TestCredentialsReportsStoreFailures(t *testing.T) {
 	}
 }
 
-// TestManagementCatalogsResolveExplicitCredentialSource verifies the client,
-// filtering, and rewrite selection paths all serve an explicit keyring source
-// through the shared catalog resolution.
-func TestManagementCatalogsResolveExplicitCredentialSource(t *testing.T) {
+// TestSelectTargetsResolveExplicitCredentialSource verifies both target
+// selection paths serve an explicit keyring source through the shared catalog
+// resolution.
+func TestSelectTargetsResolveExplicitCredentialSource(t *testing.T) {
 	t.Parallel()
-
-	raw := instance.Source{
-		"home": map[string]any{
-			"host":     testAlphaHost,
-			"username": "admin",
-			"credential": map[string]any{
-				"source": "keyring",
-				"key":    "adguard-admin",
-			},
-		},
-	}
 
 	tests := []struct {
 		// name identifies the subtest.
 		name string
-		// select applies one management selection path to the raw mapping.
-		selectConfig func(
+		// selectTargets applies one target selection path to the configuration.
+		selectTargets func(
 			context.Context,
+			Selection,
 			instance.CredentialResolver,
-		) ([]instance.Config, error)
+		) ([]execution.Target[instance.Config], error)
 	}{
-		{
-			name: "client",
-			selectConfig: func(
-				ctx context.Context,
-				resolve instance.CredentialResolver,
-			) ([]instance.Config, error) {
-				targets, err := clientTargets(
-					ctx,
-					ClientSelection{Instances: raw, All: true},
-					resolve,
-				)
-				if err != nil {
-					return nil, err
-				}
-
-				configs := make([]instance.Config, 0, len(targets))
-				for _, target := range targets {
-					configs = append(configs, target.Value)
-				}
-
-				return configs, nil
-			},
-		},
-		{
-			name: "filtering",
-			selectConfig: func(
-				ctx context.Context,
-				resolve instance.CredentialResolver,
-			) ([]instance.Config, error) {
-				return filteringSelectedConfigs(
-					ctx,
-					FilteringSelection{Instances: raw, All: true},
-					resolve,
-				)
-			},
-		},
-		{
-			name: "rewrite",
-			selectConfig: func(
-				ctx context.Context,
-				resolve instance.CredentialResolver,
-			) ([]instance.Config, error) {
-				return rewriteSelectedConfigs(
-					ctx,
-					RewriteSelection{Instances: raw, All: true},
-					resolve,
-				)
-			},
-		},
+		{name: "selection order", selectTargets: selectTargets},
+		{name: "configured order", selectTargets: selectOrderedTargets},
 	}
 
 	for _, test := range tests {
@@ -1556,35 +1510,27 @@ func TestManagementCatalogsResolveExplicitCredentialSource(t *testing.T) {
 				mockCredentials.NewMockEnvReader(t),
 			)
 
-			selected, err := test.selectConfig(t.Context(), resolver)
+			ctx := runContext(t, keyringHomeDocument)
+
+			selected, err := test.selectTargets(ctx, Selection{Names: nil, All: true}, resolver)
 
 			require.NoError(t, err)
 			require.Len(t, selected, 1)
-			assert.Equal(t, "keyring-secret", selected[0].Password)
+			assert.Equal(t, "keyring-secret", selected[0].Value.Password)
 
-			unresolved, err := test.selectConfig(t.Context(), nil)
+			unresolved, err := test.selectTargets(ctx, Selection{Names: nil, All: true}, nil)
 
 			require.NoError(t, err)
 			require.Len(t, unresolved, 1)
-			assert.Empty(t, unresolved[0].Password)
+			assert.Empty(t, unresolved[0].Value.Password)
 		})
 	}
 }
 
-// TestManagementCatalogsReportCredentialFailure verifies an unreadable configured
+// TestSelectTargetsReportCredentialFailure verifies an unreadable configured
 // source fails the selection and names the instance.
-func TestManagementCatalogsReportCredentialFailure(t *testing.T) {
+func TestSelectTargetsReportCredentialFailure(t *testing.T) {
 	t.Parallel()
-
-	raw := instance.Source{
-		"home": map[string]any{
-			"host": testAlphaHost,
-			"credential": map[string]any{
-				"source": "keyring",
-				"key":    "adguard-admin",
-			},
-		},
-	}
 
 	store := mockCredentials.NewMockStore(t)
 	store.EXPECT().
@@ -1599,12 +1545,44 @@ func TestManagementCatalogsReportCredentialFailure(t *testing.T) {
 		mockCredentials.NewMockEnvReader(t),
 	)
 
-	_, err := clientTargets(
-		t.Context(),
-		ClientSelection{Instances: raw, All: true},
-		resolver,
-	)
+	_, err := selectTargets(runContext(t, keyringHomeDocument), Selection{Names: nil, All: true}, resolver)
 
 	require.ErrorIs(t, err, credentials.ErrStoreUnavailable)
 	assert.ErrorContains(t, err, "home")
+}
+
+// TestNewCredentialsCoordinatorUsesRunConfig verifies that the coordinator
+// works on the configuration the run loaded.
+func TestNewCredentialsCoordinatorUsesRunConfig(t *testing.T) {
+	t.Parallel()
+
+	ctx := runContext(t,
+		"instances:\n"+
+			"  default:\n    host: "+testConfigHost+"\n    password: "+testLegacyPassword+"\n",
+	)
+
+	coordinator, err := NewCredentialsCoordinator(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, coordinator)
+
+	// A legacy plaintext instance is decided from the configuration alone, so
+	// this inspection never probes the operating system credential store.
+	report, statusErr := coordinator.StatusPassword(t.Context(), []string{"default"})
+
+	require.NoError(t, statusErr)
+	require.Len(t, report.Instances, 1)
+	assert.Equal(t, instance.PlaintextSource, report.Instances[0].Source)
+	assert.NotEmpty(t, report.Instances[0].Presence)
+	assert.NotContains(t, report.Service, testLegacyPassword)
+}
+
+// TestNewCredentialsCoordinatorRequiresRunConfig verifies that a coordinator is
+// never built without a loaded configuration.
+func TestNewCredentialsCoordinatorRequiresRunConfig(t *testing.T) {
+	t.Parallel()
+
+	coordinator, err := NewCredentialsCoordinator(t.Context())
+
+	require.ErrorIs(t, err, ErrNoRunConfig)
+	assert.Nil(t, coordinator)
 }

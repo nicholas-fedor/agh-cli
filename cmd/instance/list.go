@@ -41,14 +41,8 @@ func newInstanceListCommand() *cobra.Command {
 // Returns:
 //   - error: Non-nil when the configured instances cannot be read or resolved.
 func runInstanceList(cmd *cobra.Command, _ []string, values *flagValues) error {
-	instances, err := app.InstanceSource()
-	if err != nil {
-		return fmt.Errorf("resolve instance selection: %w", err)
-	}
-
-	configs, err := app.ListInstances(app.InstanceListRequest{
-		Instances: instances,
-		All:       values.all,
+	configs, err := app.ListInstances(cmd.Context(), app.InstanceListRequest{
+		All: values.all,
 	})
 	if err != nil {
 		return fmt.Errorf("resolve instances: %w", err)

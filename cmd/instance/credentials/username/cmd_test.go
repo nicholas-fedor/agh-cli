@@ -5,6 +5,7 @@ package username
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -107,7 +108,7 @@ func (f *fakeCoordinator) StatusUsername(names []string) (app.UsernameReport, er
 //   - *streams: test dependencies for the username commands.
 func testStreams(store coordinator) *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return store, nil
 		},
 	}
@@ -224,7 +225,7 @@ func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
 	t.Parallel()
 
 	group := newCommandGroup(&streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return nil, errTestFactory
 		},
 	})

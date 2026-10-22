@@ -18,9 +18,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 )
 
 // clientSelectionCase describes one execution of the client list command.
@@ -131,9 +132,9 @@ func (recorder *clientRecorder) serve(
 
 // TestListReturnsInstanceFailure verifies that client list fails when an instance
 // request fails.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestListReturnsInstanceFailure(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewTestServer(t, http.HandlerFunc(
 		func(writer http.ResponseWriter, _ *http.Request) {
 			writer.WriteHeader(http.StatusUnauthorized)
@@ -150,14 +151,15 @@ func TestListReturnsInstanceFailure(t *testing.T) {
 		configHost,
 	)
 	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
-	configureClientCommandViper(t, configPath)
+
+	ctx := apptest.FileContext(t, configPath)
 
 	command := NewCommand()
 	command.SetOut(io.Discard)
 	command.SetErr(io.Discard)
 	command.SetArgs([]string{clientCommandListName, clientCommandAllArg})
 
-	err := command.ExecuteContext(t.Context())
+	err := command.ExecuteContext(ctx)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "401")
 }
@@ -169,12 +171,13 @@ func TestListReturnsInstanceFailure(t *testing.T) {
 // left over from the first execution would resolve that name through --all and
 // succeed instead of failing.
 //
-//nolint:paralleltest // The test mutates the process-global Viper instance.
+//nolint:paralleltest,contextcheck // Ordered subtests share one recorder. Commands read the ExecuteContext context.
 func TestNewCommandRepeatedExecutionReadsOwnSelection(t *testing.T) {
 	recorder := &clientRecorder{t: t, payloads: make([]map[string]any, 0, 2)}
 	server := httptest.NewTestServer(t, http.HandlerFunc(recorder.serve))
 	server.Start()
-	configureClientCommandInstances(t, server.Listener.Addr().String())
+
+	ctx := clientCommandContext(t, server.Listener.Addr().String())
 
 	cases := []clientSelectionCase{
 		{
@@ -204,7 +207,7 @@ func TestNewCommandRepeatedExecutionReadsOwnSelection(t *testing.T) {
 			command.SetErr(io.Discard)
 			command.SetArgs(test.args)
 
-			err := command.Execute()
+			err := command.ExecuteContext(ctx)
 			if test.wantErr {
 				require.ErrorContains(t, err, clientCommandZuluInstance)
 
@@ -228,13 +231,14 @@ func TestNewCommandRepeatedExecutionReadsOwnSelection(t *testing.T) {
 //
 // A shared mutation flag value would leak --filtering from the first execution
 // into every later request.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestNewCommandRepeatedExecutionSendsOwnMutationFlags(t *testing.T) {
+	t.Parallel()
+
 	recorder := &clientRecorder{t: t, payloads: make([]map[string]any, 0, 3)}
 	server := httptest.NewTestServer(t, http.HandlerFunc(recorder.serve))
 	server.Start()
-	configureClientCommandInstances(t, server.Listener.Addr().String())
+
+	ctx := clientCommandContext(t, server.Listener.Addr().String())
 
 	selections := [][]string{
 		{clientCommandAddName, clientCommandAllArg, "--id=192.0.2.10", "--filtering", clientCommandListClientName},
@@ -249,7 +253,7 @@ func TestNewCommandRepeatedExecutionSendsOwnMutationFlags(t *testing.T) {
 		command.SetErr(io.Discard)
 		command.SetArgs(arguments)
 
-		require.NoError(t, command.Execute())
+		require.NoError(t, command.ExecuteContext(ctx))
 		assert.Contains(t, output.String(), "Added client desk")
 	}
 
@@ -270,13 +274,14 @@ func TestNewCommandRepeatedExecutionSendsOwnMutationFlags(t *testing.T) {
 //
 // A command retaining the canceled context of an earlier execution would fail
 // the later mutation before any request is sent.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestNewCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
+	t.Parallel()
+
 	recorder := &clientRecorder{t: t, payloads: make([]map[string]any, 0, 2)}
 	server := httptest.NewTestServer(t, http.HandlerFunc(recorder.serve))
 	server.Start()
-	configureClientCommandInstances(t, server.Listener.Addr().String())
+
+	ctx := clientCommandContext(t, server.Listener.Addr().String())
 
 	first := NewCommand()
 	firstOutput := &bytes.Buffer{}
@@ -284,7 +289,7 @@ func TestNewCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
 	first.SetErr(io.Discard)
 	first.SetArgs([]string{clientCommandDeleteName, clientCommandAllArg, clientCommandListClientName})
 
-	cancelable, cancel := context.WithCancel(t.Context())
+	cancelable, cancel := context.WithCancel(ctx)
 	require.NoError(t, first.ExecuteContext(cancelable))
 
 	cancel()
@@ -295,7 +300,7 @@ func TestNewCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
 	second.SetErr(io.Discard)
 	second.SetArgs([]string{clientCommandDeleteName, clientCommandAllArg, clientCommandListClientName})
 
-	require.NoError(t, second.Execute())
+	require.NoError(t, second.ExecuteContext(ctx))
 
 	require.ErrorIs(t, cancelable.Err(), context.Canceled)
 	assert.Contains(t, firstOutput.String(), "Deleted client desk")
@@ -303,41 +308,19 @@ func TestNewCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
 	assert.Len(t, recorder.recorded(), 2)
 }
 
-// configureClientCommandViper resets Viper and points it at a written config
-// file.
+// clientCommandContext returns a test context carrying one HTTP test instance.
 //
 // Parameters:
-//   - t: Testing handle registering the reset cleanup.
-//   - configPath: Configuration file backing the configured instances.
-func configureClientCommandViper(t *testing.T, configPath string) {
-	t.Helper()
-
-	viper.Reset()
-	viper.SetConfigFile(configPath)
-	require.NoError(t, viper.ReadInConfig())
-
-	t.Cleanup(func() {
-		viper.Reset()
-	})
-}
-
-// configureClientCommandInstances resets Viper and configures one HTTP instance.
+//   - host: Address of the HTTP test server backing the test instance.
 //
-// Parameters:
-//   - t: Testing handle registering the reset cleanup.
-//   - host: Address of the HTTP test server backing the instance.
-func configureClientCommandInstances(t *testing.T, host string) {
+// Returns:
+//   - [context.Context]: Test context carrying the configured instance.
+func clientCommandContext(t *testing.T, host string) context.Context {
 	t.Helper()
 
-	viper.Reset()
-	viper.Set("instances", map[string]any{
-		clientCommandAlphaInstance: map[string]any{
-			"host":   host,
-			"scheme": "http",
-		},
-	})
-
-	t.Cleanup(func() {
-		viper.Reset()
-	})
+	return apptest.Context(t, fmt.Sprintf(
+		"instances:\n  %q:\n    host: %q\n    scheme: http\n",
+		clientCommandAlphaInstance,
+		host,
+	))
 }

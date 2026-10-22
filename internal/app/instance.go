@@ -6,18 +6,28 @@ package app
 import (
 	"context"
 	"fmt"
-
-	"github.com/spf13/viper"
+	"slices"
+	"strings"
 
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
+// Selection identifies the configured instances an operation targets.
+//
+// It carries only what the operator asked for. The application layer reads the
+// configured instances from the run configuration, so the command layer never
+// handles them.
+type Selection struct {
+	// Names contains explicit instance names in first-occurrence order.
+	Names []string
+	// All selects every configured instance when true.
+	All bool
+}
+
 // InstanceListRequest contains the inputs for listing selected instances.
 type InstanceListRequest struct {
-	// Instances contains the configured instance mappings.
-	Instances instance.Source
 	// All selects every configured instance when true.
 	All bool
 }
@@ -28,8 +38,6 @@ type InstanceListRequest struct {
 // authentication details owned by the credential workflow, so an added instance
 // is configured without them and the operator sets them afterwards.
 type InstanceAddRequest struct {
-	// ConfigPath is the configuration file the instance is appended to.
-	ConfigPath string
 	// Host is the AdGuard Home hostname or IP address.
 	Host string
 	// Name is the unique instance identifier.
@@ -41,8 +49,6 @@ type InstanceAddRequest struct {
 
 // InstanceRemoveRequest contains the inputs for removing one instance.
 type InstanceRemoveRequest struct {
-	// ConfigPath is the configuration file the instance is removed from.
-	ConfigPath string
 	// Name is the instance identifier to remove.
 	Name string
 }
@@ -67,56 +73,123 @@ type InstanceRemoveResult struct {
 	Shared bool
 }
 
-// viperInstancesKey is the configuration path of the instance mapping.
-const viperInstancesKey = "instances"
-
-// InstanceSource reads the configured instance mappings as a typed source.
-//
-// The configuration loader yields an untyped value, so the read is converted and
-// reported here instead of at every command that selects an instance. A mistyped
-// instance stanza therefore fails with the configuration that caused it, and no
-// command has to assert the loader's shape on its own.
-//
-// Returns:
-//   - instance.Source: the configured instance mappings, or an empty source when
-//     the configuration declares none.
-//   - error: a wrapped conversion error when the configured value is not an
-//     instance mapping.
-func InstanceSource() (instance.Source, error) {
-	source, err := instance.SourceFromValue(viper.Get(viperInstancesKey))
-	if err != nil {
-		return nil, fmt.Errorf("read %q configuration: %w", viperInstancesKey, err)
-	}
-
-	return source, nil
-}
-
 // ListInstances validates the configured instances and resolves instance names in
 // selection order.
 //
 // Parameters:
-//   - request: configured instance mappings and selection mode.
+//   - ctx: context carrying the configuration of the run.
+//   - request: selection mode.
 //
 // Returns:
 //   - []instance.Config: selected configurations in execution order.
 //   - error: a wrapped catalog or selection error.
-func ListInstances(request InstanceListRequest) ([]instance.Config, error) {
-	catalog, err := instance.CatalogFromSource(request.Instances)
-	if err != nil {
-		return nil, fmt.Errorf("build instance catalog: %w", err)
-	}
-
-	mode := instance.ExplicitOrDefaultSelection
-	if request.All {
-		mode = instance.AllSelection
-	}
-
-	selected, err := catalog.Select(nil, mode)
+func ListInstances(ctx context.Context, request InstanceListRequest) ([]instance.Config, error) {
+	selected, err := selectInstances(ctx, Selection{Names: nil, All: request.All}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("select instances: %w", err)
 	}
 
 	return selected, nil
+}
+
+// selectInstances applies selection policy to the configured instances.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run and governing
+//     credential resolution.
+//   - selection: the instances the operator selected.
+//   - resolve: resolver applied to every catalog entry, or nil to leave
+//     credentials unresolved.
+//
+// Returns:
+//   - []instance.Config: selected configurations in selection order.
+//   - error: a wrapped catalog, credential, or selection error.
+func selectInstances(
+	ctx context.Context,
+	selection Selection,
+	resolve instance.CredentialResolver,
+) ([]instance.Config, error) {
+	catalog, err := configuredCatalog(ctx, resolve)
+	if err != nil {
+		return nil, fmt.Errorf("prepare catalog: %w", err)
+	}
+
+	mode := instance.ExplicitOrDefaultSelection
+	if selection.All {
+		mode = instance.AllSelection
+	}
+
+	selected, err := catalog.Select(selection.Names, mode)
+	if err != nil {
+		return nil, fmt.Errorf("select from catalog: %w", err)
+	}
+
+	return selected, nil
+}
+
+// configuredCatalog builds the validated catalog of the configured instances.
+//
+// The catalog is ordered by instance name, so selecting every instance runs in
+// the same order on every run. An instance whose stanza could not be decoded
+// fails the catalog instead of being skipped, so a mistyped instance never lets
+// a command fall back to another instance.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run and governing
+//     credential resolution.
+//   - resolve: resolver applied to every catalog entry, or nil to leave
+//     credentials unresolved.
+//
+// Returns:
+//   - instance.Catalog: the validated catalog, with resolved credentials when a
+//     resolver is supplied.
+//   - error: a wrapped configuration, validation, or credential error.
+func configuredCatalog(
+	ctx context.Context,
+	resolve instance.CredentialResolver,
+) (instance.Catalog, error) {
+	manager, err := configFrom(ctx)
+	if err != nil {
+		return instance.Catalog{}, fmt.Errorf("build instance catalog: %w", err)
+	}
+
+	configs, err := manager.Configs()
+	if err != nil {
+		return instance.Catalog{}, fmt.Errorf("read configured instances: %w", err)
+	}
+
+	slices.SortFunc(configs, func(left, right instance.Config) int {
+		return strings.Compare(left.Name, right.Name)
+	})
+
+	catalog, err := instance.NewCatalog(configs)
+	if err != nil {
+		return instance.Catalog{}, fmt.Errorf("build instance catalog: %w", err)
+	}
+
+	resolved, err := catalog.Resolve(ctx, resolve)
+	if err != nil {
+		return instance.Catalog{}, fmt.Errorf("resolve instance catalog: %w", err)
+	}
+
+	return resolved, nil
+}
+
+// configuredOrder returns the configured instance names in file order.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
+// Returns:
+//   - []string: instance names in configuration-file order, or nil when ctx
+//     carries no configuration.
+func configuredOrder(ctx context.Context) []string {
+	manager, err := configFrom(ctx)
+	if err != nil {
+		return nil
+	}
+
+	return manager.OrderedNames()
 }
 
 // AddInstance records one instance in the configuration file and saves it.
@@ -128,14 +201,14 @@ func ListInstances(request InstanceListRequest) ([]instance.Config, error) {
 // detail the operator did not choose to set.
 //
 // Parameters:
-//   - request: the instance identity, connection settings, and configuration
-//     file path.
+//   - ctx: context carrying the configuration of the run.
+//   - request: the instance identity and connection settings.
 //
 // Returns:
-//   - error: a wrapped error when the configuration cannot be loaded, the
-//     instance is already configured, or the file cannot be written.
-func AddInstance(request InstanceAddRequest) error {
-	manager, err := LoadConfig(request.ConfigPath)
+//   - error: a wrapped error when no configuration is loaded, the instance is
+//     already configured, or the file cannot be written.
+func AddInstance(ctx context.Context, request InstanceAddRequest) error {
+	manager, err := configFrom(ctx)
 	if err != nil {
 		return fmt.Errorf("read configuration: %w", err)
 	}
@@ -177,13 +250,14 @@ func AddInstance(request InstanceAddRequest) error {
 // because an instance that is not configured cannot own a credential.
 //
 // Parameters:
-//   - ctx: context checked before the credential store calls.
+//   - ctx: context carrying the configuration of the run, checked before the
+//     credential store calls.
 //   - store: credential store holding the instance password. It must not be nil.
-//   - request: the instance identifier and configuration file path.
+//   - request: the instance identifier.
 //
 // Returns:
 //   - InstanceRemoveResult: the removed instance and the credential outcome.
-//   - error: a wrapped error when the configuration cannot be loaded, the
+//   - error: a wrapped error when no configuration is loaded, the
 //     credential cannot be deleted, the instance is not configured, or the file
 //     cannot be written.
 func RemoveInstance(
@@ -191,7 +265,7 @@ func RemoveInstance(
 	store credentials.Store,
 	request InstanceRemoveRequest,
 ) (InstanceRemoveResult, error) {
-	manager, err := LoadConfig(request.ConfigPath)
+	manager, err := configFrom(ctx)
 	if err != nil {
 		return InstanceRemoveResult{}, fmt.Errorf("read configuration: %w", err)
 	}
@@ -244,7 +318,9 @@ func removeStoredInstancePassword(
 	result := InstanceRemoveResult{Instance: name, Service: credentialServiceOf(local.Credentials())}
 
 	// An unknown instance owns no credential, so the store is left alone and the
-	// removal itself reports the unknown name.
+	// removal itself reports the unknown name. An instance whose stanza could not
+	// be decoded declares no credential either, so it is removed without
+	// contacting the store.
 	cfg, exists := local.Instances()[name]
 	if !exists {
 		return result, nil

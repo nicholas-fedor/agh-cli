@@ -40,12 +40,9 @@ func newWildcardAddCommand() *cobra.Command {
 //   - error: An error when a selection, per-instance request, or the mutation
 //     output fails.
 func runWildcardAdd(cmd *cobra.Command, args []string, values *flagValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, addErr := app.NewRewriteManagement().WildcardAdd(
+	results, addErr := app.NewRewriteManagement(cmd.Context()).WildcardAdd(
 		cmd.Context(),
 		selection,
 		args[0],

@@ -49,7 +49,7 @@ func runFilteringAddURL(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse filtering flags: %w", err)
 	}
 
-	results, operationErr := app.NewFilteringManagement().AddURL(
+	results, operationErr := app.NewFilteringManagement(cmd.Context()).AddURL(
 		cmd.Context(),
 		selection,
 		args[0],

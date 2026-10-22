@@ -6,6 +6,7 @@ package settings
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -15,9 +16,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 )
 
 // rewriteSettingsFlagExpectation describes one expected flag registration.
@@ -163,9 +165,9 @@ func TestNewCommandExecutionUsesFreshContext(t *testing.T) {
 
 // TestNewCommandRepeatedExecutionReadsSettings verifies that repeatedly
 // constructing and executing the command tree reads every target instance.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestNewCommandRepeatedExecutionReadsSettings(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteSettingsServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/control/rewrite/settings", r.URL.Path)
@@ -174,7 +176,7 @@ func TestNewCommandRepeatedExecutionReadsSettings(t *testing.T) {
 		_, err := w.Write([]byte(`{"enabled":true}`))
 		assert.NoError(t, err)
 	})
-	resetRewriteSettingsCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteSettingsCommandContext(t, server.Listener.Addr().String())
 
 	for range 2 {
 		command := NewCommand()
@@ -183,15 +185,15 @@ func TestNewCommandRepeatedExecutionReadsSettings(t *testing.T) {
 		command.SetErr(io.Discard)
 		command.SetArgs([]string{SettingsCommandGet, SettingsArgAll})
 
-		require.NoError(t, command.Execute())
+		require.NoError(t, command.ExecuteContext(ctx))
 		assert.Contains(t, output.String(), `"enabled":true`)
 	}
 }
 
 // TestRunRewriteSettingsGetUsesAppOutput verifies settings retrieval output.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunRewriteSettingsGetUsesAppOutput(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteSettingsServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/control/rewrite/settings", r.URL.Path)
@@ -200,9 +202,9 @@ func TestRunRewriteSettingsGetUsesAppOutput(t *testing.T) {
 		_, err := w.Write([]byte(`{"enabled":false}`))
 		assert.NoError(t, err)
 	})
-	resetRewriteSettingsCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteSettingsCommandContext(t, server.Listener.Addr().String())
 
-	command := newRewriteSettingsCommand(t)
+	command := newRewriteSettingsCommand(ctx)
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
@@ -211,17 +213,17 @@ func TestRunRewriteSettingsGetUsesAppOutput(t *testing.T) {
 }
 
 // TestRunRewriteSettingsUpdateUsesAppOutput verifies explicit false update wiring.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunRewriteSettingsUpdateUsesAppOutput(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteSettingsServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/control/rewrite/settings/update", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	})
-	resetRewriteSettingsCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteSettingsCommandContext(t, server.Listener.Addr().String())
 
-	command := newRewriteSettingsCommand(t)
+	command := newRewriteSettingsCommand(ctx)
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
@@ -267,38 +269,16 @@ func newRewriteSettingsServer(
 	return server
 }
 
-// resetRewriteSettingsCommandState resets globals and configures one HTTP test instance.
+// newRewriteSettingsCommand returns a command bound to ctx.
 //
 // Parameters:
-//   - host: Address of the HTTP test server backing the test instance.
-func resetRewriteSettingsCommandState(t *testing.T, host string) {
-	t.Helper()
-
-	viper.Reset()
-
-	viper.Set("instances", map[string]any{
-		rewriteSettingsCommandTestInstance: map[string]any{
-			"host":   host,
-			"scheme": "http",
-		},
-	})
-	t.Cleanup(func() {
-		viper.Reset()
-	})
-}
-
-// newRewriteSettingsCommand returns a command bound to the test context.
-//
-// Parameters:
-//   - t: Testing handle bound to the command context.
+//   - ctx: Context carrying the configuration of the run.
 //
 // Returns:
 //   - *cobra.Command: The command receiving settings output.
-func newRewriteSettingsCommand(t *testing.T) *cobra.Command {
-	t.Helper()
-
+func newRewriteSettingsCommand(ctx context.Context) *cobra.Command {
 	command := &cobra.Command{}
-	command.SetContext(t.Context())
+	command.SetContext(ctx)
 
 	return command
 }
@@ -354,4 +334,21 @@ func recordSettingsContext(t *testing.T, command *cobra.Command, observed *[]err
 
 		return nil
 	}
+}
+
+// rewriteSettingsCommandContext returns a test context carrying one HTTP test instance.
+//
+// Parameters:
+//   - host: Address of the HTTP test server backing the test instance.
+//
+// Returns:
+//   - [context.Context]: Test context carrying the configured instance.
+func rewriteSettingsCommandContext(t *testing.T, host string) context.Context {
+	t.Helper()
+
+	return apptest.Context(t, fmt.Sprintf(
+		"instances:\n  %q:\n    host: %q\n    scheme: http\n",
+		rewriteSettingsCommandTestInstance,
+		host,
+	))
 }

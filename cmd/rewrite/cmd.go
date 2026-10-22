@@ -10,7 +10,6 @@ import (
 	"slices"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite/settings"
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite/wildcard"
@@ -22,7 +21,7 @@ import (
 type rewriteMutation func(
 	*app.RewriteManagement,
 	context.Context,
-	app.RewriteSelection,
+	app.Selection,
 	app.RewriteRuleInput,
 ) ([]app.RewriteMutationResult, error)
 
@@ -74,23 +73,15 @@ AdGuard Home instances.`,
 	return rewriteCmd
 }
 
-// selection captures active Cobra and Viper selection state.
+// selection captures the instance selection taken from the flags.
 //
 // Returns:
-//   - app.RewriteSelection: The instance selection taken from flags and configuration.
-//   - error: An error when the configured instances cannot be read.
-func (values *flagValues) selection() (app.RewriteSelection, error) {
-	instances, err := app.InstanceSource()
-	if err != nil {
-		return app.RewriteSelection{}, fmt.Errorf("resolve rewrite instance selection: %w", err)
+//   - app.Selection: The instance selection taken from the flags.
+func (values *flagValues) selection() app.Selection {
+	return app.Selection{
+		Names: slices.Clone(values.names),
+		All:   values.all,
 	}
-
-	return app.RewriteSelection{
-		Instances:  instances,
-		Names:      slices.Clone(values.names),
-		ConfigPath: viper.ConfigFileUsed(),
-		All:        values.all,
-	}, nil
 }
 
 // newRewriteRuleCommand creates a rewrite rule mutation command and returns it
@@ -152,13 +143,10 @@ func runRewriteRuleMutation(
 	answer string,
 	mutation rewriteMutation,
 ) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
 	results, mutationErr := mutation(
-		app.NewRewriteManagement(),
+		app.NewRewriteManagement(cmd.Context()),
 		cmd.Context(),
 		selection,
 		app.RewriteRuleInput{

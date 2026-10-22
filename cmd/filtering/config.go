@@ -49,7 +49,7 @@ func runFilteringConfig(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("parse filtering flags: %w", err)
 	}
 
-	results, operationErr := app.NewFilteringManagement().UpdateConfig(
+	results, operationErr := app.NewFilteringManagement(cmd.Context()).UpdateConfig(
 		cmd.Context(),
 		selection,
 		enabled,

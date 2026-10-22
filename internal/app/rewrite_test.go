@@ -46,9 +46,8 @@ func TestRewriteManagementListContinuesAfterFailure(t *testing.T) {
 	results, err := testRewriteManagement(t, map[string]*mockAdguard.MockRewriteService{
 		badInstance:  badService,
 		goodInstance: goodService,
-	}).List(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{badInstance, goodInstance},
+	}).List(testInstancesContext(t), Selection{
+		Names: []string{badInstance, goodInstance},
 	})
 
 	require.ErrorIs(t, err, wantErr)
@@ -98,13 +97,8 @@ func TestRewriteManagementListUsesConfigurationOrder(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
 
-	results, err := management.List(t.Context(), RewriteSelection{
-		Instances: instance.Source{
-			alphaInstance: map[string]any{testHostKey: testAlphaHost},
-			zuluInstance:  map[string]any{testHostKey: testZuluHost},
-		},
-		All:        true,
-		ConfigPath: configPath,
+	results, err := management.List(contextWithConfigFile(t.Context(), t, configPath), Selection{
+		All: true,
 	})
 
 	require.NoError(t, err)
@@ -133,9 +127,8 @@ func TestRewriteManagementMutationUsesExplicitOrderAndReturnsPartialResults(t *t
 	results, err := testRewriteManagement(t, map[string]*mockAdguard.MockRewriteService{
 		zuluInstance:  zuluService,
 		alphaInstance: alphaService,
-	}).Add(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{zuluInstance, alphaInstance, zuluInstance},
+	}).Add(testInstancesContext(t), Selection{
+		Names: []string{zuluInstance, alphaInstance, zuluInstance},
 	}, RewriteRuleInput{
 		Domain:  rewriteTestDomain,
 		Answer:  rewriteTestAnswer,
@@ -163,9 +156,8 @@ func TestRewriteManagementUpdatePreservesFalseAndZeroTarget(t *testing.T) {
 
 	results, err := testRewriteManagement(t, map[string]*mockAdguard.MockRewriteService{
 		goodInstance: service,
-	}).Update(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{goodInstance},
+	}).Update(testInstancesContext(t), Selection{
+		Names: []string{goodInstance},
 	}, RewriteRuleInput{
 		Domain:  rewriteTestDomain,
 		Answer:  rewriteTestAnswer,
@@ -199,12 +191,11 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 		badInstance:  badService,
 		goodInstance: goodService,
 	})
-	selection := RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{badInstance, goodInstance},
+	selection := Selection{
+		Names: []string{badInstance, goodInstance},
 	}
 
-	results, err := management.GetSettings(t.Context(), selection)
+	results, err := management.GetSettings(testInstancesContext(t), selection)
 
 	require.ErrorIs(t, err, wantErr)
 	assert.Equal(t, []RewriteSettingsResult{{
@@ -214,9 +205,8 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 		InstanceCount: 2,
 	}}, results)
 
-	updateResults, err := management.UpdateSettings(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{goodInstance},
+	updateResults, err := management.UpdateSettings(testInstancesContext(t), Selection{
+		Names: []string{goodInstance},
 	}, false)
 
 	require.NoError(t, err)
@@ -230,7 +220,7 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 func TestRewriteManagementCancellationStopsRemainingTargets(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(testInstancesContext(t))
 	service := mockAdguard.NewMockRewriteService(t)
 	service.EXPECT().ListRewriteRules(mock.Anything).RunAndReturn(
 		func(context.Context) ([]adguard.RewriteRule, error) {
@@ -247,9 +237,8 @@ func TestRewriteManagementCancellationStopsRemainingTargets(t *testing.T) {
 		return service, nil
 	}}
 
-	results, err := management.List(ctx, RewriteSelection{
-		Instances: testInstances(),
-		All:       true,
+	results, err := management.List(ctx, Selection{
+		All: true,
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -274,9 +263,8 @@ func TestRewriteManagementDiffFilePreservesBaselineSemantics(t *testing.T) {
 
 	result, err := testRewriteManagement(t, map[string]*mockAdguard.MockRewriteService{
 		goodInstance: service,
-	}).Diff(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{goodInstance},
+	}).Diff(testInstancesContext(t), Selection{
+		Names: []string{goodInstance},
 	}, path)
 
 	require.NoError(t, err)
@@ -307,9 +295,8 @@ func TestRewriteManagementDiffInstancesUsesSortedNames(t *testing.T) {
 		return service, nil
 	}}
 
-	result, err := management.Diff(t.Context(), RewriteSelection{
-		Instances: testInstances(),
-		Names:     []string{zuluInstance, alphaInstance},
+	result, err := management.Diff(testInstancesContext(t), Selection{
+		Names: []string{zuluInstance, alphaInstance},
 	}, "")
 
 	require.NoError(t, err)

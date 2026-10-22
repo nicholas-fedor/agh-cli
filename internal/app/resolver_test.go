@@ -6,10 +6,8 @@ package app
 import (
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,45 +16,29 @@ import (
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
-// viperLock serializes the tests that read or write process-global Viper state.
-var viperLock sync.Mutex
-
-// lockViper isolates process-global Viper state for one test.
-//
-// The production resolver reads the credential namespace from Viper, so a test
-// that inspects it must not observe another test's value. The global instance is
-// reset before the test and after it, and the lock is released last.
-func lockViper(t *testing.T) {
-	t.Helper()
-
-	viperLock.Lock()
-	t.Cleanup(viperLock.Unlock)
-
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-}
-
-// TestCredentialServiceUsesDefaultNamespace verifies an unset or empty namespace
-// resolves to the default, because the credential namespace must never be empty.
+// TestCredentialServiceUsesDefaultNamespace verifies an absent, unset, or empty
+// namespace resolves to the default, because the credential namespace must
+// never be empty.
 func TestCredentialServiceUsesDefaultNamespace(t *testing.T) {
 	t.Parallel()
-	lockViper(t)
 
-	assert.Equal(t, credentials.DefaultService, credentialService())
-
-	viper.Set(viperCredentialServiceKey, "")
-
-	assert.Equal(t, credentials.DefaultService, credentialService())
+	assert.Equal(t, credentials.DefaultService, credentialService(t.Context()))
+	assert.Equal(t, credentials.DefaultService, credentialService(runContext(t, "")))
+	assert.Equal(
+		t,
+		credentials.DefaultService,
+		credentialService(runContext(t, "credentials:\n  service: \"\"\n")),
+	)
 }
 
 // TestCredentialServiceUsesConfiguredNamespace verifies the namespace comes from
 // the loaded configuration, so a custom namespace is honored everywhere.
 func TestCredentialServiceUsesConfiguredNamespace(t *testing.T) {
 	t.Parallel()
-	lockViper(t)
-	viper.Set(viperCredentialServiceKey, "agh-cli-custom")
 
-	assert.Equal(t, "agh-cli-custom", credentialService())
+	ctx := runContext(t, "credentials:\n  service: agh-cli-custom\n")
+
+	assert.Equal(t, "agh-cli-custom", credentialService(ctx))
 }
 
 // TestNewCredentialResolverComposesProductionDependencies verifies the production
@@ -68,13 +50,12 @@ func TestCredentialServiceUsesConfiguredNamespace(t *testing.T) {
 // credential store session. The test is serial because t.Setenv forbids a parallel
 // test.
 func TestNewCredentialResolverComposesProductionDependencies(t *testing.T) {
-	lockViper(t)
 	t.Setenv("AGH_CLI_TEST_PASSWORD", "environment-secret")
 
 	secretPath := filepath.Join(t.TempDir(), "agh-secret")
 	require.NoError(t, os.WriteFile(secretPath, []byte("file-secret\n"), 0o600))
 
-	resolver := NewCredentialResolver()
+	resolver := NewCredentialResolver(t.Context())
 	require.NotNil(t, resolver)
 
 	var _ instance.CredentialResolver = resolver
@@ -109,9 +90,8 @@ func TestNewCredentialResolverComposesProductionDependencies(t *testing.T) {
 // plaintext setup keeps working.
 func TestNewCredentialResolverKeepsLegacyPlaintext(t *testing.T) {
 	t.Parallel()
-	lockViper(t)
 
-	resolved, err := NewCredentialResolver().Resolve(t.Context(), instance.Config{
+	resolved, err := NewCredentialResolver(t.Context()).Resolve(t.Context(), instance.Config{
 		Name:       "legacy",
 		Host:       "legacy.example.com",
 		Scheme:     "https",
@@ -129,7 +109,6 @@ func TestNewCredentialResolverKeepsLegacyPlaintext(t *testing.T) {
 // accepting a caller-supplied resolver, and a nil resolver stays pass-through.
 func TestManagementFactoriesUseProductionResolver(t *testing.T) {
 	t.Parallel()
-	lockViper(t)
 
 	store := mockCredentials.NewMockStore(t)
 	supplied := credentials.NewResolver(
@@ -139,9 +118,9 @@ func TestManagementFactoriesUseProductionResolver(t *testing.T) {
 		mockCredentials.NewMockEnvReader(t),
 	)
 
-	assert.NotNil(t, NewClientManagement().resolve)
-	assert.NotNil(t, NewFilteringManagement().resolve)
-	assert.NotNil(t, NewRewriteManagement().resolve)
+	assert.NotNil(t, NewClientManagement(t.Context()).resolve)
+	assert.NotNil(t, NewFilteringManagement(t.Context()).resolve)
+	assert.NotNil(t, NewRewriteManagement(t.Context()).resolve)
 	assert.Same(t, supplied, NewClientManagementWithResolver(supplied).resolve)
 	assert.Same(t, supplied, NewFilteringManagementWithResolver(supplied).resolve)
 	assert.Same(t, supplied, NewRewriteManagementWithResolver(supplied).resolve)

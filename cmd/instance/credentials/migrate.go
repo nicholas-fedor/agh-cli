@@ -73,7 +73,7 @@ password is ever printed.`,
 //     store is unusable, at least one instance was not migrated, or the
 //     configuration file cannot be written.
 func runMigrate(cmd *cobra.Command, values *migrateValues, seams *streams) error {
-	store, err := seams.coordinator()
+	store, err := seams.coordinator(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}

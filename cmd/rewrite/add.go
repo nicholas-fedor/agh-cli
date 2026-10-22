@@ -23,7 +23,7 @@ func newRewriteAddCommand() *cobra.Command {
 		func(
 			management *app.RewriteManagement,
 			ctx context.Context,
-			selection app.RewriteSelection,
+			selection app.Selection,
 			request app.RewriteRuleInput,
 		) ([]app.RewriteMutationResult, error) {
 			return management.Add(ctx, selection, request)

@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
@@ -61,39 +60,28 @@ func registerFilteringSelectionFlags(command *cobra.Command) {
 	)
 }
 
-// currentFilteringSelection captures the active Cobra and Viper selection state.
+// currentFilteringSelection captures the instance selection taken from the flags.
 //
 // Parameters:
 //   - cmd: Cobra command providing the instance-selection flags.
 //
 // Returns:
-//   - app.FilteringSelection: The instance selection taken from flags and configuration.
-//   - error: An error when a selection flag cannot be retrieved or the configured
-//     instances cannot be read.
-func currentFilteringSelection(cmd *cobra.Command) (app.FilteringSelection, error) {
+//   - app.Selection: The instance selection taken from the flags.
+//   - error: An error when a selection flag cannot be retrieved.
+func currentFilteringSelection(cmd *cobra.Command) (app.Selection, error) {
 	names, err := cmd.Flags().GetStringSlice(filteringInstanceFlag)
 	if err != nil {
-		return app.FilteringSelection{}, fmt.Errorf("parse instance flag: %w", err)
+		return app.Selection{}, fmt.Errorf("parse instance flag: %w", err)
 	}
 
 	all, err := cmd.Flags().GetBool(filteringAllFlag)
 	if err != nil {
-		return app.FilteringSelection{}, fmt.Errorf("parse all flag: %w", err)
+		return app.Selection{}, fmt.Errorf("parse all flag: %w", err)
 	}
 
-	instances, err := app.InstanceSource()
-	if err != nil {
-		return app.FilteringSelection{}, fmt.Errorf(
-			"resolve filtering instance selection: %w",
-			err,
-		)
-	}
-
-	return app.FilteringSelection{
-		Instances:  instances,
-		Names:      names,
-		ConfigPath: viper.ConfigFileUsed(),
-		All:        all,
+	return app.Selection{
+		Names: names,
+		All:   all,
 	}, nil
 }
 

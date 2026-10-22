@@ -37,7 +37,7 @@ func runClientAdd(cmd *cobra.Command, args []string, values *selectionValues) er
 		func(
 			management *app.ClientManagement,
 			ctx context.Context,
-			selection app.ClientSelection,
+			selection app.Selection,
 			request app.ClientMutation,
 		) ([]app.ClientMutationResult, error) {
 			return management.Add(ctx, selection, request)

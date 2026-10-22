@@ -35,7 +35,6 @@ var forbiddenProductionImports = map[string]string{
 	"github.com/nicholas-fedor/agh-cli/internal/config":      "load-mutate-save belongs to internal/app",
 	"github.com/nicholas-fedor/agh-cli/internal/credentials": "credential policy belongs to internal/app",
 	"github.com/nicholas-fedor/agh-cli/internal/instance":    "instance policy belongs to internal/app",
-	"github.com/spf13/viper":                                 "the command reads no Viper key",
 }
 
 // TestProductionFilesImportOnlyAppLayer verifies the dependency direction of the

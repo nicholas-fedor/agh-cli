@@ -72,7 +72,7 @@ Command packages are thin adapters. They may:
 
 They must not:
 
-- read Viper directly for feature operations;
+- read the configuration file directly for feature operations;
 - construct `pkg/adguard` clients directly;
 - implement domain algorithms;
 - perform multi-instance orchestration;
@@ -184,7 +184,8 @@ go test -race -coverprofile=coverage.out -covermode=atomic ./...
 - Black-box contract and integration tests use the external `_test` package.
 - Fuzz tests are white-box unless external visibility is specifically required.
 - Use `t.Context()` rather than `context.Background()` in tests.
-- Use `t.Parallel()` unless the test mutates process-global state such as Viper.
+- Use `t.Parallel()` unless the test mutates process-global state, such as with `t.Setenv` or `t.Chdir`.
+- Execute a command under test with a context from `internal/app/apptest`, which carries a loaded configuration.
 - Reset global configuration with `t.Cleanup`.
 
 ### `pkg/adguard` test tiers
@@ -249,9 +250,11 @@ The per-user file is `agh-cli/config.yaml` under the platform configuration root
 
 The first command that writes a configuration creates the per-user file in step 2, including its directory, so a fresh install never drops a configuration into whatever directory it was run from. Step 3 exists so a project can pin its own configuration.
 
-Resolution happens once, in `internal/app`, and the outcome is published for both the read and the write. An explicit `--config` path therefore behaves exactly like the default: a missing file is created on first write, and a path that is a directory is refused by name. A file with no content is not an error, so a stray tab or a trailing space cannot block every command.
+The root command resolves and loads the file once, through `internal/app`, and attaches the loaded configuration to the command context. Every read and every write of the run uses that one configuration, and nothing keeps it in process-global state. An explicit `--config` path therefore behaves exactly like the default: a missing file is created on first write, and a path that is a directory is refused by name. A file with no content is not an error, so a stray tab or a trailing space cannot block every command.
 
-The configuration file is treated as owned by the operator. A write preserves top-level keys agh-cli does not own, follows a symlink to the file it names rather than replacing the link, and refuses to overwrite a file that changed after it was read. An instance that fails validation is reported as a warning at load rather than failing the load, so a broken instance can still be removed.
+The file is YAML only. A path with an extension other than `.yaml`, `.yml`, or none is refused, because every write is YAML. Keys and instance names are case-sensitive, and an instance name that differs from another only by letter case is refused.
+
+The configuration file is treated as owned by the operator. A write preserves top-level keys agh-cli does not own, follows a symlink to the file it names rather than replacing the link, and refuses to overwrite a file that changed after it was read. An instance that fails validation is reported as a warning at load rather than failing the load, so a broken instance can still be removed. An instance stanza that cannot be decoded is reported the same way and is written back unchanged. A key agh-cli does not read is reported too and kept on every write, so a misspelled key is never silently ignored or dropped.
 
 Start from `example/config.yaml`, which documents every credential source. Never commit a real `config.yaml`, credentials, tokens, or private instance endpoints. Configuration files containing credentials must be readable only by their owner:
 

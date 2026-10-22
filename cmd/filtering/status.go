@@ -46,7 +46,7 @@ func runFilteringStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("parse filtering flags: %w", err)
 	}
 
-	results, operationErr := app.NewFilteringManagement().Status(
+	results, operationErr := app.NewFilteringManagement(cmd.Context()).Status(
 		cmd.Context(),
 		selection,
 	)

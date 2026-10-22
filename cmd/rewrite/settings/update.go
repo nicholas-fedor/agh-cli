@@ -49,12 +49,9 @@ func runRewriteSettingsUpdate(
 	_ []string,
 	values *flagValues,
 ) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, updateErr := app.NewRewriteManagement().UpdateSettings(
+	results, updateErr := app.NewRewriteManagement(cmd.Context()).UpdateSettings(
 		cmd.Context(),
 		selection,
 		values.enabled,

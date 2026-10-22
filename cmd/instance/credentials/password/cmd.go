@@ -74,8 +74,9 @@ type coordinator interface {
 	StatusPassword(ctx context.Context, names []string) (app.PasswordReport, error)
 }
 
-// factory builds the password coordinator for one command execution.
-type factory func() (coordinator, error)
+// factory builds the password coordinator for one command execution from the
+// command context.
+type factory func(ctx context.Context) (coordinator, error)
 
 // terminalReader reads a secret from a terminal without echoing it.
 type terminalReader func(reader io.Reader) ([]byte, error)
@@ -148,8 +149,8 @@ var ErrNotAFile = errors.New("standard input is not a terminal file")
 //   - *streams: production dependencies for the password commands.
 func newStreams() *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
-			return app.NewCredentialsCoordinator()
+		coordinator: func(ctx context.Context) (coordinator, error) {
+			return app.NewCredentialsCoordinator(ctx)
 		},
 		isTerminal: terminalIsInput,
 		readPassword: func(reader io.Reader) ([]byte, error) {

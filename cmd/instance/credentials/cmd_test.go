@@ -97,7 +97,6 @@ var forbiddenProductionImports = map[string]string{
 	"github.com/nicholas-fedor/agh-cli/internal/config":      "configuration loading belongs to internal/app",
 	"github.com/nicholas-fedor/agh-cli/internal/credentials": "credential policy belongs to internal/app",
 	"github.com/nicholas-fedor/agh-cli/internal/instance":    "instance policy belongs to internal/app",
-	"github.com/spf13/viper":                                 "the command reads no Viper key",
 }
 
 // Migrate records the request and returns the configured outcome.
@@ -121,7 +120,7 @@ func (f *fakeCoordinator) Migrate(
 //   - *streams: test dependencies for the credentials commands.
 func testStreams(store coordinator) *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return store, nil
 		},
 	}
@@ -228,7 +227,7 @@ func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
 	t.Parallel()
 
 	group := newCommandGroup(&streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return nil, errTestFactory
 		},
 	})
