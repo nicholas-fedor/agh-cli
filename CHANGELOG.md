@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update alpine docker tag to v3.24.3 by @renovate[bot] in [#96](https://github.com/nicholas-fedor/agh-cli/pull/96)
 - Update nicholas-fedor/govulncheck-action action to v1.1.2 by @renovate[bot] in [#95](https://github.com/nicholas-fedor/agh-cli/pull/95)
 - Update github/codeql-action digest to 9b32540 by @renovate[bot] in [#92](https://github.com/nicholas-fedor/agh-cli/pull/92)
 - Update cimg/go:1.27.3 docker digest to 68e5086 by @renovate[bot] in [#91](https://github.com/nicholas-fedor/agh-cli/pull/91)
