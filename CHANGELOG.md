@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Remove unused codacy configuration by @nicholas-fedor in [#105](https://github.com/nicholas-fedor/agh-cli/pull/105)
 - Lock file maintenance by @renovate[bot] in [#69](https://github.com/nicholas-fedor/agh-cli/pull/69)
 - Update alpine docker tag to v3.24.3 by @renovate[bot] in [#96](https://github.com/nicholas-fedor/agh-cli/pull/96)
 - Update nicholas-fedor/govulncheck-action action to v1.1.2 by @renovate[bot] in [#95](https://github.com/nicholas-fedor/agh-cli/pull/95)
