@@ -75,10 +75,10 @@ func testInstancesContext(t *testing.T) context.Context {
 func instancesDocument(hosts map[string]string) string {
 	var document strings.Builder
 
-	document.WriteString("instances:\n")
+	_, _ = document.WriteString("instances:\n")
 
 	for _, name := range slices.Sorted(maps.Keys(hosts)) {
-		fmt.Fprintf(&document, "  %s:\n    host: %s\n", name, hosts[name])
+		_, _ = fmt.Fprintf(&document, "  %s:\n    host: %s\n", name, hosts[name])
 	}
 
 	return document.String()
