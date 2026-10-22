@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Exempt structured adguard errors from wrapcheck by @nicholas-fedor in [#99](https://github.com/nicholas-fedor/agh-cli/pull/99)
 - Skip git validation on nightly builds by @nicholas-fedor in [#43](https://github.com/nicholas-fedor/agh-cli/pull/43)
 
 ### Chores
