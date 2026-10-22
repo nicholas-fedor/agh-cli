@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update alpine:3.24.3 docker digest to b341357 by @renovate[bot] in [#109](https://github.com/nicholas-fedor/agh-cli/pull/109)
 - Remove unused codacy configuration by @nicholas-fedor in [#105](https://github.com/nicholas-fedor/agh-cli/pull/105)
 - Lock file maintenance by @renovate[bot] in [#69](https://github.com/nicholas-fedor/agh-cli/pull/69)
 - Update alpine docker tag to v3.24.3 by @renovate[bot] in [#96](https://github.com/nicholas-fedor/agh-cli/pull/96)
