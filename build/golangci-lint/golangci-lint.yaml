@@ -3943,8 +3943,10 @@ linters:
         - .WithStack(
       # An array of strings that specify regular expressions of signatures to ignore.
       # Default: []
-      # ignore-sig-regexps:
-      #     - \.New.*Error\(
+      # Internal pkg/adguard helpers return the structured *adguard.Error, which already carries the
+      # failure kind, operation, and method. Public methods return it unwrapped through the error interface.
+      ignore-sig-regexps:
+        - \*github\.com/nicholas-fedor/agh-cli/pkg/adguard\.Error\)?$
       # An array of strings that specify globs of packages to ignore.
       # Default: []
       # ignore-package-globs:

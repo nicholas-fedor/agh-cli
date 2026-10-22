@@ -114,8 +114,6 @@ func TestUserConfigPathReportsUnavailableRoot(t *testing.T) {
 // TestConfigSearchPathsPreferUserConfigDirectory verifies the per-user directory
 // outranks the current directory, so a configuration created by the quickstart
 // keeps applying from any working directory.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
 	configRoot := isolateUserConfigRoot(t)
 
@@ -133,8 +131,6 @@ func TestConfigSearchPathsPreferUserConfigDirectory(t *testing.T) {
 // TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable verifies an
 // unresolvable root leaves the current directory as the only search path instead
 // of failing the command.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestConfigSearchPathsKeepCurrentDirectoryWhenRootUnavailable(t *testing.T) {
 	clearUserConfigEnv(t)
 
@@ -259,8 +255,6 @@ func TestResolveConfigPathRejectsDirectory(t *testing.T) {
 // TestResolveConfigPathSearchesInOrder verifies the per-user location wins over
 // the current directory, and the current directory is used when the per-user file
 // is absent.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestResolveConfigPathSearchesInOrder(t *testing.T) {
 	configRoot := isolateUserConfigRoot(t)
 	workingDirectory := t.TempDir()
@@ -279,8 +273,6 @@ func TestResolveConfigPathSearchesInOrder(t *testing.T) {
 
 // TestResolveConfigPathFallsBackToCurrentDirectory verifies the current
 // directory is searched when no per-user configuration exists.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestResolveConfigPathFallsBackToCurrentDirectory(t *testing.T) {
 	isolateUserConfigRoot(t)
 
@@ -299,8 +291,6 @@ func TestResolveConfigPathFallsBackToCurrentDirectory(t *testing.T) {
 
 // TestResolveConfigPathSearchMissUsesPerUserWriteTarget verifies a search miss
 // resolves to the per-user path so the first write has a destination.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestResolveConfigPathSearchMissUsesPerUserWriteTarget(t *testing.T) {
 	configRoot := isolateUserConfigRoot(t)
 	t.Chdir(t.TempDir())
@@ -899,8 +889,6 @@ func clearUserConfigRoot(t *testing.T) {
 // that exists but cannot be read is reported rather than skipped. Silently
 // falling through to a later location would use a file the operator did not
 // expect, which is the failure the single resolution point exists to prevent.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestResolveConfigPathReportsBrokenSearchLocation(t *testing.T) {
 	configRoot := isolateUserConfigRoot(t)
 	workingDirectory := t.TempDir()
@@ -921,8 +909,6 @@ func TestResolveConfigPathReportsBrokenSearchLocation(t *testing.T) {
 // TestResolveConfigPathContinuesPastAbsentLocations verifies the search moves on
 // when a location simply has no file yet, because a missing file is created on
 // first write rather than reported.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestResolveConfigPathContinuesPastAbsentLocations(t *testing.T) {
 	isolateUserConfigRoot(t)
 
