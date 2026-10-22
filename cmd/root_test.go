@@ -86,8 +86,6 @@ const (
 // configuration outranks one in the current directory, so a command launched
 // from the home directory cannot silently shadow the configuration the
 // quickstart created.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 	workingDirectory := t.TempDir()
 
@@ -119,8 +117,6 @@ func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 // TestRootCommandWritesFirstConfigToUserDirectory verifies the first write of a
 // fresh install creates the per-user configuration file, because the current
 // directory is not a configuration location the quickstart documents.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 	workingDirectory := t.TempDir()
 
@@ -154,8 +150,6 @@ func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 // TestRootCommandConfiguresCredentialsThroughCredentialsGroup verifies the
 // supported workflow end to end: an add writes no credentials, and the
 // credentials group then records the username in the same file.
-//
-//nolint:paralleltest // The test isolates the configuration root through the process environment.
 func TestRootCommandConfiguresCredentialsThroughCredentialsGroup(t *testing.T) {
 	workingDirectory := t.TempDir()
 
