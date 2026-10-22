@@ -17,7 +17,6 @@ Install the following tools:
 - [golangci-lint v2](https://golangci-lint.run/)
 - [Mockery v3](https://vektra.github.io/mockery/)
 - [Hugo Extended](https://gohugo.io/installation/) for documentation development
-- Bun for local Conventional Commit validation
 - GoReleaser v2 and Cosign for release work
 
 Run the project tool installer:
@@ -26,7 +25,7 @@ Run the project tool installer:
 task setup
 ```
 
-`task setup` downloads Go modules, installs Go-based development tools, and installs Bun dependencies from the lockfile.
+`task setup` downloads Go modules and installs Go-based development tools.
 
 To inspect optional tools:
 
@@ -301,7 +300,7 @@ When a command's `Use`, `Short`, `Long`, `Example`, flags, or subcommands change
 
 ## Commit messages and changelog
 
-Commit messages follow Conventional Commits, enforced by Commitlint:
+Commit messages follow Conventional Commits:
 
 ```text
 feat(clients): add client search

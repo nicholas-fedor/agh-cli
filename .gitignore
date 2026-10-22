@@ -1,9 +1,5 @@
 # Dependencies
 vendor/
-node_modules/
-
-# TypeScript cache
-*.tsbuildinfo
 
 # === Test coverage ===
 coverage/

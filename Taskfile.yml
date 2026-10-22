@@ -157,7 +157,6 @@ tasks:
       - |
         echo "Checking required tools:"
         echo ""
-        echo "  bun ([install](https://bun.com/docs/installation)): $(bun --version >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — see: https://bun.com/docs/installation')"
         echo "  task: $(command -v task >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/go-task/task/v3/cmd/task@latest')"
         echo "  golangci-lint: $(command -v golangci-lint >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest')"
         echo "  goreleaser: $(command -v goreleaser >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/goreleaser/goreleaser/v2@latest')"
@@ -168,5 +167,4 @@ tasks:
     cmds:
       - go mod download
       - task install-tools
-      - bun install --frozen-lockfile
       - echo "Setup complete"
