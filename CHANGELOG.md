@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Remove unused circleci configuration by @nicholas-fedor in [#107](https://github.com/nicholas-fedor/agh-cli/pull/107)
 - Remove commit lint workflow by @nicholas-fedor in [#103](https://github.com/nicholas-fedor/agh-cli/pull/103)
 
 ## [0.1.1] - 2026-09-29
