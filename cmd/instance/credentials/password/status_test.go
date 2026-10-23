@@ -275,11 +275,12 @@ func TestWriteStatusJSONReportsEncodeFailure(t *testing.T) {
 //   - credentials.PasswordStatus: the keyring-backed state.
 func keyringStatus(name string, presence credentials.Presence, err error) credentials.PasswordStatus {
 	return credentials.PasswordStatus{
-		Instance: name,
-		Source:   instance.KeyringSource,
-		Target:   name,
-		Presence: presence,
-		Err:      err,
+		Instance:   name,
+		Source:     instance.KeyringSource,
+		Target:     name,
+		TargetKind: "key",
+		Presence:   presence,
+		Err:        err,
 	}
 }
 
@@ -294,11 +295,12 @@ func keyringStatus(name string, presence credentials.Presence, err error) creden
 //   - credentials.PasswordStatus: the mounted-secret state.
 func fileStatus(name string, presence credentials.Presence, err error) credentials.PasswordStatus {
 	return credentials.PasswordStatus{
-		Instance: name,
-		Source:   instance.FileSource,
-		Target:   testCredentialFile,
-		Presence: presence,
-		Err:      err,
+		Instance:   name,
+		Source:     instance.FileSource,
+		Target:     testCredentialFile,
+		TargetKind: "path",
+		Presence:   presence,
+		Err:        err,
 	}
 }
 
@@ -313,11 +315,12 @@ func fileStatus(name string, presence credentials.Presence, err error) credentia
 //   - credentials.PasswordStatus: the environment-backed state.
 func envStatus(name string, presence credentials.Presence, err error) credentials.PasswordStatus {
 	return credentials.PasswordStatus{
-		Instance: name,
-		Source:   instance.EnvSource,
-		Target:   testCredentialEnv,
-		Presence: presence,
-		Err:      err,
+		Instance:   name,
+		Source:     instance.EnvSource,
+		Target:     testCredentialEnv,
+		TargetKind: "variable",
+		Presence:   presence,
+		Err:        err,
 	}
 }
 
@@ -335,10 +338,11 @@ func plaintextStatus(
 	presence credentials.Presence,
 ) credentials.PasswordStatus {
 	return credentials.PasswordStatus{
-		Instance: name,
-		Source:   instance.PlaintextSource,
-		Target:   "",
-		Presence: presence,
-		Err:      nil,
+		Instance:   name,
+		Source:     instance.PlaintextSource,
+		Target:     "",
+		TargetKind: "",
+		Presence:   presence,
+		Err:        nil,
 	}
 }

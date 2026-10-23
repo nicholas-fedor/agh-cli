@@ -4,14 +4,19 @@
 package cmd
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
+	"go/build"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
-	"os"
+	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,27 +25,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// commandSource is one parsed production file of the command layer.
-type commandSource struct {
-	// path is the file path relative to the cmd directory.
-	path string
-	// fileSet positions the parsed file.
+// commandPackage is one parsed package of the command layer.
+type commandPackage struct {
+	// fileSet positions the parsed files.
 	fileSet *token.FileSet
-	// file is the parsed file.
-	file *ast.File
+	// importPath is the import path the package is checked under.
+	importPath string
+	// files holds the parsed production files.
+	files []*ast.File
 }
 
-// domainExports are the exported package-level functions and types of one
-// domain package.
-type domainExports struct {
-	// functions holds the exported function names.
-	functions map[string]struct{}
-	// types holds the exported type names.
-	types map[string]struct{}
+// violation is one way a command file reaches into a domain package beyond its
+// values.
+type violation struct {
+	// text describes the violation, starting with its position.
+	text string
+	// pos orders the violation within its package.
+	pos token.Pos
 }
 
 // modulePath is the import path prefix of this module's packages.
 const modulePath = "github.com/nicholas-fedor/agh-cli"
+
+// layeringFixtures is the directory holding the packages that exercise the
+// layering checks.
+const layeringFixtures = "testdata/layering"
 
 // domainValuePackages are the domain packages whose value types the command
 // layer may name. Their behavior is reached only through internal/app, so a
@@ -67,13 +76,18 @@ var infrastructurePackages = map[string]string{
 func TestCommandFilesAvoidInfrastructurePackages(t *testing.T) {
 	t.Parallel()
 
-	for _, source := range commandSources(t) {
-		for _, spec := range source.file.Imports {
-			imported, err := strconv.Unquote(spec.Path.Value)
-			require.NoError(t, err)
+	for _, pkg := range commandPackages(t, ".") {
+		for _, file := range pkg.files {
+			for _, spec := range file.Imports {
+				imported, err := strconv.Unquote(spec.Path.Value)
+				require.NoError(t, err)
 
-			reason, refused := infrastructurePackages[imported]
-			assert.Falsef(t, refused, "%s imports %s: %s", source.path, imported, reason)
+				reason, refused := infrastructurePackages[imported]
+				assert.Falsef(
+					t, refused, "%s imports %s: %s",
+					pkg.fileSet.Position(spec.Pos()).Filename, imported, reason,
+				)
+			}
 		}
 	}
 }
@@ -82,301 +96,461 @@ func TestCommandFilesAvoidInfrastructurePackages(t *testing.T) {
 // command file names a domain package only for its values.
 //
 // A file never refers to a domain function, whether it calls the function or
-// keeps it as a value to call later, and never converts a value to a domain
-// type. A dot import of a domain package is refused as well, because it hides
-// which names come from the package.
+// keeps it as a value to call later. It never selects a method declared in a
+// domain package and never converts a value to a domain type. A dot import of a
+// domain package is refused as well, because it hides which names come from the
+// package.
 func TestCommandFilesUseDomainPackagesForValuesOnly(t *testing.T) {
 	t.Parallel()
 
-	exports := loadDomainExports(t)
+	packages := commandPackages(t, ".")
+	sources := sourceImporter(packages[0].fileSet)
 
-	for _, source := range commandSources(t) {
-		for _, violation := range domainViolations(t, source, exports) {
-			assert.Fail(t, "command file reaches into a domain package", violation)
+	for _, pkg := range packages {
+		for _, text := range domainViolations(t, pkg, sources) {
+			assert.Fail(t, "command file reaches into a domain package", text)
 		}
 	}
 }
 
-// domainViolations reports every way a file reaches into a domain package
-// beyond its values.
+// TestDomainViolationsRefuseBehavior verifies that each way of reaching domain
+// behavior is reported, so the production check cannot pass by missing a form.
+func TestDomainViolationsRefuseBehavior(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		fixture string
+		want    string
+	}{
+		"method call": {
+			fixture: "method",
+			want:    "selects method List of *client.Service",
+		},
+		"pointer conversion": {
+			fixture: "pointerconversion",
+			want:    "converts to *client.Settings",
+		},
+		"function value": {
+			fixture: "functionvalue",
+			want:    "refers to function credentials.NewManager",
+		},
+		"dot import": {
+			fixture: "dotimport",
+			want:    "dot-imports " + modulePath + "/internal/credentials",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			violations := fixtureViolations(t, test.fixture)
+
+			require.Len(t, violations, 1)
+			assert.Contains(t, violations[0], test.want)
+		})
+	}
+}
+
+// TestDomainViolationsAllowValues verifies that building and reading domain
+// values is not reported.
+func TestDomainViolationsAllowValues(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, fixtureViolations(t, "values"))
+}
+
+// domainViolations type-checks one package and reports every way its files
+// reach into a domain package beyond its values.
 //
 // Parameters:
-//   - source: parsed command file.
-//   - exports: exported names of every domain package, keyed by import path.
+//   - pkg: parsed command package.
+//   - sources: importer that type-checks the package's imports.
 //
 // Returns:
-//   - []string: one description per violation, in file order.
-func domainViolations(
-	t *testing.T,
-	source commandSource,
-	exports map[string]domainExports,
-) []string {
+//   - []string: one description per violation, in source order.
+func domainViolations(t *testing.T, pkg commandPackage, sources types.Importer) []string {
 	t.Helper()
 
-	packages, violations := domainImportNames(t, source)
+	info := &types.Info{
+		Types:      map[ast.Expr]types.TypeAndValue{},
+		Uses:       map[*ast.Ident]types.Object{},
+		Selections: map[*ast.SelectorExpr]*types.Selection{},
+	}
 
-	ast.Inspect(source.file, func(node ast.Node) bool {
-		switch typed := node.(type) {
-		case *ast.SelectorExpr:
-			violations = appendDomainFunction(violations, source, typed, packages, exports)
-		case *ast.CallExpr:
-			violations = appendDomainConversion(violations, source, typed, packages, exports)
-		default:
-			// Every other node only leads to the selectors and calls below it.
+	checker := types.Config{Importer: sources}
+
+	_, err := checker.Check(pkg.importPath, pkg.fileSet, pkg.files, info)
+	require.NoError(t, err)
+
+	violations := dotImportViolations(t, pkg)
+
+	violations = append(violations, functionViolations(pkg.fileSet, info)...)
+	violations = append(violations, methodViolations(pkg.fileSet, info)...)
+	violations = append(violations, conversionViolations(pkg, info)...)
+
+	slices.SortFunc(violations, func(left, right violation) int {
+		return cmp.Compare(left.pos, right.pos)
+	})
+
+	texts := make([]string, 0, len(violations))
+	for _, found := range violations {
+		texts = append(texts, found.text)
+	}
+
+	return texts
+}
+
+// functionViolations reports every reference to a domain package function.
+//
+// Every reference counts, called or not, because a function kept as a value is
+// called later through a name the check cannot follow. Resolved references
+// cover a renamed or dot import too.
+//
+// Parameters:
+//   - fileSet: positions of the checked files.
+//   - info: type information of the checked package.
+//
+// Returns:
+//   - []violation: one violation per reference.
+func functionViolations(fileSet *token.FileSet, info *types.Info) []violation {
+	var violations []violation
+
+	for ident, object := range info.Uses {
+		function, isFunction := object.(*types.Func)
+		if !isFunction || function.Signature().Recv() != nil || !isDomainPackage(function.Pkg()) {
+			continue
 		}
 
-		return true
-	})
+		violations = append(violations, violation{
+			text: fmt.Sprintf(
+				"%s refers to function %s.%s; reach its behavior through internal/app",
+				fileSet.Position(ident.Pos()), function.Pkg().Name(), function.Name(),
+			),
+			pos: ident.Pos(),
+		})
+	}
 
 	return violations
 }
 
-// appendDomainFunction records a reference to a domain package function.
-//
-// Every reference counts, called or not, because a function kept as a value is
-// called later through a name the check cannot follow.
-//
-// Parameters:
-//   - violations: violations found so far.
-//   - source: parsed command file.
-//   - selector: selector expression under inspection.
-//   - packages: domain import paths keyed by the name the file uses for them.
-//   - exports: exported names of every domain package, keyed by import path.
-//
-// Returns:
-//   - []string: violations with the reference appended when it names a domain
-//     function.
-func appendDomainFunction(
-	violations []string,
-	source commandSource,
-	selector *ast.SelectorExpr,
-	packages map[string]string,
-	exports map[string]domainExports,
-) []string {
-	imported, isDomain := domainPackage(selector, packages)
-	if !isDomain {
-		return violations
-	}
-
-	if _, isFunction := exports[imported].functions[selector.Sel.Name]; !isFunction {
-		return violations
-	}
-
-	return append(violations, fmt.Sprintf(
-		"%s refers to function %s.%s; reach its behavior through internal/app",
-		source.fileSet.Position(selector.Pos()), path.Base(imported), selector.Sel.Name,
-	))
-}
-
-// appendDomainConversion records a conversion to a domain package type.
+// methodViolations reports every selection of a method declared in a domain
+// package, whether it is called, kept as a method value, or named as a method
+// expression.
 //
 // Parameters:
-//   - violations: violations found so far.
-//   - source: parsed command file.
-//   - call: call expression under inspection.
-//   - packages: domain import paths keyed by the name the file uses for them.
-//   - exports: exported names of every domain package, keyed by import path.
+//   - fileSet: positions of the checked files.
+//   - info: type information of the checked package.
 //
 // Returns:
-//   - []string: violations with the conversion appended when the call converts
-//     to a domain type.
-func appendDomainConversion(
-	violations []string,
-	source commandSource,
-	call *ast.CallExpr,
-	packages map[string]string,
-	exports map[string]domainExports,
-) []string {
-	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !isSelector {
-		return violations
+//   - []violation: one violation per method selection.
+func methodViolations(fileSet *token.FileSet, info *types.Info) []violation {
+	var violations []violation
+
+	for selector, selection := range info.Selections {
+		if selection.Kind() == types.FieldVal || !isDomainPackage(selection.Obj().Pkg()) {
+			continue
+		}
+
+		violations = append(violations, violation{
+			text: fmt.Sprintf(
+				"%s selects method %s of %s; reach its behavior through internal/app",
+				fileSet.Position(selector.Sel.Pos()), selection.Obj().Name(),
+				types.TypeString(selection.Recv(), packageName),
+			),
+			pos: selector.Sel.Pos(),
+		})
 	}
 
-	imported, isDomain := domainPackage(selector, packages)
-	if !isDomain {
-		return violations
-	}
-
-	if _, isType := exports[imported].types[selector.Sel.Name]; !isType {
-		return violations
-	}
-
-	return append(violations, fmt.Sprintf(
-		"%s converts to %s.%s; build domain values with composite literals",
-		source.fileSet.Position(call.Pos()), path.Base(imported), selector.Sel.Name,
-	))
+	return violations
 }
 
-// domainPackage reports which domain package a selector selects through.
-//
-// A local declaration resolves its identifier, so a variable that shares a
-// package name is not mistaken for the package.
+// conversionViolations reports every conversion to a domain type, including a
+// conversion to a pointer to one.
 //
 // Parameters:
-//   - selector: selector expression under inspection.
-//   - packages: domain import paths keyed by the name the file uses for them.
+//   - pkg: parsed command package.
+//   - info: type information of the checked package.
 //
 // Returns:
-//   - string: the import path of the selected domain package.
-//   - bool: true when the selector selects through a domain package.
-func domainPackage(selector *ast.SelectorExpr, packages map[string]string) (string, bool) {
-	receiver, isIdent := selector.X.(*ast.Ident)
-	if !isIdent || receiver.Obj != nil {
-		return "", false
+//   - []violation: one violation per conversion.
+func conversionViolations(pkg commandPackage, info *types.Info) []violation {
+	var violations []violation
+
+	for _, file := range pkg.files {
+		ast.Inspect(file, func(node ast.Node) bool {
+			found, isConversion := conversionViolation(pkg.fileSet, info, node)
+			if isConversion {
+				violations = append(violations, found)
+			}
+
+			return true
+		})
 	}
 
-	imported, isDomain := packages[receiver.Name]
-
-	return imported, isDomain
+	return violations
 }
 
-// loadDomainExports reads the exported package-level functions and types of
-// every domain package from its source.
+// conversionViolation reports whether one node converts a value to a domain
+// type or a pointer to one.
+//
+// Parameters:
+//   - fileSet: positions of the checked files.
+//   - info: type information of the checked package.
+//   - node: syntax node under inspection.
 //
 // Returns:
-//   - map[string]domainExports: exported names keyed by import path.
-func loadDomainExports(t *testing.T) map[string]domainExports {
+//   - violation: the conversion, when the node is one.
+//   - bool: true when the node converts to a domain type.
+func conversionViolation(fileSet *token.FileSet, info *types.Info, node ast.Node) (violation, bool) {
+	call, isCall := node.(*ast.CallExpr)
+	if !isCall {
+		return violation{}, false
+	}
+
+	target, isTyped := info.Types[call.Fun]
+	if !isTyped || !target.IsType() || !isDomainType(target.Type) {
+		return violation{}, false
+	}
+
+	return violation{
+		text: fmt.Sprintf(
+			"%s converts to %s; build domain values with composite literals",
+			fileSet.Position(call.Pos()), types.TypeString(target.Type, packageName),
+		),
+		pos: call.Pos(),
+	}, true
+}
+
+// dotImportViolations reports every dot import of a domain package.
+//
+// Parameters:
+//   - pkg: parsed command package.
+//
+// Returns:
+//   - []violation: one violation per dot import.
+func dotImportViolations(t *testing.T, pkg commandPackage) []violation {
 	t.Helper()
 
-	exports := make(map[string]domainExports, len(domainValuePackages))
+	var violations []violation
 
-	for imported := range domainValuePackages {
-		dir := filepath.Join("..", filepath.FromSlash(strings.TrimPrefix(imported, modulePath+"/")))
+	for _, file := range pkg.files {
+		for _, spec := range file.Imports {
+			imported, err := strconv.Unquote(spec.Path.Value)
+			require.NoError(t, err)
 
-		entries, err := os.ReadDir(dir)
-		require.NoError(t, err)
-
-		names := domainExports{functions: map[string]struct{}{}, types: map[string]struct{}{}}
-
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") ||
-				strings.HasSuffix(entry.Name(), "_test.go") {
+			_, isDomain := domainValuePackages[imported]
+			if !isDomain || spec.Name == nil || spec.Name.Name != "." {
 				continue
 			}
 
-			file, parseErr := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, entry.Name()), nil, 0)
-			require.NoError(t, parseErr)
-
-			collectExports(file, names)
+			violations = append(violations, violation{
+				text: fmt.Sprintf(
+					"%s dot-imports %s, which hides the names it uses from the package",
+					pkg.fileSet.Position(spec.Pos()), imported,
+				),
+				pos: spec.Pos(),
+			})
 		}
-
-		exports[imported] = names
 	}
 
-	return exports
+	return violations
 }
 
-// collectExports adds the exported package-level functions and types of one
-// file.
+// isDomainType reports whether a type is a domain type or a pointer to one.
 //
 // Parameters:
-//   - file: parsed domain package file.
-//   - names: exported names collected so far, extended in place.
-func collectExports(file *ast.File, names domainExports) {
-	for _, declaration := range file.Decls {
-		switch typed := declaration.(type) {
-		case *ast.FuncDecl:
-			if typed.Recv == nil && typed.Name.IsExported() {
-				names.functions[typed.Name.Name] = struct{}{}
-			}
-		case *ast.GenDecl:
-			collectTypes(typed, names)
-		default:
-			// A bad declaration names nothing the command layer could use.
-		}
-	}
-}
-
-// collectTypes adds the exported types of one general declaration.
-//
-// Parameters:
-//   - declaration: parsed general declaration.
-//   - names: exported names collected so far, extended in place.
-func collectTypes(declaration *ast.GenDecl, names domainExports) {
-	for _, spec := range declaration.Specs {
-		typeSpec, isType := spec.(*ast.TypeSpec)
-		if isType && typeSpec.Name.IsExported() {
-			names.types[typeSpec.Name.Name] = struct{}{}
-		}
-	}
-}
-
-// commandSources parses every production Go file under the cmd directory.
+//   - typ: converted-to type.
 //
 // Returns:
-//   - []commandSource: the parsed files in walk order.
-func commandSources(t *testing.T) []commandSource {
+//   - bool: true when the type, after removing pointers, is declared in a
+//     domain package.
+func isDomainType(typ types.Type) bool {
+	for {
+		pointer, isPointer := types.Unalias(typ).(*types.Pointer)
+		if !isPointer {
+			break
+		}
+
+		typ = pointer.Elem()
+	}
+
+	named, isNamed := types.Unalias(typ).(*types.Named)
+
+	return isNamed && isDomainPackage(named.Obj().Pkg())
+}
+
+// isDomainPackage reports whether a package is a domain value package.
+//
+// Parameters:
+//   - pkg: declaring package, or nil for a universe object.
+//
+// Returns:
+//   - bool: true when the package is a domain value package.
+func isDomainPackage(pkg *types.Package) bool {
+	if pkg == nil {
+		return false
+	}
+
+	_, isDomain := domainValuePackages[pkg.Path()]
+
+	return isDomain
+}
+
+// packageName qualifies a type name by its package name alone, which keeps
+// reported types short.
+//
+// Parameters:
+//   - pkg: package that declares a named type.
+//
+// Returns:
+//   - string: the package name.
+func packageName(pkg *types.Package) string {
+	return pkg.Name()
+}
+
+// fixtureViolations reports the violations of one layering fixture package.
+//
+// Parameters:
+//   - fixture: fixture directory name under the layering fixtures.
+//
+// Returns:
+//   - []string: one description per violation, in source order.
+func fixtureViolations(t *testing.T, fixture string) []string {
 	t.Helper()
 
-	var sources []commandSource
+	packages := commandPackages(t, path.Join(layeringFixtures, fixture))
+	require.Len(t, packages, 1)
 
-	err := filepath.WalkDir(".", func(filePath string, entry fs.DirEntry, walkErr error) error {
+	return domainViolations(t, packages[0], sourceImporter(packages[0].fileSet))
+}
+
+// sourceImporter returns an importer that type-checks imports from source.
+//
+// The importer caches every package it checks, so one importer serves every
+// package of a single walk. It is not safe for concurrent use, so a parallel
+// test builds its own.
+//
+// Parameters:
+//   - fileSet: positions shared with the checked packages.
+//
+// Returns:
+//   - [types.Importer]: the source importer.
+func sourceImporter(fileSet *token.FileSet) types.Importer {
+	return importer.ForCompiler(fileSet, "source", nil)
+}
+
+// commandPackages parses every production Go file under a directory of the
+// command layer and groups the files by package.
+//
+// Parameters:
+//   - root: directory to walk, relative to the cmd directory.
+//
+// Returns:
+//   - []commandPackage: the parsed packages ordered by directory.
+func commandPackages(t *testing.T, root string) []commandPackage {
+	t.Helper()
+
+	fileSet := token.NewFileSet()
+	files := make(map[string][]*ast.File)
+
+	for _, filePath := range commandFilePaths(t, root) {
+		file, err := parser.ParseFile(fileSet, filePath, nil, parser.SkipObjectResolution)
+		require.NoError(t, err)
+
+		dir := filepath.Dir(filePath)
+
+		files[dir] = append(files[dir], file)
+	}
+
+	packages := make([]commandPackage, 0, len(files))
+
+	for _, dir := range slices.Sorted(maps.Keys(files)) {
+		packages = append(packages, commandPackage{
+			fileSet:    fileSet,
+			importPath: path.Join(modulePath, "cmd", filepath.ToSlash(dir)),
+			files:      files[dir],
+		})
+	}
+
+	return packages
+}
+
+// commandFilePaths lists every production Go file under a directory of the
+// command layer.
+//
+// A testdata directory below the root is skipped, because it holds fixtures
+// rather than command files.
+//
+// Parameters:
+//   - root: directory to walk, relative to the cmd directory.
+//
+// Returns:
+//   - []string: the file paths in walk order.
+func commandFilePaths(t *testing.T, root string) []string {
+	t.Helper()
+
+	var paths []string
+
+	err := filepath.WalkDir(root, func(filePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 
-		if entry.IsDir() || !strings.HasSuffix(filePath, ".go") ||
-			strings.HasSuffix(filePath, "_test.go") {
-			return nil
+		if entry.IsDir() {
+			return skipFixtures(root, filePath, entry.Name())
 		}
 
-		fileSet := token.NewFileSet()
-
-		file, parseErr := parser.ParseFile(fileSet, filePath, nil, 0)
-		if parseErr != nil {
-			return parseErr
+		include, err := isCommandFile(filePath)
+		if include {
+			paths = append(paths, filePath)
 		}
 
-		sources = append(sources, commandSource{path: filePath, fileSet: fileSet, file: file})
-
-		return nil
+		return err
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, sources)
+	require.NotEmpty(t, paths)
 
-	return sources
+	return paths
 }
 
-// domainImportNames returns the names under which a file imports domain
-// packages, and refuses a dot import of one.
+// skipFixtures skips a testdata directory below the walked root.
 //
 // Parameters:
-//   - source: parsed command file.
+//   - root: directory the walk started from.
+//   - dir: directory the walk reached.
+//   - name: base name of the reached directory.
 //
 // Returns:
-//   - map[string]string: import paths keyed by the name the file uses for them.
-//   - []string: one violation per dot import of a domain package.
-func domainImportNames(t *testing.T, source commandSource) (map[string]string, []string) {
-	t.Helper()
-
-	names := make(map[string]string)
-
-	var violations []string
-
-	for _, spec := range source.file.Imports {
-		imported, err := strconv.Unquote(spec.Path.Value)
-		require.NoError(t, err)
-
-		if _, isDomain := domainValuePackages[imported]; !isDomain {
-			continue
-		}
-
-		name := path.Base(imported)
-		if spec.Name != nil {
-			name = spec.Name.Name
-		}
-
-		if name == "." {
-			violations = append(violations, fmt.Sprintf(
-				"%s dot-imports %s, which hides the names it uses from the package",
-				source.fileSet.Position(spec.Pos()), imported,
-			))
-
-			continue
-		}
-
-		names[name] = imported
+//   - error: [filepath.SkipDir] for a testdata directory below the root,
+//     otherwise nil.
+func skipFixtures(root, dir, name string) error {
+	if dir != root && name == "testdata" {
+		return filepath.SkipDir
 	}
 
-	return names, violations
+	return nil
+}
+
+// isCommandFile reports whether a file is a production Go file the build would
+// compile, so the check sees the same package the compiler does.
+//
+// Parameters:
+//   - filePath: file the walk reached.
+//
+// Returns:
+//   - bool: true for a non-test Go file that its build constraints include.
+//   - error: a wrapped error when the build constraints cannot be read.
+func isCommandFile(filePath string) (bool, error) {
+	dir, name := filepath.Split(filePath)
+	if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		return false, nil
+	}
+
+	matches, err := build.Default.MatchFile(dir, name)
+	if err != nil {
+		return false, fmt.Errorf("match build constraints of %s: %w", filePath, err)
+	}
+
+	return matches, nil
 }

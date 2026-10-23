@@ -207,8 +207,8 @@ func writeStatusText(out io.Writer, result credentials.PasswordReport) error {
 func passwordLine(entry credentials.PasswordStatus) string {
 	line := "instance " + strconv.Quote(entry.Instance) + ": source " + string(entry.Source)
 
-	if kind := entry.TargetKind(); kind != "" {
-		line += ", " + kind + " " + strconv.Quote(entry.Target)
+	if entry.TargetKind != "" {
+		line += ", " + entry.TargetKind + " " + strconv.Quote(entry.Target)
 	}
 
 	line += ", " + presenceLabel(entry.Presence)
