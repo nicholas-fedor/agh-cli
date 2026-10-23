@@ -133,12 +133,21 @@ type fileStamp struct {
 	exists bool
 }
 
-// DefaultConfigDirName is the configuration directory name created under a
-// per-user configuration root.
+// DefaultConfigDirName is the agh-cli directory under the per-user
+// configuration root.
+//
+// [os.UserConfigDir] resolves the root, so the directory is
+// `$XDG_CONFIG_HOME/agh-cli` or `$HOME/.config/agh-cli` on Unix,
+// `~/Library/Application Support/agh-cli` on macOS, and `%AppData%\agh-cli` on
+// Windows.
 const DefaultConfigDirName = "agh-cli"
 
-// DefaultConfigFileName is the configuration file name inside the configuration
-// directory.
+// DefaultConfigFileName is the configuration file inside
+// [DefaultConfigDirName].
+//
+// The bare name is the last resort for a run whose per-user configuration root
+// cannot be resolved, because a relative name is the only location that is
+// always available.
 const DefaultConfigFileName = "config.yaml"
 
 // Indentation of the nested mappings a save writes.

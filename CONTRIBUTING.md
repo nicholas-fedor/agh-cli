@@ -54,7 +54,7 @@ main.go
 - `cmd/**` defines Cobra commands, flags, arguments, and presentation wiring.
 - `internal/app` coordinates application use cases and multi-instance execution.
 - `internal/client`, `internal/filtering`, and `internal/rewrite` contain domain behavior.
-- `internal/config`, `internal/instance`, and `internal/execution` own configuration, catalog selection, and ordered execution.
+- `internal/config`, `internal/instance`, and `internal/execution` own configuration, catalog selection, and ordered execution. `internal/config` also resolves which configuration file a run uses.
 - `internal/connection` builds the `pkg/adguard` client for a configured instance, with one request timeout for every feature.
 - `internal/credentials` owns the credential store adapter, the mounted-file and environment readers, credential resolution, and the credential use cases in `Manager`. It reaches the configuration through an interface it defines and never imports `internal/config`.
 - `pkg/adguard` is the public, generated-code-independent AdGuard Home client.
