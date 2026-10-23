@@ -48,7 +48,7 @@ main.go
 - Requests from `cmd` carry only the operator's intent, such as selected names or `--all`. `internal/app` reads the configured instances from the run configuration itself.
 - Domain packages own use cases, validation, request shaping, wildcard behavior, and result shaping.
 - `pkg/adguard` owns transport, auth, timeouts, bounded responses, strict decoding, typed errors, and public domain types.
-- `internal/config` owns local YAML persistence.
+- `internal/config` owns local YAML persistence and resolving which file a run uses: the search order, the per-user path, and the write-path fallback. `internal/app` loads the resolved file and attaches it to the command context.
 - `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, credential resolution, and the credential use cases in `Manager`. It reaches the configuration through an interface it defines and never imports `internal/config`.
 - `internal/instance` owns validated instance configuration and catalog selection.
 - `internal/execution` owns ordered multi-target execution, cancellation, outcomes, error aggregation, and collecting per-target results.
