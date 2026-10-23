@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nicholas-fedor/agh-cli/internal/execution"
+	"github.com/nicholas-fedor/agh-cli/internal/connection"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
@@ -163,39 +163,29 @@ func (a *RewriteManagement) GetSettings(
 	ctx context.Context,
 	selection Selection,
 ) ([]RewriteSettingsResult, error) {
-	nextIndex := 0
+	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	if err != nil {
+		return nil, fmt.Errorf("resolve rewrite read targets: %w", err)
+	}
 
-	results, instanceCount, err := runRewriteReadOperation(
-		ctx,
-		selection,
-		a.resolve,
-		func(ctx context.Context, target execution.Target[instance.Config]) (RewriteSettingsResult, error) {
-			index := nextIndex
-			nextIndex++
-
-			service, useCaseErr := a.useCase(target.Value)
-			if useCaseErr != nil {
-				return RewriteSettingsResult{}, fmt.Errorf(
-					"create rewrite use case for %q: %w",
-					target.Name,
-					useCaseErr,
-				)
-			}
-
+	results, err := runOnInstances(ctx, targets, a.useCase,
+		func(ctx context.Context, service *rewrite.Service, name string) (RewriteSettingsResult, error) {
 			settings, settingsErr := service.GetSettings(ctx)
 			if settingsErr != nil {
 				return RewriteSettingsResult{}, fmt.Errorf("get rewrite settings: %w", settingsErr)
 			}
 
 			return RewriteSettingsResult{
-				Instance: target.Name,
-				Enabled:  settings.Enabled,
-				Index:    index,
+				Instance:      name,
+				Enabled:       settings.Enabled,
+				Index:         0,
+				InstanceCount: len(targets),
 			}, nil
 		},
 	)
+
 	for index := range results {
-		results[index].InstanceCount = instanceCount
+		results[index].Index = index
 	}
 
 	if err != nil {
@@ -218,39 +208,29 @@ func (a *RewriteManagement) List(
 	ctx context.Context,
 	selection Selection,
 ) ([]RewriteListResult, error) {
-	nextIndex := 0
+	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	if err != nil {
+		return nil, fmt.Errorf("resolve rewrite read targets: %w", err)
+	}
 
-	results, instanceCount, err := runRewriteReadOperation(
-		ctx,
-		selection,
-		a.resolve,
-		func(ctx context.Context, target execution.Target[instance.Config]) (RewriteListResult, error) {
-			index := nextIndex
-			nextIndex++
-
-			service, useCaseErr := a.useCase(target.Value)
-			if useCaseErr != nil {
-				return RewriteListResult{}, fmt.Errorf(
-					"create rewrite use case for %q: %w",
-					target.Name,
-					useCaseErr,
-				)
-			}
-
+	results, err := runOnInstances(ctx, targets, a.useCase,
+		func(ctx context.Context, service *rewrite.Service, name string) (RewriteListResult, error) {
 			rules, listErr := service.List(ctx)
 			if listErr != nil {
 				return RewriteListResult{}, fmt.Errorf("list rewrite rules: %w", listErr)
 			}
 
 			return RewriteListResult{
-				Instance: target.Name,
-				Rules:    shapeRewriteRules(rules),
-				Index:    index,
+				Instance:      name,
+				Rules:         shapeRewriteRules(rules),
+				Index:         0,
+				InstanceCount: len(targets),
 			}, nil
 		},
 	)
+
 	for index := range results {
-		results[index].InstanceCount = instanceCount
+		results[index].Index = index
 	}
 
 	if err != nil {
@@ -406,10 +386,9 @@ func (a *RewriteManagement) runMutation(
 		return nil, fmt.Errorf("resolve rewrite targets: %w", err)
 	}
 
-	results, err := runServiceMutation(
+	results, err := mutateInstances(
 		ctx,
 		targets,
-		"rewrite mutation",
 		a.useCase,
 		operation,
 		func(name string) RewriteMutationResult {
@@ -440,36 +419,6 @@ func (a *RewriteManagement) useCase(cfg instance.Config) (*rewrite.Service, erro
 	return rewrite.NewService(service), nil
 }
 
-// runRewriteReadOperation executes one read operation in configuration order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - operation: per-instance operation producing one result value.
-//
-// Returns:
-//   - []T: one result per successful instance in configured order.
-//   - int: the number of selected instances.
-//   - error: a wrapped resolution or execution error.
-func runRewriteReadOperation[T any](
-	ctx context.Context,
-	selection Selection,
-	resolve instance.CredentialResolver,
-	operation func(context.Context, execution.Target[instance.Config]) (T, error),
-) ([]T, int, error) {
-	targets, err := selectOrderedTargets(ctx, selection, resolve)
-	if err != nil {
-		return nil, 0, fmt.Errorf("resolve rewrite read targets: %w", err)
-	}
-
-	results, count, err := runAcrossTargets(ctx, targets, "rewrite read", operation)
-	if err != nil {
-		return results, count, fmt.Errorf("run rewrite read: %w", err)
-	}
-
-	return results, count, nil
-}
-
 // newAdguardRewriteService creates the production rewrite service factory.
 //
 // Parameters:
@@ -481,10 +430,10 @@ func runRewriteReadOperation[T any](
 //
 //nolint:ireturn // The factory intentionally depends on the public service interface.
 func newAdguardRewriteService(cfg instance.Config) (adguard.RewriteService, error) {
-	client, err := newAdguardClientsServiceWithHTTPClient(cfg, nil)
+	service, err := connection.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build rewrite service: %w", err)
 	}
 
-	return client, nil
+	return service, nil
 }

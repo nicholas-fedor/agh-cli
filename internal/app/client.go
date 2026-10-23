@@ -6,14 +6,9 @@ package app
 import (
 	"context"
 	"fmt"
-	"maps"
-	"net/http"
-	"net/url"
-	"slices"
-	"time"
 
 	"github.com/nicholas-fedor/agh-cli/internal/client"
-	"github.com/nicholas-fedor/agh-cli/internal/execution"
+	"github.com/nicholas-fedor/agh-cli/internal/connection"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
@@ -40,7 +35,8 @@ type ClientListResult struct {
 	Instance string
 	// Rows contains the retrieved clients in service order.
 	Rows []client.Row
-	// Index is the zero-based target position.
+	// Index is the zero-based position of the result among the results of the
+	// run.
 	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
@@ -58,11 +54,7 @@ type ClientMutationResult struct {
 type clientServiceFactory func(instance.Config) (adguard.ClientsService, error)
 
 // clientMutationOperation executes one mutation against an instance service.
-type clientMutationOperation func(
-	context.Context,
-	*client.Service,
-	execution.Target[instance.Config],
-) error
+type clientMutationOperation func(context.Context, *client.Service) error
 
 // ClientManagement coordinates client use cases across selected instances.
 type ClientManagement struct {
@@ -72,9 +64,6 @@ type ClientManagement struct {
 	// legacy plaintext configuration working.
 	resolve instance.CredentialResolver
 }
-
-// clientRequestTimeout is the per-request timeout for constructed AdGuard clients.
-const clientRequestTimeout = 30 * time.Second
 
 // NewClientManagement creates production client-management wiring.
 //
@@ -139,7 +128,7 @@ func (a *ClientManagement) Add(
 		selection,
 		"add client",
 		"Added client "+mutation.Name,
-		func(ctx context.Context, service *client.Service, _ execution.Target[instance.Config]) error {
+		func(ctx context.Context, service *client.Service) error {
 			err := service.Add(ctx, request)
 			if err != nil {
 				return fmt.Errorf("add client: %w", err)
@@ -175,7 +164,7 @@ func (a *ClientManagement) Delete(
 		selection,
 		"delete client",
 		"Deleted client "+name,
-		func(ctx context.Context, service *client.Service, _ execution.Target[instance.Config]) error {
+		func(ctx context.Context, service *client.Service) error {
 			err := service.Delete(ctx, client.DeleteRequest{Name: name})
 			if err != nil {
 				return fmt.Errorf("delete client: %w", err)
@@ -198,45 +187,38 @@ func (a *ClientManagement) Delete(
 //   - selection: instance-selection inputs for the operation.
 //
 // Returns:
-//   - []ClientListResult: retrieved rows in configuration order.
+//   - []ClientListResult: retrieved rows in configuration order, even when some
+//     instances failed.
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) List(
 	ctx context.Context,
 	selection Selection,
 ) ([]ClientListResult, error) {
-	nextIndex := 0
-	results, instanceCount, err := runClientOperation(
-		ctx,
-		selection,
-		a.resolve,
-		func(ctx context.Context, target execution.Target[instance.Config]) (ClientListResult, error) {
-			index := nextIndex
-			nextIndex++
+	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	if err != nil {
+		return nil, fmt.Errorf("resolve client targets: %w", err)
+	}
 
-			service, useCaseErr := a.useCase(target.Value)
-			if useCaseErr != nil {
-				return ClientListResult{}, fmt.Errorf("create client use case for %q: %w", target.Name, useCaseErr)
-			}
-
+	results, err := runOnInstances(ctx, targets, a.useCase,
+		func(ctx context.Context, service *client.Service, name string) (ClientListResult, error) {
 			result, listErr := service.List(ctx)
 			if listErr != nil {
 				return ClientListResult{}, fmt.Errorf("list clients: %w", listErr)
 			}
 
-			return ClientListResult{Instance: target.Name, Rows: result.Rows, Index: index}, nil
+			return ClientListResult{Instance: name, Rows: result.Rows, Index: 0, InstanceCount: len(targets)}, nil
 		},
 	)
 
 	for index := range results {
-		results[index].InstanceCount = instanceCount
+		results[index].Index = index
 	}
 
-	orderedResults := orderClientListResults(ctx, results)
 	if err != nil {
-		return orderedResults, fmt.Errorf("list clients across instances: %w", err)
+		return results, fmt.Errorf("list clients across instances: %w", err)
 	}
 
-	return orderedResults, nil
+	return results, nil
 }
 
 // Update applies a client patch to every selected instance.
@@ -268,7 +250,7 @@ func (a *ClientManagement) Update(
 		selection,
 		"update client",
 		"Updated client "+mutation.Name,
-		func(ctx context.Context, service *client.Service, _ execution.Target[instance.Config]) error {
+		func(ctx context.Context, service *client.Service) error {
 			err := service.Update(ctx, request)
 			if err != nil {
 				return fmt.Errorf("update client: %w", err)
@@ -303,22 +285,14 @@ func (a *ClientManagement) runMutation(
 	successMessage string,
 	operation clientMutationOperation,
 ) ([]ClientMutationResult, error) {
-	results, _, err := runClientOperation(
-		ctx,
-		selection,
-		a.resolve,
-		func(ctx context.Context, target execution.Target[instance.Config]) (ClientMutationResult, error) {
-			service, useCaseErr := a.useCase(target.Value)
-			if useCaseErr != nil {
-				return ClientMutationResult{}, fmt.Errorf("create client use case for %q: %w", target.Name, useCaseErr)
-			}
+	targets, err := selectTargets(ctx, selection, a.resolve)
+	if err != nil {
+		return nil, fmt.Errorf("resolve client targets: %w", err)
+	}
 
-			operationErr := operation(ctx, service, target)
-			if operationErr != nil {
-				return ClientMutationResult{}, fmt.Errorf("execute mutation for %q: %w", target.Name, operationErr)
-			}
-
-			return ClientMutationResult{Instance: target.Name, Message: successMessage}, nil
+	results, err := mutateInstances(ctx, targets, a.useCase, operation,
+		func(name string) ClientMutationResult {
+			return ClientMutationResult{Instance: name, Message: successMessage}
 		},
 	)
 	if err != nil {
@@ -334,7 +308,7 @@ func (a *ClientManagement) runMutation(
 //   - cfg: instance connection settings.
 //
 // Returns:
-//   - *domainclient.Service: domain service wrapping the instance service.
+//   - *client.Service: domain service wrapping the instance service.
 //   - error: a wrapped service-construction error.
 func (a *ClientManagement) useCase(cfg instance.Config) (*client.Service, error) {
 	service, err := a.newService(cfg)
@@ -356,108 +330,10 @@ func (a *ClientManagement) useCase(cfg instance.Config) (*client.Service, error)
 //
 //nolint:ireturn // The factory intentionally depends on the public service interface.
 func newAdguardClientsService(cfg instance.Config) (adguard.ClientsService, error) {
-	service, err := newAdguardClientsServiceWithHTTPClient(cfg, nil)
+	service, err := connection.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build clients service: %w", err)
 	}
 
 	return service, nil
-}
-
-// newAdguardClientsServiceWithHTTPClient creates a public AdGuard client for an instance.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//   - httpClient: transport override; nil selects the default transport.
-//
-// Returns:
-//   - *adguard.Client: the configured public client.
-//   - error: a wrapped client-construction error.
-func newAdguardClientsServiceWithHTTPClient(
-	cfg instance.Config,
-	httpClient *http.Client,
-) (*adguard.Client, error) {
-	scheme := cfg.Scheme
-	if scheme == "" {
-		scheme = "https"
-	}
-
-	baseURL := (&url.URL{Scheme: scheme, Host: cfg.Host}).String()
-	options := []adguard.Option{adguard.WithRequestTimeout(clientRequestTimeout)}
-	if httpClient != nil {
-		options = append(options, adguard.WithHTTPClient(httpClient))
-	}
-
-	if cfg.Username != "" || cfg.Password != "" {
-		options = append(options, adguard.WithBasicAuth(cfg.Username, cfg.Password))
-	}
-
-	service, err := adguard.NewClient(baseURL, options...)
-	if err != nil {
-		return nil, fmt.Errorf("configure client: %w", err)
-	}
-
-	return service, nil
-}
-
-// runClientOperation executes one operation across all selected instances.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//   - operation: per-instance operation producing one result value.
-//
-// Returns:
-//   - []T: one result per successful instance in execution order.
-//   - int: the number of selected instances.
-//   - error: a wrapped resolution or execution error.
-func runClientOperation[T any](
-	ctx context.Context,
-	selection Selection,
-	resolve instance.CredentialResolver,
-	operation func(context.Context, execution.Target[instance.Config]) (T, error),
-) ([]T, int, error) {
-	targets, err := selectTargets(ctx, selection, resolve)
-	if err != nil {
-		return nil, 0, fmt.Errorf("resolve client targets: %w", err)
-	}
-
-	results, count, err := runAcrossTargets(ctx, targets, "client operation", operation)
-	if err != nil {
-		return results, count, fmt.Errorf("run client operation: %w", err)
-	}
-
-	return results, count, nil
-}
-
-// orderClientListResults applies configuration order to successful list results.
-//
-// Parameters:
-//   - ctx: context carrying the configuration of the run.
-//   - results: retrieved rows keyed by instance in completion order.
-//
-// Returns:
-//   - []ClientListResult: results in configuration order, or sorted by instance
-//     name when ctx carries no configuration.
-func orderClientListResults(ctx context.Context, results []ClientListResult) []ClientListResult {
-	byInstance := make(map[string]ClientListResult, len(results))
-	for _, result := range results {
-		byInstance[result.Instance] = result
-	}
-
-	names := configuredOrder(ctx)
-	if names == nil {
-		names = slices.Sorted(maps.Keys(byInstance))
-	}
-
-	orderedResults := make([]ClientListResult, 0, len(byInstance))
-	for _, name := range names {
-		if result, ok := byInstance[name]; ok {
-			orderedResults = append(orderedResults, result)
-		}
-	}
-
-	return orderedResults
 }

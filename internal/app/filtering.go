@@ -6,10 +6,8 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"time"
 
-	"github.com/nicholas-fedor/agh-cli/internal/execution"
+	"github.com/nicholas-fedor/agh-cli/internal/connection"
 	"github.com/nicholas-fedor/agh-cli/internal/filtering"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
@@ -44,7 +42,8 @@ type FilteringStatusResult struct {
 	WhitelistFilters *[]FilteringSubscription
 	// Instance identifies the source instance.
 	Instance string
-	// Index is the zero-based target position.
+	// Index is the zero-based position of the result among the results of the
+	// run.
 	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
@@ -64,9 +63,6 @@ type filteringServiceFactory func(instance.Config) (adguard.FilteringService, er
 
 // filteringMutationOperation applies one domain mutation to a resolved instance.
 type filteringMutationOperation func(context.Context, *filtering.Service) error
-
-// filteringRequestTimeout is the per-request timeout for constructed AdGuard clients.
-const filteringRequestTimeout = 10 * time.Second
 
 // NewFilteringManagement creates production filtering-management wiring.
 //
@@ -194,42 +190,29 @@ func (a *FilteringManagement) Status(
 		return nil, fmt.Errorf("resolve filtering status targets: %w", err)
 	}
 
-	results := make([]FilteringStatusResult, 0, len(targets))
-	nextIndex := 0
-	report := execution.Run(
-		ctx,
-		targets,
-		execution.AdaptOperation(
-			func(ctx context.Context, target execution.Target[instance.Config]) error {
-				index := nextIndex
-				nextIndex++
+	results, err := runOnInstances(ctx, targets, a.useCase,
+		func(ctx context.Context, service *filtering.Service, name string) (FilteringStatusResult, error) {
+			status, statusErr := service.Status(ctx)
+			if statusErr != nil {
+				return FilteringStatusResult{}, fmt.Errorf("get filtering status: %w", statusErr)
+			}
 
-				service, useCaseErr := a.useCase(target.Value)
-				if useCaseErr != nil {
-					return fmt.Errorf("create filtering use case for %q: %w", target.Name, useCaseErr)
-				}
-
-				status, statusErr := service.Status(ctx)
-				if statusErr != nil {
-					return fmt.Errorf("get filtering status: %w", statusErr)
-				}
-
-				results = append(results, FilteringStatusResult{
-					Filters:          shapeFilteringSubscriptions(status.Filters),
-					WhitelistFilters: shapeFilteringSubscriptions(status.WhitelistFilters),
-					Instance:         target.Name,
-					Index:            index,
-					InstanceCount:    len(targets),
-				})
-
-				return nil
-			},
-		),
+			return FilteringStatusResult{
+				Filters:          shapeFilteringSubscriptions(status.Filters),
+				WhitelistFilters: shapeFilteringSubscriptions(status.WhitelistFilters),
+				Instance:         name,
+				Index:            0,
+				InstanceCount:    len(targets),
+			}, nil
+		},
 	)
 
-	reportErr := report.Err()
-	if reportErr != nil {
-		return results, fmt.Errorf("report filtering status outcomes: %w", reportErr)
+	for index := range results {
+		results[index].Index = index
+	}
+
+	if err != nil {
+		return results, fmt.Errorf("report filtering status outcomes: %w", err)
 	}
 
 	return results, nil
@@ -297,10 +280,9 @@ func (a *FilteringManagement) runMutation(
 		return nil, fmt.Errorf("resolve filtering targets: %w", err)
 	}
 
-	results, err := runServiceMutation(
+	results, err := mutateInstances(
 		ctx,
 		targets,
-		"filtering mutation",
 		a.useCase,
 		operation,
 		func(name string) FilteringMutationResult {
@@ -342,18 +324,7 @@ func (a *FilteringManagement) useCase(cfg instance.Config) (*filtering.Service, 
 //
 //nolint:ireturn // The factory intentionally depends on the public service interface.
 func newAdguardFilteringService(cfg instance.Config) (adguard.FilteringService, error) {
-	scheme := cfg.Scheme
-	if scheme == "" {
-		scheme = "https"
-	}
-
-	baseURL := (&url.URL{Scheme: scheme, Host: cfg.Host}).String()
-	options := []adguard.Option{adguard.WithRequestTimeout(filteringRequestTimeout)}
-	if cfg.Username != "" || cfg.Password != "" {
-		options = append(options, adguard.WithBasicAuth(cfg.Username, cfg.Password))
-	}
-
-	service, err := adguard.NewClient(baseURL, options...)
+	service, err := connection.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build filtering service: %w", err)
 	}

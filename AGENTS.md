@@ -38,6 +38,8 @@ main.go
     -> internal/app
       -> internal/client | internal/filtering | internal/rewrite
         -> pkg/adguard
+      -> internal/connection
+        -> pkg/adguard
       -> internal/config | internal/credentials | internal/instance | internal/execution
 ```
 
@@ -49,7 +51,8 @@ main.go
 - `internal/config` owns local YAML persistence.
 - `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, and credential resolution.
 - `internal/instance` owns validated instance configuration and catalog selection.
-- `internal/execution` owns ordered multi-target execution, cancellation, outcomes, and error aggregation.
+- `internal/execution` owns ordered multi-target execution, cancellation, outcomes, error aggregation, and collecting per-target results.
+- `internal/connection` builds the `pkg/adguard` client for a configured instance. It owns the base URL, the authentication choice, and the one request timeout every feature uses.
 
 Do not let `cmd` import `pkg/adguard` for feature operations. Route feature behavior through `internal/app` and its domain package.
 
