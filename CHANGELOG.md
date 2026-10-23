@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Share instance execution across features by @nicholas-fedor in [#113](https://github.com/nicholas-fedor/agh-cli/pull/113)
 - Load the configuration once without viper by @nicholas-fedor in [#111](https://github.com/nicholas-fedor/agh-cli/pull/111)
 - Adopt current exhaustive option names by @nicholas-fedor in [#101](https://github.com/nicholas-fedor/agh-cli/pull/101)
 - Exempt structured adguard errors from wrapcheck by @nicholas-fedor in [#99](https://github.com/nicholas-fedor/agh-cli/pull/99)
