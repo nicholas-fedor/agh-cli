@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
@@ -270,7 +269,15 @@ func RemoveInstance(
 		return InstanceRemoveResult{}, fmt.Errorf("read configuration: %w", err)
 	}
 
-	result, err := removeStoredInstancePassword(ctx, store, manager, request.Name)
+	removal, err := credentials.NewManager(store, manager).RemoveInstancePassword(ctx, request.Name)
+	result := InstanceRemoveResult{
+		Instance: request.Name,
+		Service:  removal.Service,
+		Key:      removal.Key,
+		Removed:  removal.Removed,
+		Shared:   removal.Shared,
+	}
+
 	if err != nil {
 		return result, fmt.Errorf(
 			"remove credential of %q, leaving the instance configured: %w",
@@ -288,68 +295,6 @@ func RemoveInstance(
 	if err != nil {
 		return result, fmt.Errorf("write configuration: %w", err)
 	}
-
-	return result, nil
-}
-
-// removeStoredInstancePassword deletes the credential store entry holding the
-// password of one configured instance.
-//
-// The credential is reached through the configuration, not through the instance
-// name, so only an entry the instance declared is deleted. An instance whose
-// source resolves elsewhere leaves the store untouched.
-//
-// Parameters:
-//   - ctx: context checked before the credential store calls.
-//   - store: credential store holding the instance password.
-//   - local: configuration supplying the credential service and the instance set.
-//   - name: configured instance being removed.
-//
-// Returns:
-//   - InstanceRemoveResult: the credential identity and whether an entry was
-//     deleted.
-//   - error: a wrapped error when the store cannot be read or the delete fails.
-func removeStoredInstancePassword(
-	ctx context.Context,
-	store credentials.Store,
-	local *config.Manager,
-	name string,
-) (InstanceRemoveResult, error) {
-	result := InstanceRemoveResult{Instance: name, Service: credentialServiceOf(local.Credentials())}
-
-	// An unknown instance owns no credential, so the store is left alone and the
-	// removal itself reports the unknown name. An instance whose stanza could not
-	// be decoded declares no credential either, so it is removed without
-	// contacting the store.
-	cfg, exists := local.Instances()[name]
-	if !exists {
-		return result, nil
-	}
-
-	key, stored := keyringCredentialKey(cfg)
-	if !stored {
-		return result, nil
-	}
-
-	result.Key = key
-
-	if otherInstanceReferencesKey(local.Instances(), name, key) {
-		result.Shared = true
-
-		return result, nil
-	}
-
-	removed, err := deleteStoredCredential(ctx, store, result.Service, key)
-	if err != nil {
-		return result, fmt.Errorf(
-			"delete credential %q in service %q: %w",
-			key,
-			result.Service,
-			err,
-		)
-	}
-
-	result.Removed = removed
 
 	return result, nil
 }

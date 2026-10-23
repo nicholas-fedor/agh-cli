@@ -49,7 +49,7 @@ main.go
 - Domain packages own use cases, validation, request shaping, wildcard behavior, and result shaping.
 - `pkg/adguard` owns transport, auth, timeouts, bounded responses, strict decoding, typed errors, and public domain types.
 - `internal/config` owns local YAML persistence.
-- `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, and credential resolution.
+- `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, credential resolution, and the credential use cases in `Manager`. It reaches the configuration through an interface it defines and never imports `internal/config`.
 - `internal/instance` owns validated instance configuration and catalog selection.
 - `internal/execution` owns ordered multi-target execution, cancellation, outcomes, error aggregation, and collecting per-target results.
 - `internal/connection` builds the `pkg/adguard` client for a configured instance. It owns the base URL, the authentication choice, and the one request timeout every feature uses.

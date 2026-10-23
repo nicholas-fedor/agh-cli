@@ -226,6 +226,17 @@ func clearService(cmd *cobra.Command, seams *streams, values *clearValues) error
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential delete.
 func reportClearInstance(cmd *cobra.Command, result app.PasswordClearResult) {
+	if result.Shared {
+		cmd.Printf(
+			"Kept credential with key %q in service %q: another configured "+
+				"instance still reads its password through it.\n",
+			result.Key,
+			result.Service,
+		)
+
+		return
+	}
+
 	if !result.Removed {
 		cmd.Printf(
 			"No stored credential for instance %q with key %q in service %q.\n",

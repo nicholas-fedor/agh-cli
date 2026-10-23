@@ -86,6 +86,35 @@ func TestRunClearReportsAbsentCredential(t *testing.T) {
 	assert.Contains(t, run.out, "No stored credential for instance \"default\"")
 }
 
+// TestRunClearReportsKeptSharedCredential verifies a key another instance still
+// reads is reported as kept rather than as absent.
+func TestRunClearReportsKeptSharedCredential(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeCoordinator{
+		clearResult: app.PasswordClearResult{
+			Instance: testInstanceName,
+			Service:  testService,
+			Key:      testKeyringKey,
+			Shared:   true,
+			Saved:    true,
+		},
+	}
+
+	run := runPassword(
+		t,
+		testStreams(store, false, testSecret),
+		"",
+		clearCommandName,
+		testInstanceName,
+		"--"+yesFlagName,
+	)
+
+	require.NoError(t, run.err)
+	assert.Contains(t, run.out, "Kept credential with key")
+	assert.NotContains(t, run.out, "No stored credential")
+}
+
 // TestRunClearWarnsWhenReferenceSurvives verifies that a deleted credential still
 // referenced by the configuration file is reported.
 func TestRunClearWarnsWhenReferenceSurvives(t *testing.T) {

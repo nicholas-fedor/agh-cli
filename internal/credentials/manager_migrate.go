@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package app
+package credentials
 
 import (
 	"context"
@@ -66,6 +66,14 @@ type migrationCandidate struct {
 // password because the migration did not complete.
 var ErrPartialMigration = errors.New("some credentials were not migrated")
 
+// ErrCredentialKeyInUse reports that a migration would write a password under a
+// key another configured instance already reads.
+//
+// Writing it would replace that instance's working password, so the candidate
+// keeps its plaintext password instead and the operator picks another key with
+// a password set.
+var ErrCredentialKeyInUse = errors.New("credential key is used by another instance")
+
 // Migrate moves legacy plaintext passwords into the credential store.
 //
 // Migration is explicit, because a normal read must never migrate implicitly. An
@@ -87,19 +95,19 @@ var ErrPartialMigration = errors.New("some credentials were not migrated")
 //   - MigrationReport: one outcome per legacy instance.
 //   - error: a wrapped error when the store cannot be probed, at least one
 //     instance failed, or the configuration could not be written.
-func (a *Credentials) Migrate(
+func (m *Manager) Migrate(
 	ctx context.Context,
 	request MigrationRequest,
 ) (MigrationReport, error) {
-	service := a.service()
+	service := m.service()
 	report := MigrationReport{
-		Backend: a.store.Backend(),
+		Backend: m.store.Backend(),
 		Service: service,
 		DryRun:  request.DryRun,
 		Results: make([]MigrationResult, 0),
 	}
 
-	candidates := a.legacyPasswords()
+	candidates := m.legacyPasswords()
 	if len(candidates) == 0 {
 		return report, nil
 	}
@@ -110,7 +118,7 @@ func (a *Credentials) Migrate(
 		return report, nil
 	}
 
-	err := a.probe(ctx, service, candidates[0].key)
+	err := m.probe(ctx, service, candidates[0].key)
 	if err != nil {
 		return report, fmt.Errorf(
 			"migrate %d credential(s) to service %q: %w",
@@ -120,9 +128,9 @@ func (a *Credentials) Migrate(
 		)
 	}
 
-	report.Results = a.migrateCandidates(ctx, service, candidates)
+	report.Results = m.migrateCandidates(ctx, service, candidates)
 
-	report.Saved, report.Err = a.save()
+	report.Saved, report.Err = m.save()
 	if report.Err != nil {
 		report.Err = fmt.Errorf("migrate credentials: %w", report.Err)
 
@@ -150,9 +158,9 @@ func (a *Credentials) Migrate(
 //
 // Returns:
 //   - []migrationCandidate: candidates in configuration order.
-func (a *Credentials) legacyPasswords() []migrationCandidate {
-	instances := a.local.Instances()
-	names := a.local.OrderedNames()
+func (m *Manager) legacyPasswords() []migrationCandidate {
+	instances := m.local.Instances()
+	names := m.local.OrderedNames()
 	candidates := make([]migrationCandidate, 0, len(names))
 
 	for _, name := range names {
@@ -183,7 +191,7 @@ func (a *Credentials) legacyPasswords() []migrationCandidate {
 //
 // Returns:
 //   - []MigrationResult: one outcome per candidate in the same order.
-func (a *Credentials) migrateCandidates(
+func (m *Manager) migrateCandidates(
 	ctx context.Context,
 	service string,
 	candidates []migrationCandidate,
@@ -191,7 +199,7 @@ func (a *Credentials) migrateCandidates(
 	results := make([]MigrationResult, 0, len(candidates))
 
 	for _, candidate := range candidates {
-		results = append(results, a.migrateOne(ctx, service, candidate))
+		results = append(results, m.migrateOne(ctx, service, candidate))
 	}
 
 	return results
@@ -201,7 +209,9 @@ func (a *Credentials) migrateCandidates(
 // plaintext password afterwards.
 //
 // The order is inherited from storeCredential, so a failed write leaves the
-// candidate exactly as it was and its plaintext password keeps working.
+// candidate exactly as it was and its plaintext password keeps working. A key
+// another configured instance already reads is refused before anything is
+// written, so a migration never replaces another instance's password.
 //
 // Parameters:
 //   - ctx: context checked before the credential store call.
@@ -210,14 +220,20 @@ func (a *Credentials) migrateCandidates(
 //
 // Returns:
 //   - MigrationResult: the outcome for the candidate.
-func (a *Credentials) migrateOne(
+func (m *Manager) migrateOne(
 	ctx context.Context,
 	service string,
 	candidate migrationCandidate,
 ) MigrationResult {
 	result := MigrationResult{Instance: candidate.name, Key: candidate.key}
 
-	err := a.storeCredential(ctx, service, candidate.name, candidate.key, candidate.password)
+	if otherInstanceReferencesKey(m.local.Instances(), candidate.name, candidate.key) {
+		result.Err = fmt.Errorf("%w: key %q in service %q", ErrCredentialKeyInUse, candidate.key, service)
+
+		return result
+	}
+
+	err := m.storeCredential(ctx, service, candidate.name, candidate.key, candidate.password)
 	if err != nil {
 		result.Err = err
 
@@ -243,8 +259,8 @@ func (a *Credentials) migrateOne(
 //
 // Returns:
 //   - error: a wrapped sentinel error when the store cannot be read.
-func (a *Credentials) probe(ctx context.Context, service, key string) error {
-	_, err := a.stored(ctx, service, key)
+func (m *Manager) probe(ctx context.Context, service, key string) error {
+	_, err := m.stored(ctx, service, key)
 	if err != nil {
 		return fmt.Errorf("probe credential store service %q: %w", service, err)
 	}

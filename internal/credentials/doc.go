@@ -1,7 +1,8 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package credentials owns AdGuard Home credential storage and resolution.
+// Package credentials owns AdGuard Home credential storage, resolution, and
+// management.
 //
 // The package stores secrets in the operating system credential store, reads
 // externally managed secrets from read-only mounted files and environment
@@ -9,6 +10,11 @@
 // configured source is the only source that is read, so a failed lookup never
 // falls back to another source, the legacy plaintext password, or a different
 // credential identity.
+//
+// [Manager] owns the credential use cases: setting, clearing, inspecting, and
+// migrating passwords, and managing the administrator username. It reaches the
+// configuration through the [Config] interface it defines, so the package never
+// depends on the configuration package.
 //
 // A secret never appears in an error, a status value, or any other value the
 // package returns. Errors carry the service, the credential key, the file path,

@@ -297,6 +297,7 @@ agh-cli instance credentials password clear --all --yes
 `clear` deletes the store entry first and removes the configuration reference afterwards, so the file never points at a secret that still exists.
 
 - Clearing an absent credential is not an error, which makes a repeated clear safe.
+- A key another configured instance still reads is kept and reported, and only the cleared instance is detached from it.
 - `--all` deletes everything under the configured service and deliberately leaves the configuration alone, so a surviving reference becomes a visible error instead of a silent change of source. Detach each instance with its own `clear`.
 - A `file` or `env` instance is refused, because `agh-cli` owns neither that secret nor the decision to stop using it. Change those instances by editing the configuration.
 
@@ -339,7 +340,7 @@ Then apply it:
 agh-cli instance credentials migrate
 ```
 
-Migration is explicit, because a normal read never migrates implicitly. It selects every instance that has no `credential` block and a non-empty `password`, and skips any instance that already declares a source, so a configured source is never changed silently. For each instance the password reaches the credential store before it is removed from the configuration, so a failed write leaves that instance unchanged and its plaintext password keeps working. The file is written once at the end, and no password is ever printed.
+Migration is explicit, because a normal read never migrates implicitly. It selects every instance that has no `credential` block and a non-empty `password`, and skips any instance that already declares a source, so a configured source is never changed silently. For each instance the password reaches the credential store before it is removed from the configuration, so a failed write leaves that instance unchanged and its plaintext password keeps working. An instance whose name is a keyring key another instance already reads is reported and keeps its plaintext password, because migrating it would replace that instance's password. The file is written once at the end, and no password is ever printed.
 
 Until you migrate, a legacy plaintext password sits in `config.yaml` in the clear. Keep the file readable only by its owner:
 

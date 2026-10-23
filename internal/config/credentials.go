@@ -199,6 +199,22 @@ func (m *Manager) Credentials() CredentialsSettings {
 	return m.data.Credentials
 }
 
+// CredentialService returns the credential store namespace shared by every
+// instance.
+//
+// The service is never empty. A configuration without a credentials mapping
+// reports DefaultCredentialService.
+//
+// Returns:
+//   - string: the credential store namespace.
+func (m *Manager) CredentialService() string {
+	if m.data.Credentials.Service == "" {
+		return DefaultCredentialService
+	}
+
+	return m.data.Credentials.Service
+}
+
 // SetCredential records the credential reference of one instance in memory.
 //
 // SetCredential stores a copy of ref without validating it, because credential
