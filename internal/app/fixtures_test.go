@@ -15,6 +15,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
 
 const (
@@ -141,7 +143,7 @@ func contextWithConfigFile(ctx context.Context, t *testing.T, path string) conte
 func writeTestConfig(t *testing.T, document string) string {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	path := filepath.Join(t.TempDir(), config.DefaultConfigFileName)
 	require.NoError(t, os.WriteFile(path, []byte(document), 0o600))
 
 	return path

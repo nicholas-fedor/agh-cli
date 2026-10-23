@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/client"
 )
 
 // newClientUpdateCommand creates the update command and binds its flags.
@@ -38,8 +39,8 @@ func runClientUpdate(cmd *cobra.Command, args []string, values *selectionValues)
 			management *app.ClientManagement,
 			ctx context.Context,
 			selection app.Selection,
-			request app.ClientMutation,
-		) ([]app.ClientMutationResult, error) {
+			request client.Settings,
+		) ([]app.MutationResult, error) {
 			return management.Update(ctx, selection, request)
 		},
 	)

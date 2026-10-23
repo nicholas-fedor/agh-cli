@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 )
 
 // newRewriteAddCommand creates the add command and binds its flags.
@@ -24,8 +25,8 @@ func newRewriteAddCommand() *cobra.Command {
 			management *app.RewriteManagement,
 			ctx context.Context,
 			selection app.Selection,
-			request app.RewriteRuleInput,
-		) ([]app.RewriteMutationResult, error) {
+			request rewrite.RuleRequest,
+		) ([]app.MutationResult, error) {
 			return management.Add(ctx, selection, request)
 		},
 	)

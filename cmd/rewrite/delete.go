@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 )
 
 // errAnswerRequired indicates that rewrite deletion lacks its answer flag.
@@ -64,8 +65,8 @@ func runRewriteDelete(cmd *cobra.Command, args []string, values *flagValues) err
 			management *app.RewriteManagement,
 			ctx context.Context,
 			selection app.Selection,
-			request app.RewriteRuleInput,
-		) ([]app.RewriteMutationResult, error) {
+			request rewrite.RuleRequest,
+		) ([]app.MutationResult, error) {
 			return management.Delete(ctx, selection, request)
 		},
 	)

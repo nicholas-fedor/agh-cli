@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/filtering"
 )
 
 // filteringFailingWriter returns a deterministic output failure.
@@ -205,13 +206,13 @@ func TestCurrentFilteringSelectionRejectsMissingFlags(t *testing.T) {
 func TestWriteFilteringStatuses(t *testing.T) {
 	t.Parallel()
 
-	filters := []app.FilteringSubscription{{
+	filters := []filtering.Subscription{{
 		Enabled:    false,
 		Name:       "filters",
 		RulesCount: 0,
 		URL:        "https://filters.example/list.txt",
 	}}
-	allowlists := []app.FilteringSubscription{}
+	allowlists := []filtering.Subscription{}
 	var output bytes.Buffer
 
 	command := &cobra.Command{}
@@ -245,7 +246,7 @@ func TestWriteFilteringMutationResults(t *testing.T) {
 	command := &cobra.Command{}
 	command.SetOut(&output)
 
-	err := writeFilteringMutationResults(command, []app.FilteringMutationResult{
+	err := writeFilteringMutationResults(command, []app.MutationResult{
 		{Instance: filteringCommandAlphaInstance, Message: filteringCommandAddedMessage},
 	})
 
@@ -261,7 +262,7 @@ func TestWriteFilteringMutationResultsPreservesWriterErrors(t *testing.T) {
 	command := &cobra.Command{}
 	command.SetOut(filteringFailingWriter{err: wantErr})
 
-	err := writeFilteringMutationResults(command, []app.FilteringMutationResult{
+	err := writeFilteringMutationResults(command, []app.MutationResult{
 		{Instance: filteringCommandAlphaInstance, Message: filteringCommandAddedMessage},
 	})
 

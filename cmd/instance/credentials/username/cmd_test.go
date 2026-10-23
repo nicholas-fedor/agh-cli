@@ -15,22 +15,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // fakeCoordinator records the username requests and returns the configured
 // outcomes.
 type fakeCoordinator struct {
 	// setResult is the outcome returned by SetUsername.
-	setResult app.UsernameResult
+	setResult credentials.UsernameResult
 	// setErr is the error returned by SetUsername.
 	setErr error
 	// clearResult is the outcome returned by ClearUsername.
-	clearResult app.UsernameResult
+	clearResult credentials.UsernameResult
 	// clearErr is the error returned by ClearUsername.
 	clearErr error
 	// report is the outcome returned by StatusUsername.
-	report app.UsernameReport
+	report credentials.UsernameReport
 	// statusErr is the error returned by StatusUsername.
 	statusErr error
 	// name records the instance name handed to a use case.
@@ -68,7 +68,7 @@ const testUsername = "admin"
 var errTestFactory = errors.New("no configuration file")
 
 // ClearUsername records the request and returns the configured outcome.
-func (f *fakeCoordinator) ClearUsername(name string) (app.UsernameResult, error) {
+func (f *fakeCoordinator) ClearUsername(name string) (credentials.UsernameResult, error) {
 	f.clears++
 
 	f.name = name
@@ -79,7 +79,7 @@ func (f *fakeCoordinator) ClearUsername(name string) (app.UsernameResult, error)
 // SetUsername records the request and returns the configured outcome.
 func (f *fakeCoordinator) SetUsername(
 	name, username string,
-) (app.UsernameResult, error) {
+) (credentials.UsernameResult, error) {
 	f.sets++
 
 	f.name = name
@@ -90,7 +90,7 @@ func (f *fakeCoordinator) SetUsername(
 }
 
 // StatusUsername records the request and returns the configured outcome.
-func (f *fakeCoordinator) StatusUsername(names []string) (app.UsernameReport, error) {
+func (f *fakeCoordinator) StatusUsername(names []string) (credentials.UsernameReport, error) {
 	f.names = names
 
 	return f.report, f.statusErr
@@ -321,8 +321,8 @@ func TestRunStatusReportsUsernameInText(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.UsernameReport{
-			Instances: []app.UsernameStatus{
+		report: credentials.UsernameReport{
+			Instances: []credentials.UsernameStatus{
 				{Instance: testInstanceName, Username: testUsername},
 			},
 		},
@@ -341,8 +341,8 @@ func TestRunStatusLabelsUnsetUsername(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.UsernameReport{
-			Instances: []app.UsernameStatus{
+		report: credentials.UsernameReport{
+			Instances: []credentials.UsernameStatus{
 				{Instance: testInstanceName, Username: ""},
 			},
 		},
@@ -360,8 +360,8 @@ func TestRunStatusReportsUsernameInJSON(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.UsernameReport{
-			Instances: []app.UsernameStatus{
+		report: credentials.UsernameReport{
+			Instances: []credentials.UsernameStatus{
 				{Instance: testInstanceName, Username: testUsername},
 			},
 		},
@@ -379,8 +379,8 @@ func TestRunStatusOmitsUnsetUsernameFromJSON(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.UsernameReport{
-			Instances: []app.UsernameStatus{
+		report: credentials.UsernameReport{
+			Instances: []credentials.UsernameStatus{
 				{Instance: testInstanceName, Username: ""},
 			},
 		},

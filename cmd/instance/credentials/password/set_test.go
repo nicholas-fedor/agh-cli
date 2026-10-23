@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // failingReader always fails a read.
@@ -27,7 +27,7 @@ func TestRunSetReadsRedirectedSecret(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.PasswordSetResult{
+		setResult: credentials.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -68,7 +68,7 @@ func TestRunSetUsesHiddenTerminalPrompt(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.PasswordSetResult{
+		setResult: credentials.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -224,7 +224,7 @@ func TestRunSetForwardsCustomKey(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.PasswordSetResult{
+		setResult: credentials.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,
@@ -258,7 +258,7 @@ func TestRunSetWarnsWhenConfigurationWasNotSaved(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		setResult: app.PasswordSetResult{
+		setResult: credentials.PasswordSetResult{
 			Instance: testInstanceName,
 			Backend:  testBackend,
 			Service:  testService,

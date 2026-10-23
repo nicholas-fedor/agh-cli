@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
 
 // Context returns a test context carrying the configuration document.
@@ -34,7 +35,7 @@ import (
 func Context(t *testing.T, document string) context.Context {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), app.DefaultConfigFileName)
+	path := filepath.Join(t.TempDir(), config.DefaultConfigFileName)
 
 	err := os.WriteFile(path, []byte(document), 0o600)
 	if err != nil {

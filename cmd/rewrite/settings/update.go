@@ -76,7 +76,7 @@ func runRewriteSettingsUpdate(
 //   - error: Joined errors from every failed message write.
 func writeRewriteSettingsMutationResults(
 	cmd *cobra.Command,
-	results []app.RewriteMutationResult,
+	results []app.MutationResult,
 ) error {
 	writer := cmd.OutOrStdout()
 	errs := make([]error, 0, len(results))

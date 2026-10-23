@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/filtering"
 	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
@@ -150,7 +151,7 @@ func writeFilteringStatusHeader(
 func writeFilteringSubscriptions(
 	tableWriter *output.TableWriter,
 	instance string,
-	subscriptions *[]app.FilteringSubscription,
+	subscriptions *[]filtering.Subscription,
 ) {
 	if subscriptions == nil {
 		return

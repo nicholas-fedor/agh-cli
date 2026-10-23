@@ -112,7 +112,7 @@ func filteringURLFromFlags(cmd *cobra.Command) (bool, error) {
 //   - error: Joined errors from every failed message write.
 func writeFilteringMutationResults(
 	cmd *cobra.Command,
-	results []app.FilteringMutationResult,
+	results []app.MutationResult,
 ) error {
 	writer := cmd.OutOrStdout()
 	errs := make([]error, 0, len(results))

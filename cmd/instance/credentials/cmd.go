@@ -11,6 +11,7 @@ import (
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials/password"
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials/username"
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // coordinator is the instance-wide credential use-case surface the commands
@@ -20,7 +21,7 @@ import (
 // them, so this surface carries only the operations that span both halves of an
 // instance's authentication.
 //
-// [github.com/nicholas-fedor/agh-cli/internal/app.Credentials] satisfies the
+// [github.com/nicholas-fedor/agh-cli/internal/credentials.Manager] satisfies the
 // interface. The interface is declared here so the commands can be exercised
 // without an operating system credential store.
 type coordinator interface {
@@ -31,9 +32,9 @@ type coordinator interface {
 	//   - request: migration inputs, including the dry-run selection.
 	//
 	// Returns:
-	//   - app.MigrationReport: one outcome per legacy instance.
+	//   - credentials.MigrationReport: one outcome per legacy instance.
 	//   - error: non-nil when at least one instance was not migrated.
-	Migrate(ctx context.Context, request app.MigrationRequest) (app.MigrationReport, error)
+	Migrate(ctx context.Context, request credentials.MigrationRequest) (credentials.MigrationReport, error)
 }
 
 // factory builds the credential coordinator for one command execution from

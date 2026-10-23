@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // statusValues stores the flag values bound to one status command.
@@ -67,11 +67,11 @@ type passwordReport struct {
 //
 // Returns:
 //   - string: the label shown in output.
-func presenceLabel(presence app.Presence) string {
+func presenceLabel(presence credentials.Presence) string {
 	switch presence {
-	case app.PresencePresent:
+	case credentials.PresencePresent:
 		return "present"
-	case app.PresenceAbsent:
+	case credentials.PresenceAbsent:
 		return "absent"
 	default:
 		return "unknown"
@@ -175,7 +175,7 @@ func selectedNames(args []string) []string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be written.
-func writeStatusText(out io.Writer, result app.PasswordReport) error {
+func writeStatusText(out io.Writer, result credentials.PasswordReport) error {
 	lines := make([]string, 0, 3+len(result.Instances))
 
 	lines = append(
@@ -204,7 +204,7 @@ func writeStatusText(out io.Writer, result app.PasswordReport) error {
 //
 // Returns:
 //   - string: the rendered line.
-func passwordLine(entry app.PasswordStatus) string {
+func passwordLine(entry credentials.PasswordStatus) string {
 	line := "instance " + strconv.Quote(entry.Instance) + ": source " + string(entry.Source)
 
 	if kind := entry.TargetKind(); kind != "" {
@@ -231,7 +231,7 @@ func passwordLine(entry app.PasswordStatus) string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be encoded or written.
-func writeStatusJSON(out io.Writer, result app.PasswordReport) error {
+func writeStatusJSON(out io.Writer, result credentials.PasswordReport) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
@@ -255,7 +255,7 @@ func writeStatusJSON(out io.Writer, result app.PasswordReport) error {
 //
 // Returns:
 //   - []passwordEntry: one entry per reported state in the same order.
-func passwordEntries(states []app.PasswordStatus) []passwordEntry {
+func passwordEntries(states []credentials.PasswordStatus) []passwordEntry {
 	entries := make([]passwordEntry, 0, len(states))
 
 	for _, state := range states {

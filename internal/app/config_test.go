@@ -53,11 +53,11 @@ func TestLoadRunConfigReadsResolvedFile(t *testing.T) {
 func TestLoadRunConfigWarnsAboutMissingFile(t *testing.T) {
 	t.Parallel()
 
-	configPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	configPath := filepath.Join(t.TempDir(), config.DefaultConfigFileName)
 
 	var warnings strings.Builder
 
-	runConfig, err := LoadRunConfig(ConfigResolution{Path: configPath, Exists: false}, &warnings)
+	runConfig, err := LoadRunConfig(config.Resolution{Path: configPath, Exists: false}, &warnings)
 	require.NoError(t, err)
 
 	manager, err := configFrom(WithRunConfig(t.Context(), runConfig))
@@ -76,7 +76,7 @@ func TestLoadRunConfigWarnsAboutInstanceProblems(t *testing.T) {
 
 	var warnings strings.Builder
 
-	_, err := LoadRunConfig(ConfigResolution{Path: configPath, Exists: true}, &warnings)
+	_, err := LoadRunConfig(config.Resolution{Path: configPath, Exists: true}, &warnings)
 
 	require.NoError(t, err)
 	assert.Contains(t, warnings.String(), configPath)
@@ -91,7 +91,7 @@ func TestLoadRunConfigNamesUnreadableFile(t *testing.T) {
 
 	configPath := writeTestConfig(t, "instances: [\n")
 
-	_, err := LoadRunConfig(ConfigResolution{Path: configPath, Exists: true}, io.Discard)
+	_, err := LoadRunConfig(config.Resolution{Path: configPath, Exists: true}, io.Discard)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), strconv.Quote(configPath))
@@ -104,7 +104,7 @@ func TestLoadRunConfigRefusesUnsupportedFormat(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 
-	_, err := LoadRunConfig(ConfigResolution{Path: configPath, Exists: false}, io.Discard)
+	_, err := LoadRunConfig(config.Resolution{Path: configPath, Exists: false}, io.Discard)
 
 	require.ErrorIs(t, err, config.ErrUnsupportedFormat)
 	assert.Contains(t, err.Error(), strconv.Quote(configPath))

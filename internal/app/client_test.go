@@ -119,10 +119,10 @@ func TestClientManagementAddContinuesAfterFailure(t *testing.T) {
 		goodInstance: goodService,
 	}).Add(testInstancesContext(t), Selection{
 		Names: []string{badInstance, goodInstance},
-	}, ClientMutation{Name: testClientName, IDs: []string{testClientID}})
+	}, client.Settings{Name: testClientName, IDs: []string{testClientID}})
 
 	require.ErrorIs(t, err, wantErr)
-	assert.Equal(t, []ClientMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: goodInstance,
 		Message:  addedClientMessage,
 	}}, results)
@@ -148,7 +148,7 @@ func TestClientManagementUpdatePreservesExplicitFalse(t *testing.T) {
 		goodInstance: service,
 	}).Update(testInstancesContext(t), Selection{
 		Names: []string{goodInstance},
-	}, ClientMutation{
+	}, client.Settings{
 		Name:                testClientName,
 		ParentalEnabled:     true,
 		UseGlobalSettings:   false,
@@ -157,7 +157,7 @@ func TestClientManagementUpdatePreservesExplicitFalse(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, []ClientMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: goodInstance,
 		Message:  "Updated client desk",
 	}}, results)
@@ -218,10 +218,10 @@ func TestClientManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 
 	results, err := management.Add(testInstancesContext(t), Selection{
 		Names: []string{zuluInstance, alphaInstance, zuluInstance},
-	}, ClientMutation{Name: testClientName, IDs: []string{testClientID}})
+	}, client.Settings{Name: testClientName, IDs: []string{testClientID}})
 
 	require.NoError(t, err)
-	assert.Equal(t, []ClientMutationResult{
+	assert.Equal(t, []MutationResult{
 		{Instance: zuluInstance, Message: addedClientMessage},
 		{Instance: alphaInstance, Message: addedClientMessage},
 	}, results)

@@ -11,6 +11,14 @@ import (
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
+// MutationResult reports one instance a mutation changed.
+type MutationResult struct {
+	// Instance identifies the changed instance.
+	Instance string
+	// Message is the operation-specific success text.
+	Message string
+}
+
 // selectTargets selects configured instances as execution targets in selection
 // order.
 //

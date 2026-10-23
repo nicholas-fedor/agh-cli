@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // clearValues stores the flag values bound to one clear command.
@@ -225,7 +225,7 @@ func clearService(cmd *cobra.Command, seams *streams, values *clearValues) error
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential delete.
-func reportClearInstance(cmd *cobra.Command, result app.PasswordClearResult) {
+func reportClearInstance(cmd *cobra.Command, result credentials.PasswordClearResult) {
 	if result.Shared {
 		cmd.Printf(
 			"Kept credential with key %q in service %q: another configured "+
@@ -263,7 +263,7 @@ func reportClearInstance(cmd *cobra.Command, result app.PasswordClearResult) {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the service-wide delete.
-func reportClearService(cmd *cobra.Command, result app.PasswordClearResult) {
+func reportClearService(cmd *cobra.Command, result credentials.PasswordClearResult) {
 	cmd.Printf("Removed every credential in service %q.\n", result.Service)
 }
 
@@ -276,7 +276,7 @@ func reportClearService(cmd *cobra.Command, result app.PasswordClearResult) {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential delete.
-func warnUnsavedReference(cmd *cobra.Command, result app.PasswordClearResult) {
+func warnUnsavedReference(cmd *cobra.Command, result credentials.PasswordClearResult) {
 	if result.Saved {
 		return
 	}

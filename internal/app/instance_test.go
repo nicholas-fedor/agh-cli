@@ -146,7 +146,7 @@ func TestListInstancesRequiresRunConfig(t *testing.T) {
 func TestAddInstanceCreatesConfiguration(t *testing.T) {
 	t.Parallel()
 
-	configPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	configPath := filepath.Join(t.TempDir(), config.DefaultConfigFileName)
 
 	err := AddInstance(contextWithConfigFile(t.Context(), t, configPath), InstanceAddRequest{
 		Name:   "default",
@@ -169,7 +169,7 @@ func TestAddInstanceCreatesConfiguration(t *testing.T) {
 func TestAddInstanceStoresNoCredentials(t *testing.T) {
 	t.Parallel()
 
-	configPath := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	configPath := filepath.Join(t.TempDir(), config.DefaultConfigFileName)
 
 	err := AddInstance(contextWithConfigFile(t.Context(), t, configPath), InstanceAddRequest{
 		Name: "default",

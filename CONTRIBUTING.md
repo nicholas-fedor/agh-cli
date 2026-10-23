@@ -73,8 +73,12 @@ Command packages are thin adapters. They may:
 - pass command context and output writers to the application layer;
 - render prepared results.
 
+They may name the value types of the domain packages `internal/client`, `internal/filtering`, `internal/rewrite`, and `internal/credentials`, such as a request, a result, or a sentinel error. Every behavior goes through `internal/app`, so `internal/app` never copies or re-exports a domain type the commands can name directly.
+
 They must not:
 
+- call into a domain package, including its constructors and type conversions;
+- import `pkg/adguard`, `internal/config`, `internal/instance`, `internal/execution`, or `internal/connection`;
 - read the configuration file directly for feature operations;
 - construct `pkg/adguard` clients directly;
 - implement domain algorithms;

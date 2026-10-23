@@ -15,27 +15,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // fakeCoordinator records the password requests and returns the configured
 // outcomes.
 type fakeCoordinator struct {
 	// setResult is the outcome returned by SetPassword.
-	setResult app.PasswordSetResult
+	setResult credentials.PasswordSetResult
 	// setErr is the error returned by SetPassword.
 	setErr error
 	// clearResult is the outcome returned by ClearPassword and
 	// ClearAllPasswords.
-	clearResult app.PasswordClearResult
+	clearResult credentials.PasswordClearResult
 	// clearErr is the error returned by ClearPassword.
 	clearErr error
 	// clearAllResult is the outcome returned by ClearAllPasswords.
-	clearAllResult app.PasswordClearResult
+	clearAllResult credentials.PasswordClearResult
 	// clearAllErr is the error returned by ClearAllPasswords.
 	clearAllErr error
 	// passwordReport is the outcome returned by StatusPassword.
-	passwordReport app.PasswordReport
+	passwordReport credentials.PasswordReport
 	// statusErr is the error returned by StatusPassword.
 	statusErr error
 	// secret records the secret handed to SetPassword.
@@ -103,7 +103,7 @@ var errTestFactory = errors.New("no configuration file")
 // ClearAllPasswords records the request and returns the configured outcome.
 func (f *fakeCoordinator) ClearAllPasswords(
 	_ context.Context,
-) (app.PasswordClearResult, error) {
+) (credentials.PasswordClearResult, error) {
 	f.clearAlls++
 
 	return f.clearAllResult, f.clearAllErr
@@ -113,7 +113,7 @@ func (f *fakeCoordinator) ClearAllPasswords(
 func (f *fakeCoordinator) ClearPassword(
 	_ context.Context,
 	name string,
-) (app.PasswordClearResult, error) {
+) (credentials.PasswordClearResult, error) {
 	f.clears++
 
 	f.name = name
@@ -126,7 +126,7 @@ func (f *fakeCoordinator) ClearPassword(
 func (f *fakeCoordinator) SetPassword(
 	_ context.Context,
 	name, key, secret string,
-) (app.PasswordSetResult, error) {
+) (credentials.PasswordSetResult, error) {
 	f.sets++
 
 	f.name = name
@@ -142,7 +142,7 @@ func (f *fakeCoordinator) SetPassword(
 func (f *fakeCoordinator) StatusPassword(
 	_ context.Context,
 	names []string,
-) (app.PasswordReport, error) {
+) (credentials.PasswordReport, error) {
 	f.names = names
 
 	return f.passwordReport, f.statusErr

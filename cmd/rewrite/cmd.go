@@ -15,6 +15,7 @@ import (
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite/wildcard"
 	"github.com/nicholas-fedor/agh-cli/internal/app"
 	"github.com/nicholas-fedor/agh-cli/internal/output"
+	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 )
 
 // rewriteMutation executes one app mutation from command-supplied values.
@@ -22,8 +23,8 @@ type rewriteMutation func(
 	*app.RewriteManagement,
 	context.Context,
 	app.Selection,
-	app.RewriteRuleInput,
-) ([]app.RewriteMutationResult, error)
+	rewrite.RuleRequest,
+) ([]app.MutationResult, error)
 
 // flagValues stores the flag values bound to one rewrite command.
 //
@@ -149,7 +150,7 @@ func runRewriteRuleMutation(
 		app.NewRewriteManagement(cmd.Context()),
 		cmd.Context(),
 		selection,
-		app.RewriteRuleInput{
+		rewrite.RuleRequest{
 			Domain:  domain,
 			Answer:  answer,
 			Enabled: values.enabled,
@@ -173,7 +174,7 @@ func runRewriteRuleMutation(
 //   - error: Joined errors from every failed message write.
 func writeRewriteMutationResults(
 	cmd *cobra.Command,
-	results []app.RewriteMutationResult,
+	results []app.MutationResult,
 ) error {
 	writer := cmd.OutOrStdout()
 	errs := make([]error, 0, len(results))
