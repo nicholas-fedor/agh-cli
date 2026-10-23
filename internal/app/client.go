@@ -19,9 +19,6 @@ type ClientListResult struct {
 	Instance string
 	// Rows contains the retrieved clients in service order.
 	Rows []client.Row
-	// Index is the zero-based position of the result among the results of the
-	// run.
-	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
 }
@@ -184,14 +181,9 @@ func (m *ClientManagement) List(
 				return ClientListResult{}, fmt.Errorf("list clients: %w", listErr)
 			}
 
-			return ClientListResult{Instance: name, Rows: result.Rows, Index: 0, InstanceCount: len(targets)}, nil
+			return ClientListResult{Instance: name, Rows: result.Rows, InstanceCount: len(targets)}, nil
 		},
 	)
-
-	for index := range results {
-		results[index].Index = index
-	}
-
 	if err != nil {
 		return results, fmt.Errorf("list clients across instances: %w", err)
 	}

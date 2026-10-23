@@ -202,7 +202,9 @@ func TestCurrentFilteringSelectionRejectsMissingFlags(t *testing.T) {
 	require.ErrorContains(t, err, "parse instance flag")
 }
 
-// TestWriteFilteringStatuses verifies command-owned status rendering and order.
+// TestWriteFilteringStatuses verifies command-owned status rendering and order,
+// and that the instance tables are separated by exactly one blank line, with
+// none before the first table.
 func TestWriteFilteringStatuses(t *testing.T) {
 	t.Parallel()
 
@@ -223,17 +225,17 @@ func TestWriteFilteringStatuses(t *testing.T) {
 			Filters:          &filters,
 			WhitelistFilters: &allowlists,
 			Instance:         filteringCommandAlphaInstance,
-			Index:            0,
 			InstanceCount:    2,
 		},
-		{Instance: filteringCommandZuluInstance, Index: 1, InstanceCount: 2},
+		{Instance: filteringCommandZuluInstance, InstanceCount: 2},
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output.String(), "Instance: alpha")
+	assert.True(t, strings.HasPrefix(output.String(), "Instance: "+filteringCommandAlphaInstance+"\n"))
 	assert.Contains(t, output.String(), "filters")
 	assert.Contains(t, output.String(), "disabled")
-	assert.Contains(t, output.String(), "Instance: zulu")
+	assert.Contains(t, output.String(), "\n\nInstance: "+filteringCommandZuluInstance+"\n")
+	assert.NotContains(t, output.String(), "\n\n\n")
 	assert.Less(t, strings.Index(output.String(), "alpha"), strings.Index(output.String(), "zulu"))
 }
 

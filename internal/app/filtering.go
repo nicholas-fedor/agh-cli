@@ -22,9 +22,6 @@ type FilteringStatusResult struct {
 	WhitelistFilters *[]filtering.Subscription
 	// Instance identifies the source instance.
 	Instance string
-	// Index is the zero-based position of the result among the results of the
-	// run.
-	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
 }
@@ -194,16 +191,10 @@ func (m *FilteringManagement) Status(
 				Filters:          status.Filters,
 				WhitelistFilters: status.WhitelistFilters,
 				Instance:         name,
-				Index:            0,
 				InstanceCount:    len(targets),
 			}, nil
 		},
 	)
-
-	for index := range results {
-		results[index].Index = index
-	}
-
 	if err != nil {
 		return results, fmt.Errorf("report filtering status outcomes: %w", err)
 	}

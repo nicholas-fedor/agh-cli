@@ -30,7 +30,7 @@ const (
 )
 
 // TestRewriteManagementListContinuesAfterFailure verifies partial list results
-// survive failures and are numbered by their position among the results.
+// survive failures.
 func TestRewriteManagementListContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -60,7 +60,6 @@ func TestRewriteManagementListContinuesAfterFailure(t *testing.T) {
 			Answer:  rewriteTestAnswer,
 			Enabled: false,
 		}},
-		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
@@ -105,8 +104,8 @@ func TestRewriteManagementListUsesConfigurationOrder(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []RewriteListResult{
-		{Instance: zuluInstance, Rules: []RewriteRule{}, Index: 0, InstanceCount: 2},
-		{Instance: alphaInstance, Rules: []RewriteRule{}, Index: 1, InstanceCount: 2},
+		{Instance: zuluInstance, Rules: []RewriteRule{}, InstanceCount: 2},
+		{Instance: alphaInstance, Rules: []RewriteRule{}, InstanceCount: 2},
 	}, results)
 	assert.Equal(t, []string{zuluInstance, alphaInstance}, calls)
 }
@@ -203,10 +202,8 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 
 	require.ErrorIs(t, err, wantErr)
 	assert.Equal(t, []RewriteSettingsResult{{
-		Instance:      goodInstance,
-		Enabled:       false,
-		Index:         0,
-		InstanceCount: 2,
+		Instance: goodInstance,
+		Enabled:  false,
 	}}, results)
 
 	updateResults, err := management.UpdateSettings(testInstancesContext(t), Selection{
