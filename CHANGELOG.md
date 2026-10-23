@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Share feature management wiring by @nicholas-fedor in [#123](https://github.com/nicholas-fedor/agh-cli/pull/123)
 - Use domain value types instead of app copies by @nicholas-fedor in [#121](https://github.com/nicholas-fedor/agh-cli/pull/121)
 - Move config path resolution into the config package by @nicholas-fedor in [#117](https://github.com/nicholas-fedor/agh-cli/pull/117)
 - Move credential use cases into a manager by @nicholas-fedor in [#115](https://github.com/nicholas-fedor/agh-cli/pull/115)
