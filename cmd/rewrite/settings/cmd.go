@@ -4,11 +4,9 @@
 package settings
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
@@ -46,24 +44,13 @@ func NewCommand() *cobra.Command {
 	return settingsCmd
 }
 
-// selection captures active Cobra and Viper selection state.
+// selection captures the instance selection taken from the flags.
 //
 // Returns:
-//   - app.RewriteSelection: The instance selection taken from flags and configuration.
-//   - error: An error when the configured instances cannot be read.
-func (values *flagValues) selection() (app.RewriteSelection, error) {
-	instances, err := app.InstanceSource()
-	if err != nil {
-		return app.RewriteSelection{}, fmt.Errorf(
-			"resolve rewrite settings instance selection: %w",
-			err,
-		)
+//   - app.Selection: The instance selection taken from the flags.
+func (values *flagValues) selection() app.Selection {
+	return app.Selection{
+		Names: slices.Clone(values.names),
+		All:   values.all,
 	}
-
-	return app.RewriteSelection{
-		Instances:  instances,
-		Names:      slices.Clone(values.names),
-		ConfigPath: viper.ConfigFileUsed(),
-		All:        values.all,
-	}, nil
 }

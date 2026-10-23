@@ -6,10 +6,10 @@ package instance
 import (
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 	domaininstance "github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
@@ -20,8 +20,6 @@ const (
 	instanceCommandDefaultName = "default"
 	// InstanceCommandZuluName identifies the zulu command test instance.
 	instanceCommandZuluName = "zulu"
-	// InstanceCommandHostKey is the raw command test host key.
-	instanceCommandHostKey = "host"
 	// InstanceCommandAlphaHost identifies the alpha command test host.
 	instanceCommandAlphaHost = "command-alpha.example.com"
 	// InstanceCommandDefaultHost identifies the default command test host.
@@ -36,22 +34,12 @@ const (
 func TestRunInstanceListWritesResolvedNamesInOrder(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
+	ctx := apptest.Context(t, "instances:\n"+
+		"  "+instanceCommandZuluName+":\n    host: "+instanceCommandZuluHost+"\n"+
+		"  "+instanceCommandDefaultName+":\n    host: "+instanceCommandDefaultHost+"\n"+
+		"  "+instanceCommandAlphaName+":\n    host: "+instanceCommandAlphaHost+"\n")
 
-	viper.Set("instances", map[string]any{
-		instanceCommandZuluName: map[string]any{
-			instanceCommandHostKey: instanceCommandZuluHost,
-		},
-		instanceCommandDefaultName: map[string]any{
-			instanceCommandHostKey: instanceCommandDefaultHost,
-		},
-		instanceCommandAlphaName: map[string]any{
-			instanceCommandHostKey: instanceCommandAlphaHost,
-		},
-	})
-
-	run := runInstanceCommand(t, []string{InstanceListName, InstanceAllFlag})
+	run := runInstanceCommand(ctx, t, []string{InstanceListName, InstanceAllFlag})
 
 	require.NoError(t, run.err)
 	assert.Equal(t, "alpha\ndefault\nzulu\n", run.out)
@@ -61,16 +49,10 @@ func TestRunInstanceListWritesResolvedNamesInOrder(t *testing.T) {
 func TestRunInstanceListPreservesResolutionErrors(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
+	ctx := apptest.Context(t, "instances:\n"+
+		"  "+instanceCommandDefaultName+":\n    scheme: "+instanceCommandHTTPScheme+"\n")
 
-	viper.Set("instances", map[string]any{
-		instanceCommandDefaultName: map[string]any{
-			"scheme": instanceCommandHTTPScheme,
-		},
-	})
-
-	run := runInstanceCommand(t, []string{InstanceListName})
+	run := runInstanceCommand(ctx, t, []string{InstanceListName})
 
 	require.ErrorIs(t, run.err, domaininstance.ErrMissingHost)
 	assert.NotContains(t, run.out, instanceCommandDefaultName)
@@ -82,31 +64,11 @@ func TestRunInstanceListPreservesResolutionErrors(t *testing.T) {
 func TestRunInstanceListRejectsInvalidInstanceMapping(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
+	ctx := apptest.Context(t, "instances:\n"+
+		"  "+instanceCommandDefaultName+": "+instanceCommandHTTPScheme+"\n")
 
-	viper.Set("instances", map[string]any{
-		instanceCommandDefaultName: instanceCommandHTTPScheme,
-	})
-
-	run := runInstanceCommand(t, []string{InstanceListName})
+	run := runInstanceCommand(ctx, t, []string{InstanceListName})
 
 	require.ErrorIs(t, run.err, domaininstance.ErrInvalidConfig)
-	assert.NotContains(t, run.out, instanceCommandDefaultName)
-}
-
-// TestRunInstanceListRejectsInvalidInstancesValue verifies that an instances key
-// which is not a mapping is reported by the command.
-func TestRunInstanceListRejectsInvalidInstancesValue(t *testing.T) {
-	t.Parallel()
-
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
-	viper.Set("instances", instanceCommandHTTPScheme)
-
-	run := runInstanceCommand(t, []string{InstanceListName, InstanceAllFlag})
-
-	require.ErrorIs(t, run.err, domaininstance.ErrNoConfigInstances)
 	assert.NotContains(t, run.out, instanceCommandDefaultName)
 }

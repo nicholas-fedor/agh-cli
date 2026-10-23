@@ -10,15 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 )
 
 // instanceFlagExpectation describes one expected flag registration.
@@ -95,11 +94,6 @@ const (
 	// text.
 	InstancePasswordReplacement = "credentials password set"
 )
-
-// instanceCommandMutex serializes the command tests that mutate the
-// process-global Viper instance, so parallel execution never observes
-// configuration state written by another test.
-var instanceCommandMutex sync.Mutex
 
 // TestNewCommandPreservesSubcommandSyntax verifies the published CLI surface.
 func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
@@ -327,23 +321,15 @@ func TestNewCommandExecutionUsesFreshContext(t *testing.T) {
 func TestNewCommandRepeatedExecutionKeepsFlagState(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
+	ctx := apptest.Context(t, "instances:\n"+
+		"  "+instanceCommandDefaultName+":\n    host: "+instanceCommandDefaultHost+"\n"+
+		"  "+instanceCommandAlphaName+":\n    host: "+instanceCommandAlphaHost+"\n")
 
-	viper.Set("instances", map[string]any{
-		instanceCommandDefaultName: map[string]any{
-			instanceCommandHostKey: instanceCommandDefaultHost,
-		},
-		instanceCommandAlphaName: map[string]any{
-			instanceCommandHostKey: instanceCommandAlphaHost,
-		},
-	})
-
-	selected := runInstanceCommand(t, []string{InstanceListName, InstanceAllFlag})
+	selected := runInstanceCommand(ctx, t, []string{InstanceListName, InstanceAllFlag})
 	require.NoError(t, selected.err)
 	assert.Equal(t, "alpha\ndefault\n", selected.out)
 
-	scoped := runInstanceCommand(t, []string{InstanceListName})
+	scoped := runInstanceCommand(ctx, t, []string{InstanceListName})
 	require.NoError(t, scoped.err)
 	assert.Equal(t, "default\n", scoped.out)
 }
@@ -353,9 +339,6 @@ func TestNewCommandRepeatedExecutionKeepsFlagState(t *testing.T) {
 func TestNewCommandAddPersistsFlagValues(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(
 		t,
 		instanceConfigEntry{
@@ -364,9 +347,9 @@ func TestNewCommandAddPersistsFlagValues(t *testing.T) {
 		},
 	)
 
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
-	run := runInstanceCommand(t, []string{
+	run := runInstanceCommand(ctx, t, []string{
 		InstanceAddName,
 		instanceCommandAlphaName,
 		InstanceAddedHost,
@@ -390,13 +373,10 @@ func TestNewCommandAddPersistsFlagValues(t *testing.T) {
 func TestNewCommandAddStoresNoCredentials(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(t)
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
-	run := runInstanceCommand(t, []string{
+	run := runInstanceCommand(ctx, t, []string{
 		InstanceAddName,
 		instanceCommandAlphaName,
 		InstanceAddedHost,
@@ -416,14 +396,11 @@ func TestNewCommandAddStoresNoCredentials(t *testing.T) {
 func TestNewCommandAddRejectsCredentialFlags(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(t)
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
 	for _, flagName := range []string{InstanceUsernameFlagName, InstancePasswordFlagName} {
-		run := runInstanceCommand(t, []string{
+		run := runInstanceCommand(ctx, t, []string{
 			InstanceAddName,
 			instanceCommandAlphaName,
 			InstanceAddedHost,
@@ -441,9 +418,6 @@ func TestNewCommandAddRejectsCredentialFlags(t *testing.T) {
 func TestNewCommandRemoveDeletesConfiguredInstance(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(
 		t,
 		instanceConfigEntry{name: instanceCommandAlphaName, host: InstanceAddedHost},
@@ -453,9 +427,10 @@ func TestNewCommandRemoveDeletesConfiguredInstance(t *testing.T) {
 		},
 	)
 
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
 	run := runInstanceCommand(
+		ctx,
 		t,
 		[]string{InstanceRemoveName, instanceCommandAlphaName},
 	)
@@ -474,17 +449,14 @@ func TestNewCommandRemoveDeletesConfiguredInstance(t *testing.T) {
 func TestNewCommandAddRejectsDuplicateInstance(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(t, instanceConfigEntry{
 		name: instanceCommandAlphaName,
 		host: InstanceAddedHost,
 	})
 
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
-	run := runInstanceCommand(t, []string{
+	run := runInstanceCommand(ctx, t, []string{
 		InstanceAddName,
 		instanceCommandAlphaName,
 		InstanceAddedHost,
@@ -499,13 +471,11 @@ func TestNewCommandAddRejectsDuplicateInstance(t *testing.T) {
 func TestNewCommandRemoveRejectsUnknownInstance(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
 	configPath := writeInstanceConfig(t)
-	useConfigFile(t, configPath)
+	ctx := apptest.FileContext(t, configPath)
 
 	run := runInstanceCommand(
+		ctx,
 		t,
 		[]string{InstanceRemoveName, instanceCommandZuluName},
 	)
@@ -557,15 +527,11 @@ func TestInstanceRemoveReportsCredentialOutcome(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The command reads the resolved configuration path, which lives in
-			// the process-global Viper instance the other command tests write.
-			lockInstanceCommandState(t)
-
 			result := test.result
 
 			result.Instance = "alpha"
 
-			run := runInstanceRemoveCommand(t, stubRemoval(result, nil), "alpha")
+			run := runInstanceRemoveCommand(t.Context(), t, stubRemoval(result, nil), "alpha")
 
 			require.NoError(t, run.err)
 			assert.Equal(t, test.want, run.out)
@@ -573,34 +539,38 @@ func TestInstanceRemoveReportsCredentialOutcome(t *testing.T) {
 	}
 }
 
-// TestInstanceRemoveUsesResolvedConfigurationPath verifies that the command
-// removes from the file the executed run resolved rather than from a path of its
-// own.
-func TestInstanceRemoveUsesResolvedConfigurationPath(t *testing.T) {
+// TestInstanceRemovePassesRunConfiguration verifies that the command hands the
+// use case the context carrying the configuration the run loaded, rather than
+// a configuration of its own.
+func TestInstanceRemovePassesRunConfiguration(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-	resetInstanceCommandState(t)
-
-	configPath := writeInstanceConfig(t, instanceConfigEntry{
+	ctx := apptest.FileContext(t, writeInstanceConfig(t, instanceConfigEntry{
 		name: instanceCommandAlphaName,
 		host: InstanceAddedHost,
-	})
-	useConfigFile(t, configPath)
+	}))
 
 	observed := make([]app.InstanceRemoveRequest, 0, 1)
-	remove := func(_ context.Context, request app.InstanceRemoveRequest) (app.InstanceRemoveResult, error) {
+	configured := make([]string, 0, 1)
+	remove := func(ctx context.Context, request app.InstanceRemoveRequest) (app.InstanceRemoveResult, error) {
 		observed = append(observed, request)
+
+		configs, err := app.ListInstances(ctx, app.InstanceListRequest{All: true})
+		require.NoError(t, err)
+
+		for _, cfg := range configs {
+			configured = append(configured, cfg.Name)
+		}
 
 		return app.InstanceRemoveResult{Instance: request.Name}, nil
 	}
 
-	run := runInstanceRemoveCommand(t, remove, instanceCommandAlphaName)
+	run := runInstanceRemoveCommand(ctx, t, remove, instanceCommandAlphaName)
 
 	require.NoError(t, run.err)
 	require.Len(t, observed, 1)
-	assert.Equal(t, configPath, observed[0].ConfigPath)
 	assert.Equal(t, instanceCommandAlphaName, observed[0].Name)
+	assert.Equal(t, []string{instanceCommandAlphaName}, configured)
 }
 
 // TestInstanceRemoveReportsFailure verifies that a refusal from the use case is
@@ -608,10 +578,8 @@ func TestInstanceRemoveUsesResolvedConfigurationPath(t *testing.T) {
 func TestInstanceRemoveReportsFailure(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-
 	wantErr := errors.New("credential store unavailable")
-	run := runInstanceRemoveCommand(t, stubRemoval(app.InstanceRemoveResult{}, wantErr), "alpha")
+	run := runInstanceRemoveCommand(t.Context(), t, stubRemoval(app.InstanceRemoveResult{}, wantErr), "alpha")
 
 	require.ErrorIs(t, run.err, wantErr)
 	assert.Contains(t, run.err.Error(), "remove instance")
@@ -625,10 +593,9 @@ func TestInstanceRemoveReportsFailure(t *testing.T) {
 func TestInstanceRemoveReportsCredentialRemovedWithFailure(t *testing.T) {
 	t.Parallel()
 
-	lockInstanceCommandState(t)
-
 	wantErr := errors.New(`write configuration: write config: permission denied`)
 	run := runInstanceRemoveCommand(
+		t.Context(),
 		t,
 		stubRemoval(
 			app.InstanceRemoveResult{
@@ -671,13 +638,16 @@ func stubRemoval(result app.InstanceRemoveResult, err error) removal {
 // runInstanceRemove executes a remove command bound to an injected removal.
 //
 // Parameters:
-//   - t: active test requiring command construction and error assertions.
+//   - ctx: context carrying the configuration of the run.
 //   - remove: instance removal used by the command.
 //   - args: command line arguments passed to the remove command.
 //
 // Returns:
 //   - instanceRun: the rendered output streams and the execution error.
+//
+//nolint:contextcheck // The command reads the context passed to ExecuteContext.
 func runInstanceRemoveCommand(
+	ctx context.Context,
 	t *testing.T,
 	remove removal,
 	args ...string,
@@ -691,7 +661,7 @@ func runInstanceRemoveCommand(
 	command.SetErr(errorsOut)
 	command.SetArgs(args)
 
-	runErr := command.Execute()
+	runErr := command.ExecuteContext(ctx)
 
 	return instanceRun{
 		out:    output.String(),
@@ -700,39 +670,17 @@ func runInstanceRemoveCommand(
 	}
 }
 
-// lockInstanceCommandState serializes one test against the other tests that
-// mutate the process-global Viper instance.
-//
-// Parameters:
-//   - t: active test requiring serialized configuration state.
-func lockInstanceCommandState(t *testing.T) {
-	t.Helper()
-
-	instanceCommandMutex.Lock()
-	t.Cleanup(instanceCommandMutex.Unlock)
-}
-
-// resetInstanceCommandState isolates package-level command state for one test.
-//
-// Parameters:
-//   - t: active test requiring Viper isolation.
-func resetInstanceCommandState(t *testing.T) {
-	t.Helper()
-
-	viper.Reset()
-
-	t.Cleanup(viper.Reset)
-}
-
 // runInstanceCommand executes one freshly constructed instance command tree.
 //
 // Parameters:
-//   - t: active test requiring command construction and error assertions.
+//   - ctx: context carrying the configuration of the run.
 //   - args: command line arguments passed to the instance command.
 //
 // Returns:
 //   - instanceRun: the rendered output streams and the execution error.
-func runInstanceCommand(t *testing.T, args []string) instanceRun {
+//
+//nolint:contextcheck // The command reads the context passed to ExecuteContext.
+func runInstanceCommand(ctx context.Context, t *testing.T, args []string) instanceRun {
 	t.Helper()
 
 	output := &bytes.Buffer{}
@@ -742,7 +690,7 @@ func runInstanceCommand(t *testing.T, args []string) instanceRun {
 	command.SetErr(errorsOut)
 	command.SetArgs(args)
 
-	err := command.Execute()
+	err := command.ExecuteContext(ctx)
 
 	return instanceRun{
 		out:    output.String(),
@@ -803,20 +751,6 @@ func readInstanceConfig(t *testing.T, configPath string) string {
 	require.NoError(t, err)
 
 	return string(data)
-}
-
-// useConfigFile points the global Viper instance at the given configuration file.
-//
-// Parameters:
-//   - t: active test requiring the configuration file.
-//   - configPath: path of the configuration file to read.
-func useConfigFile(t *testing.T, configPath string) {
-	t.Helper()
-
-	// Mirrors the root pre-run: publish the resolution, then read the file.
-	app.PublishConfigResolution(app.ConfigResolution{Path: configPath, Exists: true})
-	viper.SetConfigFile(configPath)
-	require.NoError(t, viper.ReadInConfig())
 }
 
 // requireInstanceSubcommand resolves one subcommand of a constructed parent.

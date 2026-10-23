@@ -43,7 +43,7 @@ func runFilteringRemoveURL(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse filtering flags: %w", err)
 	}
 
-	results, operationErr := app.NewFilteringManagement().RemoveURL(
+	results, operationErr := app.NewFilteringManagement(cmd.Context()).RemoveURL(
 		cmd.Context(),
 		selection,
 		args[0],

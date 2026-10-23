@@ -48,7 +48,7 @@ change the password without restoring a username.`,
 func runClear(cmd *cobra.Command, args []string, seams *streams) error {
 	name := args[0]
 
-	store, err := seams.coordinator()
+	store, err := seams.coordinator(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}

@@ -47,12 +47,9 @@ func newRewriteListCommand() *cobra.Command {
 //   - error: An error when a selection, per-instance request, or the list output
 //     fails.
 func runRewriteList(cmd *cobra.Command, _ []string, values *flagValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, listErr := app.NewRewriteManagement().List(cmd.Context(), selection)
+	results, listErr := app.NewRewriteManagement(cmd.Context()).List(cmd.Context(), selection)
 	outputErr := writeRewriteLists(cmd, results, values.sortColumn)
 
 	listErr = errors.Join(listErr, outputErr)

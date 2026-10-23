@@ -10,7 +10,6 @@ import (
 	"slices"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
@@ -30,7 +29,7 @@ type selectionValues struct {
 type clientMutation func(
 	*app.ClientManagement,
 	context.Context,
-	app.ClientSelection,
+	app.Selection,
 	app.ClientMutation,
 ) ([]app.ClientMutationResult, error)
 
@@ -149,23 +148,15 @@ func registerClientMutationFlags(command *cobra.Command) {
 	)
 }
 
-// selection captures active Cobra and Viper selection state.
+// selection captures the instance selection taken from the flags.
 //
 // Returns:
-//   - app.ClientSelection: The instance selection taken from flags and configuration.
-//   - error: An error when the configured instances cannot be read.
-func (values *selectionValues) selection() (app.ClientSelection, error) {
-	instances, err := app.InstanceSource()
-	if err != nil {
-		return app.ClientSelection{}, fmt.Errorf("resolve client instance selection: %w", err)
+//   - app.Selection: The instance selection taken from the flags.
+func (values *selectionValues) selection() app.Selection {
+	return app.Selection{
+		Names: slices.Clone(values.names),
+		All:   values.all,
 	}
-
-	return app.ClientSelection{
-		Instances:  instances,
-		Names:      slices.Clone(values.names),
-		All:        values.all,
-		ConfigPath: viper.ConfigFileUsed(),
-	}, nil
 }
 
 // runClientMutation wires flags, app mutation, and success output.
@@ -192,13 +183,10 @@ func runClientMutation(
 
 	request.Name = args[0]
 
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select client instances: %w", err)
-	}
+	selection := values.selection()
 
 	results, operationErr := mutation(
-		app.NewClientManagement(),
+		app.NewClientManagement(cmd.Context()),
 		cmd.Context(),
 		selection,
 		request,

@@ -28,8 +28,6 @@ const (
 	alphaTestHost = "alpha.example.com"
 	// ZuluTestHost is the zulu test host.
 	zuluTestHost = "zulu.example.com"
-	// HostKey is the raw instance host key.
-	hostKey = "host"
 	// ResolvedMarker is the context value the resolver stub requires.
 	resolvedMarker = "resolved-marker"
 	// ResolvedPassword is the password the resolver stub returns.
@@ -214,183 +212,53 @@ func TestCatalogAllReturnsSnapshot(t *testing.T) {
 	assert.Equal(t, "home.example.com", all[0].Host)
 }
 
-// TestSourceFromValueConvertsConfiguredMapping verifies that a configured
-// mapping becomes a typed source and that an absent or empty mapping converts to
-// an empty source.
-func TestSourceFromValueConvertsConfiguredMapping(t *testing.T) {
+// TestNewCatalogRejectsConflictingIdentity verifies that two names that differ
+// only by letter case cannot share a catalog.
+func TestNewCatalogRejectsConflictingIdentity(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		give any
-		want Source
-	}{
-		{
-			name: "configured instances",
-			give: map[string]any{
-				zuluName:  map[string]any{hostKey: zuluTestHost},
-				alphaName: map[string]any{hostKey: alphaTestHost},
-			},
-			want: Source{
-				zuluName:  map[string]any{hostKey: zuluTestHost},
-				alphaName: map[string]any{hostKey: alphaTestHost},
-			},
-		},
-		{
-			name: "absent mapping",
-			give: nil,
-			want: Source{},
-		},
-		{
-			name: "empty mapping",
-			give: map[string]any{},
-			want: Source{},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			source, err := SourceFromValue(test.give)
-
-			require.NoError(t, err)
-			assert.Equal(t, test.want, source)
-		})
-	}
-}
-
-// TestSourceFromValueRejectsInvalidMapping verifies that a mistyped mapping is
-// reported instead of being skipped, so a bad instance never falls back to
-// another instance.
-func TestSourceFromValueRejectsInvalidMapping(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		give    any
-		wantErr error
-	}{
-		{
-			name:    "non-map instances value",
-			give:    "not-a-map",
-			wantErr: ErrNoConfigInstances,
-		},
-		{
-			name: "non-map instance value",
-			give: map[string]any{
-				alphaName: "not-a-map",
-			},
-			wantErr: ErrInvalidConfig,
-		},
-		{
-			name: "nil instance value",
-			give: map[string]any{
-				alphaName: nil,
-			},
-			wantErr: ErrInvalidConfig,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			source, err := SourceFromValue(test.give)
-
-			require.ErrorIs(t, err, test.wantErr)
-			assert.Nil(t, source)
-		})
-	}
-}
-
-// TestCatalogFromSourceSelection verifies source conversion and selection.
-func TestCatalogFromSourceSelection(t *testing.T) {
-	t.Parallel()
-
-	catalog, err := CatalogFromSource(Source{
-		zuluName:            map[string]any{hostKey: zuluTestHost},
-		defaultInstanceName: map[string]any{hostKey: "default.example.com"},
-		alphaName:           map[string]any{hostKey: alphaTestHost},
+	_, err := NewCatalog([]Config{
+		catalogConfig("home", "first.example.com"),
+		catalogConfig("Home", "second.example.com"),
 	})
-	require.NoError(t, err)
 
-	tests := []struct {
-		name    string
-		give    []string
-		mode    SelectionMode
-		wantIDs []ID
-		wantErr error
-	}{
-		{
-			name:    "all takes precedence and preserves sorted catalog order",
-			give:    []string{"unknown"},
-			mode:    AllSelection,
-			wantIDs: []ID{alphaName, defaultInstanceName, zuluName},
-			wantErr: nil,
-		},
-		{
-			name:    "explicit preserves first occurrence",
-			give:    []string{zuluName, alphaName, zuluName},
-			mode:    ExplicitOrDefaultSelection,
-			wantIDs: []ID{zuluName, alphaName},
-			wantErr: nil,
-		},
-		{
-			name:    "default fallback",
-			give:    nil,
-			mode:    ExplicitOrDefaultSelection,
-			wantIDs: []ID{defaultInstanceName},
-			wantErr: nil,
-		},
-		{
-			name:    "unknown explicit target",
-			give:    []string{"unknown"},
-			mode:    ExplicitOrDefaultSelection,
-			wantIDs: nil,
-			wantErr: ErrUnknownInstance,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			selected, selectErr := catalog.Select(test.give, test.mode)
-			if test.wantErr != nil {
-				require.ErrorIs(t, selectErr, test.wantErr)
-
-				return
-			}
-
-			require.NoError(t, selectErr)
-			assert.Equal(t, test.wantIDs, configIdentities(selected))
-		})
-	}
+	require.ErrorIs(t, err, ErrConflictingInstance)
+	require.ErrorContains(t, err, `"home" and "Home"`)
 }
 
-// TestCatalogFromSourceRejectsInvalidInput verifies whole-catalog validation.
-func TestCatalogFromSourceRejectsInvalidInput(t *testing.T) {
+// TestNewCatalogRejectsInvalidInput verifies whole-catalog validation.
+func TestNewCatalogRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	_, err := CatalogFromSource(Source{
-		alphaName: map[string]any{hostKey: alphaTestHost},
-		"invalid": map[string]any{"scheme": defaultScheme},
+	_, err := NewCatalog([]Config{
+		catalogConfig(alphaName, alphaTestHost),
+		catalogConfig("invalid", ""),
 	})
 
 	require.ErrorIs(t, err, ErrMissingHost)
 }
 
-// TestCatalogFromSourceEmptyCatalogFailsSelection verifies an empty source.
-func TestCatalogFromSourceEmptyCatalogFailsSelection(t *testing.T) {
+// TestNewCatalogEmptyCatalogFailsSelection verifies an empty catalog.
+func TestNewCatalogEmptyCatalogFailsSelection(t *testing.T) {
 	t.Parallel()
 
-	catalog, err := CatalogFromSource(Source{})
+	catalog, err := NewCatalog(nil)
 	require.NoError(t, err)
 
 	_, err = catalog.Select(nil, ExplicitOrDefaultSelection)
 
 	require.ErrorIs(t, err, ErrEmptyCatalog)
+}
+
+// TestNewCatalogValidatesWithoutResolving verifies that a credential reference
+// is normalized without contacting a credential source.
+func TestNewCatalogValidatesWithoutResolving(t *testing.T) {
+	t.Parallel()
+
+	catalog, err := NewCatalog([]Config{keyringInstance()})
+	require.NoError(t, err)
+
+	assert.Equal(t, &CredentialRef{Source: KeyringSource, Key: alphaName}, catalog.All()[0].Credential)
 }
 
 // configIdentities returns configuration identities in slice order.
@@ -409,9 +277,9 @@ func configIdentities(configs []Config) []ID {
 	return ids
 }
 
-// TestCatalogFromSourceResolvedAppliesResolver verifies per-instance resolution in
-// catalog order and context propagation.
-func TestCatalogFromSourceResolvedAppliesResolver(t *testing.T) {
+// TestCatalogResolveAppliesResolver verifies per-instance resolution in catalog
+// order and context propagation.
+func TestCatalogResolveAppliesResolver(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.WithValue(t.Context(), resolverMarker{}, resolvedMarker)
@@ -427,93 +295,57 @@ func TestCatalogFromSourceResolvedAppliesResolver(t *testing.T) {
 		return cfg, nil
 	})
 
-	catalog, err := CatalogFromSourceResolved(ctx, Source{
-		zuluName:  map[string]any{hostKey: zuluTestHost},
-		alphaName: keyringInstance(),
-	}, resolve)
+	catalog, err := NewCatalog([]Config{keyringInstance(), catalogConfig(zuluName, zuluTestHost)})
 	require.NoError(t, err)
 
-	all := catalog.All()
+	resolved, err := catalog.Resolve(ctx, resolve)
+	require.NoError(t, err)
+
+	all := resolved.All()
 	assert.Equal(t, []ID{alphaName, zuluName}, configIdentities(all))
 	assert.Equal(t, []ID{alphaName, zuluName}, configIdentities(seen))
 	assert.Equal(t, defaultScheme, seen[0].Scheme)
 	assert.Equal(t, resolvedPassword, all[0].Password)
 	assert.Equal(t, resolvedPassword, all[1].Password)
-}
-
-// TestCatalogFromSourceResolvedWithoutResolver verifies that a nil resolver matches
-// the unresolved CatalogFromSource behavior.
-func TestCatalogFromSourceResolvedWithoutResolver(t *testing.T) {
-	t.Parallel()
-
-	give := Source{alphaName: keyringInstance()}
-
-	catalog, err := CatalogFromSourceResolved(t.Context(), give, nil)
-	require.NoError(t, err)
-
-	unresolved, err := CatalogFromSource(give)
-	require.NoError(t, err)
-	assert.Equal(t, unresolved.All(), catalog.All())
 	assert.Empty(t, catalog.All()[0].Password)
 }
 
-// TestCatalogFromSourceValidatesWithoutResolving verifies that CatalogFromSource
-// normalizes a credential reference without contacting a credential source.
-func TestCatalogFromSourceValidatesWithoutResolving(t *testing.T) {
+// TestCatalogResolveWithoutResolver verifies that a nil resolver leaves the
+// catalog unresolved.
+func TestCatalogResolveWithoutResolver(t *testing.T) {
 	t.Parallel()
 
-	catalog, err := CatalogFromSource(Source{alphaName: keyringInstance()})
+	catalog, err := NewCatalog([]Config{keyringInstance()})
 	require.NoError(t, err)
 
-	assert.Equal(t, &CredentialRef{Source: KeyringSource, Key: alphaName}, catalog.All()[0].Credential)
+	resolved, err := catalog.Resolve(t.Context(), nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, catalog.All(), resolved.All())
+	assert.Empty(t, resolved.All()[0].Password)
 }
 
-// TestCatalogFromSourceResolvedPropagatesResolverError verifies that resolution
-// failures name the instance and preserve the sentinel error.
-func TestCatalogFromSourceResolvedPropagatesResolverError(t *testing.T) {
+// TestCatalogResolvePropagatesResolverError verifies that resolution failures
+// name the instance and preserve the sentinel error.
+func TestCatalogResolvePropagatesResolverError(t *testing.T) {
 	t.Parallel()
 
 	resolve := resolverFunc(func(_ context.Context, cfg Config) (Config, error) {
 		return Config{}, fmt.Errorf("read key %q: %w", cfg.Credential.Key, errCredentialStore)
 	})
 
-	_, err := CatalogFromSourceResolved(t.Context(), Source{
-		alphaName: keyringInstance(),
-	}, resolve)
+	catalog, err := NewCatalog([]Config{keyringInstance()})
+	require.NoError(t, err)
+
+	_, err = catalog.Resolve(t.Context(), resolve)
 
 	require.ErrorIs(t, err, errCredentialStore)
 	assert.ErrorContains(t, err, alphaName)
 }
 
-// TestCatalogFromSourceResolvedRejectsInvalidCredential verifies that
-// configuration validation precedes credential resolution.
-func TestCatalogFromSourceResolvedRejectsInvalidCredential(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	resolve := resolverFunc(func(_ context.Context, cfg Config) (Config, error) {
-		calls++
-
-		return cfg, nil
-	})
-
-	_, err := CatalogFromSourceResolved(t.Context(), Source{
-		alphaName: map[string]any{
-			hostKey: alphaTestHost,
-			credentialFieldName: map[string]any{
-				sourceFieldName: unknownSource,
-			},
-		},
-	}, resolve)
-
-	require.ErrorIs(t, err, ErrInvalidCredentialSource)
-	assert.Zero(t, calls)
-}
-
-// TestCatalogFromSourceResolvedRevalidatesResolverOutput verifies that a resolver
-// cannot smuggle an invalid configuration into the catalog.
-func TestCatalogFromSourceResolvedRevalidatesResolverOutput(t *testing.T) {
+// TestCatalogResolveRevalidatesResolverOutput verifies that a resolver cannot
+// smuggle an invalid configuration into the catalog.
+func TestCatalogResolveRevalidatesResolverOutput(t *testing.T) {
 	t.Parallel()
 
 	resolve := resolverFunc(func(_ context.Context, cfg Config) (Config, error) {
@@ -522,23 +354,42 @@ func TestCatalogFromSourceResolvedRevalidatesResolverOutput(t *testing.T) {
 		return cfg, nil
 	})
 
-	_, err := CatalogFromSourceResolved(t.Context(), Source{
-		alphaName: map[string]any{hostKey: alphaTestHost},
-	}, resolve)
+	catalog, err := NewCatalog([]Config{catalogConfig(alphaName, alphaTestHost)})
+	require.NoError(t, err)
+
+	_, err = catalog.Resolve(t.Context(), resolve)
 
 	require.ErrorIs(t, err, ErrMissingHost)
 }
 
-// keyringInstance returns a raw instance mapping that stores its password under
-// the default keyring key.
+// catalogConfig returns an unvalidated instance without credentials.
+//
+// Parameters:
+//   - name: instance name.
+//   - host: instance host, or an empty string to omit it.
 //
 // Returns:
-//   - map[string]any: raw instance mapping.
-func keyringInstance() map[string]any {
-	return map[string]any{
-		hostKey: alphaTestHost,
-		credentialFieldName: map[string]any{
-			sourceFieldName: string(KeyringSource),
-		},
+//   - Config: unvalidated instance configuration.
+func catalogConfig(name, host string) Config {
+	return Config{
+		Name:       name,
+		Host:       host,
+		Scheme:     "",
+		Username:   "",
+		Password:   "",
+		Credential: nil,
 	}
+}
+
+// keyringInstance returns an unvalidated alpha instance that stores its
+// password under the default keyring key.
+//
+// Returns:
+//   - Config: unvalidated instance configuration.
+func keyringInstance() Config {
+	cfg := catalogConfig(alphaName, alphaTestHost)
+
+	cfg.Credential = &CredentialRef{Source: KeyringSource}
+
+	return cfg
 }

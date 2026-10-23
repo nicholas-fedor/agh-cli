@@ -59,11 +59,10 @@ literal out of the command line yourself.`,
 // Returns:
 //   - error: non-nil when config loading, validation, or save fails.
 func runInstanceAdd(cmd *cobra.Command, args []string, values *flagValues) error {
-	addErr := app.AddInstance(app.InstanceAddRequest{
-		ConfigPath: app.ConfigPath(),
-		Name:       args[0],
-		Host:       args[1],
-		Scheme:     values.scheme,
+	addErr := app.AddInstance(cmd.Context(), app.InstanceAddRequest{
+		Name:   args[0],
+		Host:   args[1],
+		Scheme: values.scheme,
 	})
 	if addErr != nil {
 		return fmt.Errorf("add instance: %w", addErr)

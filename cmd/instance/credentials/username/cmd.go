@@ -4,6 +4,8 @@
 package username
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
@@ -46,8 +48,9 @@ type coordinator interface {
 	StatusUsername(names []string) (app.UsernameReport, error)
 }
 
-// factory builds the username coordinator for one command execution.
-type factory func() (coordinator, error)
+// factory builds the username coordinator for one command execution from the
+// command context.
+type factory func(ctx context.Context) (coordinator, error)
 
 // streams carries the coordinator factory the commands use.
 //
@@ -79,8 +82,8 @@ const jsonFlagName = "json"
 //   - *streams: production dependencies for the username commands.
 func newStreams() *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
-			return app.NewCredentialsCoordinator()
+		coordinator: func(ctx context.Context) (coordinator, error) {
+			return app.NewCredentialsCoordinator(ctx)
 		},
 	}
 }

@@ -27,14 +27,6 @@ type credentialField struct {
 	value string
 }
 
-// ValidationProblem reports one configured instance that cannot be used.
-type ValidationProblem struct {
-	// Instance is the name of the instance that failed validation.
-	Instance string
-	// Err is the validation failure.
-	Err error
-}
-
 // DefaultCredentialService is the credential store service namespace applied
 // when the configuration omits credentials.service.
 const DefaultCredentialService = "agh-cli"
@@ -60,6 +52,18 @@ const instancesFieldName = "instances"
 
 // serviceFieldName is the credentials key holding the service namespace.
 const serviceFieldName = "service"
+
+// hostFieldName is the instance key holding the AdGuard Home host.
+const hostFieldName = "host"
+
+// schemeFieldName is the instance key holding the transport scheme.
+const schemeFieldName = "scheme"
+
+// usernameFieldName is the instance key holding the administrator username.
+const usernameFieldName = "username"
+
+// passwordFieldName is the instance key holding the legacy plaintext password.
+const passwordFieldName = "password"
 
 // credentialFieldName is the instance key holding the credential stanza.
 const credentialFieldName = "credential"
@@ -88,11 +92,12 @@ const envFieldName = "env"
 //   - name: instance identifier to update.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when name is not configured.
+//   - error: ErrInstanceNotFound when name is not configured, or a wrapped
+//     [instance.ErrInvalidConfig] when its stanza could not be decoded.
 func (m *Manager) ClearCredential(name string) error {
-	cfg, ok := m.data.Instances[name]
-	if !ok {
-		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	cfg, err := m.editableInstance(name)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	cfg.Credential = nil
@@ -118,11 +123,12 @@ func (m *Manager) ClearCredential(name string) error {
 //   - name: instance identifier to update.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when name is not configured.
+//   - error: ErrInstanceNotFound when name is not configured, or a wrapped
+//     [instance.ErrInvalidConfig] when its stanza could not be decoded.
 func (m *Manager) ClearLegacyPassword(name string) error {
-	cfg, ok := m.data.Instances[name]
-	if !ok {
-		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	cfg, err := m.editableInstance(name)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	cfg.Password = ""
@@ -142,52 +148,18 @@ func (m *Manager) ClearLegacyPassword(name string) error {
 //   - name: instance identifier to update.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when name is not configured.
+//   - error: ErrInstanceNotFound when name is not configured, or a wrapped
+//     [instance.ErrInvalidConfig] when its stanza could not be decoded.
 func (m *Manager) ClearUsername(name string) error {
-	cfg, ok := m.data.Instances[name]
-	if !ok {
-		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	cfg, err := m.editableInstance(name)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	cfg.Username = ""
 	m.data.Instances[name] = cfg
 
 	return nil
-}
-
-// ValidationProblems reports the configured instances that cannot be used.
-//
-// Instances are validated when a command builds its catalog, so an invalid
-// instance otherwise surfaces long after the file was read. Reporting the
-// problems without failing keeps the configuration usable, because refusing the
-// load would make a broken instance impossible to remove.
-//
-// The failures are ordered by name, matching the catalog, so repeated runs report
-// the same problems in the same order.
-//
-// Returns:
-//   - []ValidationProblem: one entry per invalid instance, or nil when every
-//     instance is valid.
-func (m *Manager) ValidationProblems() []ValidationProblem {
-	problems := make([]ValidationProblem, 0, len(m.data.Instances))
-
-	for _, name := range m.nameOrder {
-		cfg, ok := m.data.Instances[name]
-		if !ok {
-			continue
-		}
-
-		_, err := cfg.Validate()
-		if err != nil {
-			problems = append(problems, ValidationProblem{Instance: name, Err: err})
-		}
-	}
-
-	if len(problems) == 0 {
-		return nil
-	}
-
-	return problems
 }
 
 // SetUsername records the AdGuard Home administrator username of one instance in
@@ -205,9 +177,9 @@ func (m *Manager) ValidationProblems() []ValidationProblem {
 // Returns:
 //   - error: ErrInstanceNotFound when the instance is unknown.
 func (m *Manager) SetUsername(name, username string) error {
-	cfg, ok := m.data.Instances[name]
-	if !ok {
-		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	cfg, err := m.editableInstance(name)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	cfg.Username = username
@@ -239,11 +211,12 @@ func (m *Manager) Credentials() CredentialsSettings {
 //   - ref: credential reference to store.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when name is not configured.
+//   - error: ErrInstanceNotFound when name is not configured, or a wrapped
+//     [instance.ErrInvalidConfig] when its stanza could not be decoded.
 func (m *Manager) SetCredential(name string, ref instance.CredentialRef) error {
-	cfg, ok := m.data.Instances[name]
-	if !ok {
-		return fmt.Errorf("instance %q %w", name, ErrInstanceNotFound)
+	cfg, err := m.editableInstance(name)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	stored := ref
@@ -279,30 +252,13 @@ func (m *Manager) loadCredentials(node *yaml.Node) error {
 		return ErrInvalidCredentialsMap
 	}
 
-	service, err := decodeCredentialService(credentialServiceNode(node))
+	service, err := decodeCredentialService(mappingValue(node, serviceFieldName))
 	if err != nil {
 		return fmt.Errorf("load credential service: %w", err)
 	}
 
 	m.data.Credentials = CredentialsSettings{Service: service}
 	m.credentialsSet = true
-
-	return nil
-}
-
-// credentialServiceNode returns the YAML value of credentials.service.
-//
-// Parameters:
-//   - node: complete credentials mapping node.
-//
-// Returns:
-//   - *yaml.Node: the service value, or nil when the mapping omits the key.
-func credentialServiceNode(node *yaml.Node) *yaml.Node {
-	for index := 0; index < len(node.Content); index += 2 {
-		if node.Content[index].Value == serviceFieldName {
-			return node.Content[index+1]
-		}
-	}
 
 	return nil
 }
@@ -365,13 +321,20 @@ func writeCredentials(builder *strings.Builder, settings CredentialsSettings) er
 // fixed order key, path, env. Empty fields are omitted, so one reference always
 // serializes identically.
 //
+// The keys agh-cli does not read follow the fields it owns, as they were read.
+//
 // Parameters:
 //   - builder: destination for the credential fields.
 //   - ref: credential reference to serialize.
+//   - unknown: entries of the credential stanza agh-cli does not read.
 //
 // Returns:
 //   - error: a wrapped error when a field cannot be written.
-func writeCredentialStanza(builder *strings.Builder, ref *instance.CredentialRef) error {
+func writeCredentialStanza(
+	builder *strings.Builder,
+	ref *instance.CredentialRef,
+	unknown []configField,
+) error {
 	err := writeInstanceLine(builder, "    %s:\n", credentialFieldName)
 	if err != nil {
 		return fmt.Errorf("write credential key: %w", err)
@@ -393,6 +356,11 @@ func writeCredentialStanza(builder *strings.Builder, ref *instance.CredentialRef
 		if err != nil {
 			return fmt.Errorf("write credential field %q: %w", field.name, err)
 		}
+	}
+
+	err = writeIndentedFields(builder, unknown, credentialFieldIndent)
+	if err != nil {
+		return fmt.Errorf("write unknown credential fields: %w", err)
 	}
 
 	return nil

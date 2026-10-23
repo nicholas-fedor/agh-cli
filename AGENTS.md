@@ -43,6 +43,7 @@ main.go
 
 - `cmd` contains Cobra definitions, flags, argument validation, and presentation wiring only.
 - `internal/app` is the glue between commands, domain packages, `pkg/adguard`, instance selection, and execution.
+- Requests from `cmd` carry only the operator's intent, such as selected names or `--all`. `internal/app` reads the configured instances from the run configuration itself.
 - Domain packages own use cases, validation, request shaping, wildcard behavior, and result shaping.
 - `pkg/adguard` owns transport, auth, timeouts, bounded responses, strict decoding, typed errors, and public domain types.
 - `internal/config` owns local YAML persistence.
@@ -87,7 +88,8 @@ Every command tree must be constructed fresh:
 - Unit tests belong in the package under test.
 - Integration and contract tests belong in the external `_test` package when they exercise public behavior.
 - Use `httptest.NewTestServer` for real HTTP contract coverage.
-- Use `t.Context()` and `t.Parallel()` unless mutating process-global Viper state.
+- Use `t.Context()` and `t.Parallel()` unless the test mutates process-global state, such as with `t.Setenv` or `t.Chdir`.
+- Command tests execute with a context from `internal/app/apptest`, which carries a loaded configuration.
 - `pkg/adguard` domains have unit, integration, and fuzz files named:
   - `<domain>_test.go`
   - `<domain>_integration_test.go`
@@ -110,13 +112,15 @@ Every command tree must be constructed fresh:
 - Use `example/config.yaml` as the starting template. It documents every credential source.
 - The lookup order is explicit `--config`, the per-user configuration file, then `./config.yaml`. The per-user file is `agh-cli/config.yaml` under the platform configuration root: `$XDG_CONFIG_HOME/agh-cli/config.yaml` (defaulting to `~/.config/agh-cli/config.yaml`) on Unix, `~/Library/Application Support/agh-cli/config.yaml` on macOS, and `%AppData%\agh-cli\config.yaml` on Windows. Resolve it with [os.UserConfigDir], never a hardcoded home path.
 - The first write creates the per-user configuration file and its directory. A write never invents a path in the current working directory.
-- Resolve the configuration file exactly once, in `internal/app`, and publish the outcome for both the read and the write. The root command must not configure a second search of its own, because two resolutions drift and the explicit path then behaves differently from the default one.
+- Resolve and load the configuration file exactly once, in the root command's pre-run through `internal/app`, and attach the loaded configuration to the command context. Every read and every write of the run uses it. Never keep it in process-global state, and never configure a second search, because two resolutions drift and the explicit path then behaves differently from the default one.
+- The configuration file is YAML only. `internal/config` refuses an extension other than `.yaml`, `.yml`, or none, because every write is YAML.
+- Keys and instance names are case-sensitive. A name that differs from another only by letter case is refused by `instance add` and by the catalog, and is reported at load.
 - A file with no content is not an error. Whitespace alone, including a tab, is an empty configuration that the first write replaces, because YAML forbids a tab as indentation and would otherwise reject a file that is visually empty.
 - Every configuration error names the file that failed.
 - A write preserves top-level keys agh-cli does not own, re-emitting them ahead of the keys it owns. Never silently drop an annotation or a key another tool reads.
 - A write follows a symlinked configuration to its target. A rename onto the link path would replace the link and leave the file the operator named unchanged.
 - A write refuses to overwrite a file that changed after it was read, so a concurrent editor or a second process cannot have its change discarded silently.
-- Instances that fail validation are reported as a warning at load, never as a load failure, because a hard failure would make a broken instance impossible to remove.
+- Instances that fail validation are reported as a warning at load, never as a load failure, because a hard failure would make a broken instance impossible to remove. A stanza that cannot be decoded is reported the same way and written back unchanged. A key agh-cli does not read inside an instance or credential stanza is reported as well and kept on every write.
 - Use `chmod 600 config.yaml` for files containing credentials. The configuration manager already writes mode 600.
 - Never treat local test credentials as repository content, and never include them in output, tests, or commits.
 

@@ -63,7 +63,7 @@ func runRewriteDelete(cmd *cobra.Command, args []string, values *flagValues) err
 		func(
 			management *app.RewriteManagement,
 			ctx context.Context,
-			selection app.RewriteSelection,
+			selection app.Selection,
 			request app.RewriteRuleInput,
 		) ([]app.RewriteMutationResult, error) {
 			return management.Delete(ctx, selection, request)

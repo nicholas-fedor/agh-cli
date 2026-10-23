@@ -133,7 +133,7 @@ func runSet(cmd *cobra.Command, args []string, values *setValues, seams *streams
 		return nil
 	}
 
-	store, err := seams.coordinator()
+	store, err := seams.coordinator(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}

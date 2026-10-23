@@ -44,15 +44,12 @@ func newClientListCommand() *cobra.Command {
 //   - error: An error when a selection, per-instance request, or output operation
 //     fails.
 func runClientList(cmd *cobra.Command, _ []string, values *selectionValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select client instances: %w", err)
-	}
+	selection := values.selection()
 
-	results, operationErr := app.NewClientManagement().List(cmd.Context(), selection)
+	results, operationErr := app.NewClientManagement(cmd.Context()).List(cmd.Context(), selection)
 	outputErr := writeClientList(cmd, results)
 
-	err = errors.Join(operationErr, outputErr)
+	err := errors.Join(operationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("list clients: %w", err)
 	}

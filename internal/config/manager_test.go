@@ -723,6 +723,275 @@ func TestLoadRejectsDirectoryPath(t *testing.T) {
 	assert.Contains(t, err.Error(), strconv.Quote(directory))
 }
 
+// TestLoadKeepsInstanceNamesAsWritten verifies instance names are never folded
+// to another case, including a name the file writes as a number.
+func TestLoadKeepsInstanceNamesAsWritten(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path,
+		"instances:\n  Home:\n    host: home.example.com\n  1:\n    host: one.example.com\n",
+	)
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Home", "1"}, manager.OrderedNames())
+	assert.Empty(t, manager.ValidationProblems())
+}
+
+// TestLoadRefusesUnsupportedFormat verifies that only YAML paths are read, so a
+// write never puts YAML into a file named for another format.
+func TestLoadRefusesUnsupportedFormat(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"config.toml", "config.json", "config.ini"} {
+		_, err := Load(filepath.Join(t.TempDir(), name))
+		require.ErrorIs(t, err, ErrUnsupportedFormat, name)
+	}
+
+	for _, name := range []string{"config.yaml", "config.yml", "config.YAML", "config"} {
+		_, err := Load(filepath.Join(t.TempDir(), name))
+		require.NoError(t, err, name)
+	}
+}
+
+// TestLoadKeepsUndecodableInstance verifies a stanza that cannot be decoded is
+// reported instead of failing the load, survives a write that concerns another
+// instance, and can still be removed.
+func TestLoadKeepsUndecodableInstance(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  alpha:\n    host: alpha.example.com\n"+
+		"  broken: https\n"+
+		"  mistyped:\n    host: mistyped.example.com\n    credential: keyring\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	assert.True(t, manager.Exists("broken"))
+
+	problems := manager.ValidationProblems()
+	require.Len(t, problems, 2)
+	assert.Equal(t, "broken", problems[0].Instance)
+	require.ErrorIs(t, problems[0].Err, instance.ErrInvalidConfig)
+	assert.Equal(t, "mistyped", problems[1].Instance)
+	require.ErrorIs(t, problems[1].Err, instance.ErrInvalidConfig)
+
+	configs, err := manager.Configs()
+	require.ErrorIs(t, err, instance.ErrInvalidConfig)
+	require.ErrorContains(t, err, `"broken"`)
+	require.ErrorContains(t, err, `"mistyped"`)
+	require.Len(t, configs, 1)
+	assert.Equal(t, "alpha", configs[0].Name)
+
+	require.NoError(t, manager.Add("beta", "beta.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	written := readConfigFile(t, path)
+	assert.Contains(t, written, "  broken: https\n")
+	assert.Contains(t, written, "    credential: keyring\n")
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"alpha", "broken", "mistyped", "beta"}, reloaded.OrderedNames())
+
+	require.NoError(t, reloaded.Remove("broken"))
+	require.NoError(t, reloaded.Save())
+	assert.NotContains(t, readConfigFile(t, path), "broken")
+}
+
+// TestMutationsReportUndecodableInstance verifies a change to an instance whose
+// stanza could not be decoded reports the decoding failure instead of claiming
+// the instance is missing.
+func TestMutationsReportUndecodableInstance(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n  broken: https\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	err = manager.SetUsername("broken", "admin")
+
+	require.ErrorIs(t, err, instance.ErrInvalidConfig)
+	require.NotErrorIs(t, err, ErrInstanceNotFound)
+}
+
+// TestValidationProblemsReportsUnknownFields verifies that a key agh-cli does not
+// read is reported, so a misspelled or miscased key is never silently ignored.
+func TestValidationProblemsReportsUnknownFields(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  home:\n    Host: home.example.com\n"+
+		"    credential:\n      source: keyring\n      Key: home-admin\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	problems := manager.ValidationProblems()
+	require.Len(t, problems, 3)
+	require.ErrorIs(t, problems[0].Err, ErrUnknownField)
+	require.ErrorContains(t, problems[0].Err, `"Host"`)
+	require.ErrorIs(t, problems[1].Err, ErrUnknownField)
+	require.ErrorContains(t, problems[1].Err, `"credential.Key"`)
+	require.ErrorIs(t, problems[2].Err, instance.ErrMissingHost)
+}
+
+// TestSavePreservesUnknownInstanceFields verifies a key agh-cli does not read
+// survives a write, both in an instance stanza and in its credential stanza, so
+// a misspelled key or one kept for another tool is never silently dropped.
+func TestSavePreservesUnknownInstanceFields(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  home:\n    host: home.example.com\n    Host: other.example.com\n"+
+		"    credential:\n      source: keyring\n      note: \"rotated: monthly\"\n"+
+		"    tags:\n      - lab\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.SetUsername("home", "admin"))
+	require.NoError(t, manager.Save())
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "admin", reloaded.Instances()["home"].Username)
+
+	problems := reloaded.ValidationProblems()
+	require.Len(t, problems, 3)
+	require.ErrorContains(t, problems[0].Err, `"Host"`)
+	require.ErrorContains(t, problems[1].Err, `"tags"`)
+	require.ErrorContains(t, problems[2].Err, `"credential.note"`)
+
+	written := readConfigFile(t, path)
+	assert.Contains(t, written, "    Host: other.example.com\n")
+	assert.Contains(t, written, "      note: \"rotated: monthly\"\n")
+	assert.Contains(t, written, "    tags:\n")
+}
+
+// TestSaveOmitsEmptyHost verifies a save never writes an empty host. The
+// operator can then rename a misspelled key without creating a duplicate one.
+func TestSaveOmitsEmptyHost(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n  home:\n    Host: home.example.com\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Save())
+
+	assert.Equal(t, "instances:\n  home:\n    Host: home.example.com\n", readConfigFile(t, path))
+}
+
+// TestSaveExpandsAliasesInRetainedFields verifies a retained key whose alias
+// names an anchor in a regenerated section is written expanded, so the saved
+// document still loads, while the retained nodes stay unchanged.
+func TestSaveExpandsAliasesInRetainedFields(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  home: &h\n    host: home.example.com\n    tags: &t [lab]\n"+
+		"  away:\n    host: away.example.com\n    tags: *t\n"+
+		"backup: *h\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("beta", "beta.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	require.Len(t, manager.foreign, 1)
+	assert.Equal(t, yaml.AliasNode, manager.foreign[0].Value.Kind)
+
+	written := readConfigFile(t, path)
+	assert.NotContains(t, written, "*")
+	assert.NotContains(t, written, "&")
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"home", "away", "beta"}, reloaded.OrderedNames())
+	assert.Equal(t, map[string]any{"host": "home.example.com", "tags": []any{"lab"}},
+		decodeForeignValue(t, written, "backup"))
+}
+
+// TestAliasResolverRefusesAliasInsideItsTarget verifies an alias that refers to
+// a value containing it is refused instead of expanded without end.
+func TestAliasResolverRefusesAliasInsideItsTarget(t *testing.T) {
+	t.Parallel()
+
+	loop := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Anchor: "loop"}
+
+	loop.Content = []*yaml.Node{{Kind: yaml.AliasNode, Value: "loop", Alias: loop}}
+
+	resolver := aliasResolver{active: make(map[*yaml.Node]bool), remaining: maxResolvedNodes}
+
+	_, err := resolver.resolve(loop)
+
+	require.ErrorIs(t, err, ErrUnresolvableAlias)
+}
+
+// TestAliasResolverBoundsExpansion verifies nested aliases cannot expand a
+// retained value beyond the node budget.
+func TestAliasResolverBoundsExpansion(t *testing.T) {
+	t.Parallel()
+
+	level := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x"}
+	for range 6 {
+		next := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for range 10 {
+			next.Content = append(next.Content, &yaml.Node{Kind: yaml.AliasNode, Alias: level})
+		}
+
+		level = next
+	}
+
+	resolver := aliasResolver{active: make(map[*yaml.Node]bool), remaining: maxResolvedNodes}
+
+	_, err := resolver.resolve(level)
+
+	require.ErrorIs(t, err, ErrUnresolvableAlias)
+}
+
+// TestValidationProblemsReportsCaseConflict verifies that a name differing from
+// an earlier one only by letter case is reported on the later name.
+func TestValidationProblemsReportsCaseConflict(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  home:\n    host: first.example.com\n"+
+		"  Home:\n    host: second.example.com\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	problems := manager.ValidationProblems()
+	require.Len(t, problems, 1)
+	assert.Equal(t, "Home", problems[0].Instance)
+	require.ErrorIs(t, problems[0].Err, instance.ErrConflictingInstance)
+}
+
+// TestAddRefusesCaseConflict verifies an added name cannot differ from a
+// configured name only by letter case.
+func TestAddRefusesCaseConflict(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), DefaultConfigFileName))
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("home", "home.example.com", ""))
+
+	err = manager.Add("Home", "other.example.com", "")
+
+	require.ErrorIs(t, err, instance.ErrConflictingInstance)
+	assert.False(t, manager.Exists("Home"))
+}
+
 // TestHasContentSeparatesAbsentBlankAndRead verifies the content predicate
 // separates the three states configuration resolution depends on.
 func TestHasContentSeparatesAbsentBlankAndRead(t *testing.T) {

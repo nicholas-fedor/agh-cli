@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -12,11 +13,11 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
 
 const (
@@ -32,6 +33,13 @@ const (
 	RootInstanceName = "instance"
 	// RootInstanceAddName identifies the instance add subcommand.
 	RootInstanceAddName = "add"
+	// RootInstanceListName identifies the instance list subcommand.
+	RootInstanceListName = "list"
+	// RootAllFlag selects every configured instance.
+	RootAllFlag = "--all"
+	// RootShadowInstanceName identifies the instance of a configuration that
+	// must not be read.
+	RootShadowInstanceName = "shadow"
 	// RootAddUsername is the username recorded by the credentials username command.
 	RootAddUsername = "admin"
 	// RootCredentialsName identifies the credentials subcommand group.
@@ -96,22 +104,14 @@ func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 	userDirectory := filepath.Join(configRoot, app.DefaultConfigDirName)
 	require.NoError(t, os.MkdirAll(userDirectory, RootConfigDirMode))
 
-	userConfig := writeRootConfigFile(
-		t,
-		userDirectory,
-		app.DefaultConfigFileName,
-	)
-	writeRootConfigFile(t, workingDirectory, app.DefaultConfigFileName)
+	writeRootConfigFile(t, userDirectory, app.DefaultConfigFileName)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workingDirectory, app.DefaultConfigFileName),
+		[]byte("instances:\n  "+RootShadowInstanceName+":\n    host: "+RootConfigHost+"\n"),
+		0o600,
+	))
 
-	resetRootConfigState(t)
-
-	command := newRootCommand()
-	command.SetOut(io.Discard)
-	command.SetErr(io.Discard)
-	command.SetArgs([]string{RootVersionName})
-
-	require.NoError(t, command.ExecuteContext(t.Context()))
-	assert.Equal(t, userConfig, viper.ConfigFileUsed())
+	assert.Equal(t, RootConfigInstanceName+"\n", listRootInstances(t))
 }
 
 // TestRootCommandWritesFirstConfigToUserDirectory verifies the first write of a
@@ -123,8 +123,6 @@ func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 	t.Chdir(workingDirectory)
 
 	configRoot := isolateRootUserConfigRoot(t)
-
-	resetRootConfigState(t)
 
 	command := newRootCommand()
 	command.SetOut(io.Discard)
@@ -157,8 +155,6 @@ func TestRootCommandConfiguresCredentialsThroughCredentialsGroup(t *testing.T) {
 
 	configRoot := isolateRootUserConfigRoot(t)
 
-	resetRootConfigState(t)
-
 	addCommand := newRootCommand()
 	addCommand.SetOut(io.Discard)
 	addCommand.SetErr(io.Discard)
@@ -177,8 +173,6 @@ func TestRootCommandConfiguresCredentialsThroughCredentialsGroup(t *testing.T) {
 
 	afterAdd := readRootConfigFile(t, userConfig)
 	assert.NotContains(t, afterAdd, "username:")
-
-	resetRootConfigState(t)
 
 	usernameCommand := newRootCommand()
 	usernameCommand.SetOut(io.Discard)
@@ -200,15 +194,34 @@ func TestRootCommandHonorsConfigFlag(t *testing.T) {
 
 	configPath := writeRootConfigFile(t, workingDirectory, RootValidConfigFileName)
 
-	resetRootConfigState(t)
+	assert.Equal(
+		t,
+		RootConfigInstanceName+"\n",
+		listRootInstances(t, "--"+RootConfigFlagName, configPath),
+	)
+}
+
+// TestRootCommandRefusesUnsupportedFormat verifies that --config naming another
+// format stops execution before any write could put YAML into it.
+func TestRootCommandRefusesUnsupportedFormat(t *testing.T) {
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+	t.Setenv("HOME", workingDirectory)
+
+	configPath := filepath.Join(workingDirectory, "config.toml")
 
 	command := newRootCommand()
 	command.SetOut(io.Discard)
 	command.SetErr(io.Discard)
-	command.SetArgs([]string{"--" + RootConfigFlagName, configPath, RootVersionName})
+	command.SetArgs([]string{
+		"--" + RootConfigFlagName, configPath,
+		RootInstanceName, RootInstanceAddName,
+		RootConfigInstanceName, RootConfigHost,
+	})
 
-	require.NoError(t, command.ExecuteContext(t.Context()))
-	assert.Equal(t, configPath, viper.ConfigFileUsed())
+	err := command.ExecuteContext(t.Context())
+	require.ErrorIs(t, err, config.ErrUnsupportedFormat)
+	assert.NoFileExists(t, configPath)
 }
 
 // TestRootCommandRejectsMalformedConfig verifies that an explicit invalid file
@@ -220,8 +233,6 @@ func TestRootCommandRejectsMalformedConfig(t *testing.T) {
 
 	configPath := writeRootMalformedConfig(t, workingDirectory)
 
-	resetRootConfigState(t)
-
 	command := newRootCommand()
 	command.SetOut(io.Discard)
 	command.SetErr(io.Discard)
@@ -229,7 +240,7 @@ func TestRootCommandRejectsMalformedConfig(t *testing.T) {
 
 	err := command.ExecuteContext(t.Context())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "read config")
+	assert.ErrorContains(t, err, "load config")
 }
 
 // TestExecuteContextWrapsExecutionFailure verifies that the public entry point
@@ -241,13 +252,12 @@ func TestExecuteContextWrapsExecutionFailure(t *testing.T) {
 
 	configPath := writeRootMalformedConfig(t, workingDirectory)
 
-	resetRootConfigState(t)
 	setRootProcessArgs(t, "--"+RootConfigFlagName, configPath, RootVersionName)
 
 	err := ExecuteContext(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "execute root command")
-	require.ErrorContains(t, err, "read config")
+	require.ErrorContains(t, err, "load config")
 }
 
 // TestExecuteWrapsExecutionFailure verifies that the background-context entry
@@ -259,13 +269,12 @@ func TestExecuteWrapsExecutionFailure(t *testing.T) {
 
 	configPath := writeRootMalformedConfig(t, workingDirectory)
 
-	resetRootConfigState(t)
 	setRootProcessArgs(t, "--"+RootConfigFlagName, configPath, RootVersionName)
 
 	err := Execute()
 	require.Error(t, err)
 	require.ErrorContains(t, err, "execute root command")
-	require.ErrorContains(t, err, "read config")
+	require.ErrorContains(t, err, "load config")
 }
 
 // TestExecuteContextPropagatesCancellation verifies that command handlers
@@ -274,8 +283,6 @@ func TestExecuteContextPropagatesCancellation(t *testing.T) {
 	workingDirectory := t.TempDir()
 	t.Chdir(workingDirectory)
 	t.Setenv("HOME", workingDirectory)
-
-	resetRootConfigState(t)
 
 	command := newRootCommand()
 	command.SetOut(io.Discard)
@@ -348,16 +355,12 @@ func TestNewRootCommandRepeatedExecutionReadsConfigFlag(t *testing.T) {
 
 	configPath := writeRootConfigFile(t, workingDirectory, RootValidConfigFileName)
 
-	resetRootConfigState(t)
-
 	for range RootRepeatedExecutions {
-		command := newRootCommand()
-		command.SetOut(io.Discard)
-		command.SetErr(io.Discard)
-		command.SetArgs([]string{"--" + RootConfigFlagName, configPath, RootVersionName})
-
-		require.NoError(t, command.ExecuteContext(t.Context()))
-		assert.Equal(t, configPath, viper.ConfigFileUsed())
+		assert.Equal(
+			t,
+			RootConfigInstanceName+"\n",
+			listRootInstances(t, "--"+RootConfigFlagName, configPath),
+		)
 	}
 }
 
@@ -367,8 +370,6 @@ func TestNewRootCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
 	workingDirectory := t.TempDir()
 	t.Chdir(workingDirectory)
 	t.Setenv("HOME", workingDirectory)
-
-	resetRootConfigState(t)
 
 	observed := make([]error, 0, RootRepeatedExecutions)
 
@@ -396,16 +397,27 @@ func TestNewRootCommandRepeatedExecutionUsesFreshContext(t *testing.T) {
 	assert.NoError(t, observed[1])
 }
 
-// resetRootConfigState isolates the process-global Viper state for one test.
+// listRootInstances executes the root command to list every configured
+// instance.
 //
 // Parameters:
-//   - t: active test requiring Viper isolation.
-func resetRootConfigState(t *testing.T) {
+//   - args: global flags placed before the instance list subcommand.
+//
+// Returns:
+//   - string: the listed instance names, one per line.
+func listRootInstances(t *testing.T, args ...string) string {
 	t.Helper()
 
-	viper.Reset()
+	var output bytes.Buffer
 
-	t.Cleanup(viper.Reset)
+	command := newRootCommand()
+	command.SetOut(&output)
+	command.SetErr(io.Discard)
+	command.SetArgs(append(args, RootInstanceName, RootInstanceListName, RootAllFlag))
+
+	require.NoError(t, command.ExecuteContext(t.Context()))
+
+	return output.String()
 }
 
 // setRootProcessArgs replaces the process arguments observed by ExecuteContext.

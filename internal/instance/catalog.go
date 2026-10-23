@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 )
 
 // SelectionMode identifies how [Catalog.Select] chooses instance targets.
@@ -16,13 +14,6 @@ import (
 // Use ExplicitOrDefaultSelection to honor explicit names and implicit fallback,
 // or AllSelection to select every catalog entry in order.
 type SelectionMode uint8
-
-// Source is the configured instance mapping keyed by instance name.
-//
-// Each value is the raw settings mapping read from the configuration, so every
-// catalog entry is validated from the same shape. The zero value is an empty
-// source.
-type Source map[string]map[string]any
 
 // Catalog is an immutable, ordered collection of validated instance
 // configurations. Its zero value is an empty catalog.
@@ -44,14 +35,15 @@ const (
 const defaultInstanceName = "default"
 
 var (
+	// ErrConflictingInstance indicates that two catalog identities differ only by
+	// letter case.
+	ErrConflictingInstance = errors.New("instance names differ only by letter case")
 	// ErrDuplicateInstance indicates that a catalog contains a duplicate identity.
 	ErrDuplicateInstance = errors.New("duplicate instance")
 	// ErrEmptyCatalog indicates that no instances are configured.
 	ErrEmptyCatalog = errors.New("no instances configured")
 	// ErrInvalidSelection indicates an unsupported target-selection mode.
 	ErrInvalidSelection = errors.New("invalid instance selection mode")
-	// ErrNoConfigInstances indicates that the raw configuration has no instance map.
-	ErrNoConfigInstances = errors.New("no instances configured in config file")
 	// ErrTargetSelection indicates that target selection is ambiguous.
 	ErrTargetSelection = errors.New(
 		"specify --instance <name> or --all, or configure a 'default' instance",
@@ -67,8 +59,9 @@ var (
 //
 // Returns:
 //   - Catalog: an ordered catalog containing each validated configuration.
-//   - error: a wrapped validation error for an invalid configuration, or
-//     ErrDuplicateInstance when two configurations have the same identity.
+//   - error: a wrapped validation error for an invalid configuration,
+//     ErrDuplicateInstance when two configurations have the same identity, or
+//     ErrConflictingInstance when two identities differ only by letter case.
 func NewCatalog(configs []Config) (Catalog, error) {
 	entries := make([]Config, 0, len(configs))
 	byID := make(map[ID]Config, len(configs))
@@ -84,6 +77,10 @@ func NewCatalog(configs []Config) (Catalog, error) {
 			return Catalog{}, fmt.Errorf("%w: %q", ErrDuplicateInstance, id)
 		}
 
+		if conflict, found := conflictingIdentity(entries, id); found {
+			return Catalog{}, fmt.Errorf("%w: %q and %q", ErrConflictingInstance, conflict, id)
+		}
+
 		entries = append(entries, validated)
 		byID[id] = validated
 	}
@@ -91,140 +88,57 @@ func NewCatalog(configs []Config) (Catalog, error) {
 	return Catalog{entries: entries, byID: byID}, nil
 }
 
-// SourceFromValue converts a configuration-loader value into a Source.
-//
-// The conversion is checked instead of assumed, because a mistyped instance
-// stanza must never be skipped silently and fall back to another instance. A nil
-// value is an absent mapping and converts to an empty source, so a missing
-// configuration is reported by catalog selection instead of conversion.
+// conflictingIdentity returns the entry identity that differs from id only by
+// letter case.
 //
 // Parameters:
-//   - value: raw configuration value read by the configuration loader.
+//   - entries: configurations already accepted into the catalog.
+//   - id: identity of the configuration being added.
 //
 // Returns:
-//   - Source: the converted instance mappings, or an empty source for a nil
-//     value.
-//   - error: ErrNoConfigInstances when the value is not a mapping, or a wrapped
-//     ErrInvalidConfig when an instance entry is not a mapping.
-func SourceFromValue(value any) (Source, error) {
-	if value == nil {
-		return Source{}, nil
-	}
-
-	rawInstances, ok := value.(map[string]any)
-	if !ok {
-		return nil, ErrNoConfigInstances
-	}
-
-	source := make(Source, len(rawInstances))
-	for name, settings := range rawInstances {
-		raw, isMapping := settings.(map[string]any)
-		if !isMapping {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidConfig, name)
+//   - ID: the conflicting identity, or an empty identity when none conflicts.
+//   - bool: true when an entry conflicts with id.
+func conflictingIdentity(entries []Config, id ID) (ID, bool) {
+	for _, entry := range entries {
+		if entry.Identity().ConflictsWith(id) {
+			return entry.Identity(), true
 		}
-
-		source[name] = raw
 	}
 
-	return source, nil
+	return "", false
 }
 
-// CatalogFromSource converts a configured instance source into a validated
-// catalog.
-//
-// Instance names are sorted before validation so AllSelection retains the
-// deterministic order used by the CLI. The complete catalog is validated before
-// any selection can occur. Configured credentials are validated but left
-// unresolved; use [CatalogFromSourceResolved] to resolve them.
-//
-// Parameters:
-//   - source: configured instance mappings.
+// All returns a defensive snapshot of all configurations in catalog order.
 //
 // Returns:
-//   - Catalog: an ordered catalog containing every validated configuration.
-//   - error: a wrapped configuration validation error or a wrapped catalog
-//     validation error.
-func CatalogFromSource(source Source) (Catalog, error) {
-	names := slices.Sorted(maps.Keys(source))
-	configs := make([]Config, 0, len(source))
-
-	for _, name := range names {
-		cfg, err := ConfigFromMap(name, source[name])
-		if err != nil {
-			return Catalog{}, fmt.Errorf("parse instance %q: %w", name, err)
-		}
-
-		configs = append(configs, cfg)
-	}
-
-	catalog, err := NewCatalog(configs)
-	if err != nil {
-		return Catalog{}, fmt.Errorf("create catalog: %w", err)
-	}
-
-	return catalog, nil
+//   - []Config: an independent slice containing the catalog configurations.
+func (c Catalog) All() []Config {
+	return append([]Config(nil), c.entries...)
 }
 
-// CatalogFromSourceResolved converts a configured instance source into a
-// validated catalog whose credentials have been resolved.
+// Resolve returns a catalog whose credentials have been resolved.
 //
-// The complete catalog is validated before any credential is looked up, so an
-// invalid configuration never reaches a credential source. Every resolver sees
-// a validated configuration in catalog order, and the resolved configurations
-// are validated again before the catalog is returned. A nil resolver leaves
-// credentials unresolved, which matches [CatalogFromSource].
+// The catalog is already validated, so an invalid configuration never reaches a
+// credential source. Every resolver call sees a validated configuration in
+// catalog order, and the resolved configurations are validated again before the
+// catalog is returned, so a resolver cannot add an invalid configuration.
 //
 // Parameters:
 //   - ctx: context governing credential resolution.
-//   - source: configured instance mappings.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - Catalog: an ordered catalog containing every resolved configuration.
-//   - error: a wrapped configuration validation error, a wrapped credential
-//     resolution error, or a wrapped catalog validation error.
-func CatalogFromSourceResolved(
-	ctx context.Context,
-	source Source,
-	resolve CredentialResolver,
-) (Catalog, error) {
-	catalog, err := CatalogFromSource(source)
-	if err != nil {
-		return Catalog{}, fmt.Errorf("create catalog: %w", err)
-	}
-
-	resolved, err := resolveCatalog(ctx, catalog, resolve)
-	if err != nil {
-		return Catalog{}, fmt.Errorf("create resolved catalog: %w", err)
-	}
-
-	return resolved, nil
-}
-
-// resolveCatalog resolves the credentials of every catalog entry.
-//
-// Parameters:
-//   - ctx: context governing credential resolution.
-//   - catalog: validated catalog whose entries are resolved.
 //   - resolve: resolver applied to every entry, or nil to leave credentials
 //     unresolved.
 //
 // Returns:
-//   - Catalog: catalog holding the resolved configurations, or catalog when no
+//   - Catalog: catalog holding the resolved configurations, or c when no
 //     resolver is supplied.
 //   - error: a wrapped resolution error naming the failing instance, or a
 //     wrapped validation error for a resolved configuration.
-func resolveCatalog(
-	ctx context.Context,
-	catalog Catalog,
-	resolve CredentialResolver,
-) (Catalog, error) {
+func (c Catalog) Resolve(ctx context.Context, resolve CredentialResolver) (Catalog, error) {
 	if resolve == nil {
-		return catalog, nil
+		return c, nil
 	}
 
-	configs := catalog.All()
+	configs := c.All()
 	for index, cfg := range configs {
 		resolved, err := resolve.Resolve(ctx, cfg)
 		if err != nil {
@@ -244,14 +158,6 @@ func resolveCatalog(
 	}
 
 	return resolvedCatalog, nil
-}
-
-// All returns a defensive snapshot of all configurations in catalog order.
-//
-// Returns:
-//   - []Config: an independent slice containing the catalog configurations.
-func (c Catalog) All() []Config {
-	return append([]Config(nil), c.entries...)
 }
 
 // Select resolves targets according to mode and returns them in execution

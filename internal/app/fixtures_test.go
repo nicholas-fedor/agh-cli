@@ -4,7 +4,17 @@
 package app
 
 import (
-	"github.com/nicholas-fedor/agh-cli/internal/instance"
+	"context"
+	"fmt"
+	"io"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -16,8 +26,6 @@ const (
 	goodInstance = "good"
 	// ZuluInstance identifies the alphabetically last shared test instance.
 	zuluInstance = "zulu"
-	// TestHostKey is the raw instance host key.
-	testHostKey = "host"
 	// TestAlphaHost is the alphabetically first shared test host.
 	testAlphaHost = "alpha.example.com"
 	// TestBadHost is the shared test host that fails an operation.
@@ -34,15 +42,123 @@ const (
 	addedClientMessage = "Added client " + testClientName
 )
 
-// testInstances returns valid raw configurations for the shared test instances.
+// testLegacyPassword is the legacy plaintext password used by configuration
+// tests.
+const testLegacyPassword = "legacy-plaintext-password"
+
+// testConfigHost is the instance host used by configuration tests.
+const testConfigHost = "config.example.com"
+
+// testInstancesContext returns a context carrying the shared test instances.
 //
 // Returns:
-//   - instance.Source: instance mappings for the shared test instances.
-func testInstances() instance.Source {
-	return instance.Source{
-		alphaInstance: map[string]any{testHostKey: testAlphaHost},
-		badInstance:   map[string]any{testHostKey: testBadHost},
-		goodInstance:  map[string]any{testHostKey: testGoodHost},
-		zuluInstance:  map[string]any{testHostKey: testZuluHost},
+//   - [context.Context]: test context carrying the shared test instances.
+func testInstancesContext(t *testing.T) context.Context {
+	t.Helper()
+
+	return runContext(t, instancesDocument(map[string]string{
+		alphaInstance: testAlphaHost,
+		badInstance:   testBadHost,
+		goodInstance:  testGoodHost,
+		zuluInstance:  testZuluHost,
+	}))
+}
+
+// instancesDocument returns a configuration document declaring one instance per
+// entry, in name order.
+//
+// Parameters:
+//   - hosts: instance hosts keyed by instance name.
+//
+// Returns:
+//   - string: the configuration document.
+func instancesDocument(hosts map[string]string) string {
+	var document strings.Builder
+
+	_, _ = document.WriteString("instances:\n")
+
+	for _, name := range slices.Sorted(maps.Keys(hosts)) {
+		_, _ = fmt.Fprintf(&document, "  %s:\n    host: %s\n", name, hosts[name])
 	}
+
+	return document.String()
+}
+
+// runContext returns a test context carrying the configuration document.
+//
+// Parameters:
+//   - document: complete configuration document.
+//
+// Returns:
+//   - [context.Context]: test context carrying the loaded configuration.
+func runContext(t *testing.T, document string) context.Context {
+	t.Helper()
+
+	return contextWithConfig(t.Context(), t, document)
+}
+
+// contextWithConfig returns a copy of ctx carrying the configuration document.
+//
+// Parameters:
+//   - ctx: parent context.
+//   - document: complete configuration document.
+//
+// Returns:
+//   - [context.Context]: ctx carrying the loaded configuration.
+func contextWithConfig(ctx context.Context, t *testing.T, document string) context.Context {
+	t.Helper()
+
+	return contextWithConfigFile(ctx, t, writeTestConfig(t, document))
+}
+
+// contextWithConfigFile returns a copy of ctx carrying the configuration file.
+//
+// Parameters:
+//   - ctx: parent context.
+//   - path: configuration file to load.
+//
+// Returns:
+//   - [context.Context]: ctx carrying the loaded configuration.
+func contextWithConfigFile(ctx context.Context, t *testing.T, path string) context.Context {
+	t.Helper()
+
+	resolution, err := ResolveConfigPath(path)
+	require.NoError(t, err)
+
+	runConfig, err := LoadRunConfig(resolution, io.Discard)
+	require.NoError(t, err)
+
+	return WithRunConfig(ctx, runConfig)
+}
+
+// writeTestConfig writes a configuration document to a private file.
+//
+// Parameters:
+//   - document: complete configuration document.
+//
+// Returns:
+//   - string: path of the written configuration file.
+func writeTestConfig(t *testing.T, document string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	require.NoError(t, os.WriteFile(path, []byte(document), 0o600))
+
+	return path
+}
+
+// readTestConfig returns the raw configuration file contents.
+//
+// Parameters:
+//   - configPath: path of the configuration file to read.
+//
+// Returns:
+//   - string: the configuration file contents.
+func readTestConfig(t *testing.T, configPath string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	return string(data)
 }

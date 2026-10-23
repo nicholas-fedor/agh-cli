@@ -81,7 +81,7 @@ side.`,
 //   - error: a wrapped error when the coordinator cannot be built, an instance is
 //     unknown, or the report cannot be written.
 func runStatus(cmd *cobra.Command, args []string, values *statusValues, seams *streams) error {
-	store, err := seams.coordinator()
+	store, err := seams.coordinator(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}

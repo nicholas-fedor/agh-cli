@@ -37,7 +37,7 @@ func runClientUpdate(cmd *cobra.Command, args []string, values *selectionValues)
 		func(
 			management *app.ClientManagement,
 			ctx context.Context,
-			selection app.ClientSelection,
+			selection app.Selection,
 			request app.ClientMutation,
 		) ([]app.ClientMutationResult, error) {
 			return management.Update(ctx, selection, request)

@@ -49,12 +49,9 @@ Specify two instances with --instance flags, or one instance with --file.`,
 //   - error: An error when a selection, per-instance request, or the diff output
 //     fails.
 func runRewriteDiff(cmd *cobra.Command, _ []string, values *flagValues) error {
-	selection, err := values.selection()
-	if err != nil {
-		return fmt.Errorf("select rewrite instances: %w", err)
-	}
+	selection := values.selection()
 
-	result, diffErr := app.NewRewriteManagement().Diff(
+	result, diffErr := app.NewRewriteManagement(cmd.Context()).Diff(
 		cmd.Context(),
 		selection,
 		values.file,

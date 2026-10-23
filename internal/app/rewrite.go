@@ -6,27 +6,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/execution"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
-
-// RewriteSelection contains the instance-selection inputs for a rewrite operation.
-type RewriteSelection struct {
-	// Instances contains the configured instance mappings.
-	Instances instance.Source
-	// Names contains explicit instance names in first-occurrence order.
-	Names []string
-	// ConfigPath identifies the configuration file used to order list results.
-	ConfigPath string
-	// All selects every configured instance when true.
-	All bool
-}
 
 // RewriteRuleInput contains command values for one rewrite-rule mutation.
 type RewriteRuleInput struct {
@@ -69,11 +54,14 @@ type rewriteMutationOperation func(context.Context, *rewrite.Service) error
 // mounted-file, or environment instance is served without the command layer
 // reading a secret.
 //
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
 // Returns:
 //   - *RewriteManagement: management bound to the production service factory and
 //     the production credential resolver.
-func NewRewriteManagement() *RewriteManagement {
-	return NewRewriteManagementWithResolver(NewCredentialResolver())
+func NewRewriteManagement(ctx context.Context) *RewriteManagement {
+	return NewRewriteManagementWithResolver(NewCredentialResolver(ctx))
 }
 
 // NewRewriteManagementWithResolver creates rewrite-management wiring that
@@ -106,7 +94,7 @@ func NewRewriteManagementWithResolver(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Add(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	request RewriteRuleInput,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -140,7 +128,7 @@ func (a *RewriteManagement) Add(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Delete(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	request RewriteRuleInput,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -173,7 +161,7 @@ func (a *RewriteManagement) Delete(
 //   - error: a wrapped resolution, service, or execution error.
 func (a *RewriteManagement) GetSettings(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 ) ([]RewriteSettingsResult, error) {
 	nextIndex := 0
 
@@ -228,7 +216,7 @@ func (a *RewriteManagement) GetSettings(
 //   - error: a wrapped resolution, service, or execution error.
 func (a *RewriteManagement) List(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 ) ([]RewriteListResult, error) {
 	nextIndex := 0
 
@@ -284,7 +272,7 @@ func (a *RewriteManagement) List(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Update(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	request RewriteRuleInput,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -318,7 +306,7 @@ func (a *RewriteManagement) Update(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) UpdateSettings(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	enabled bool,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -348,7 +336,7 @@ func (a *RewriteManagement) UpdateSettings(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) WildcardAdd(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	zone string,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -378,7 +366,7 @@ func (a *RewriteManagement) WildcardAdd(
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) WildcardDelete(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	zone string,
 ) ([]RewriteMutationResult, error) {
 	results, err := a.runMutation(
@@ -409,11 +397,11 @@ func (a *RewriteManagement) WildcardDelete(
 //   - error: a wrapped resolution, service, or execution error.
 func (a *RewriteManagement) runMutation(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	successMessage string,
 	operation rewriteMutationOperation,
 ) ([]RewriteMutationResult, error) {
-	targets, err := rewriteTargets(ctx, selection, a.resolve)
+	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rewrite targets: %w", err)
 	}
@@ -465,11 +453,11 @@ func (a *RewriteManagement) useCase(cfg instance.Config) (*rewrite.Service, erro
 //   - error: a wrapped resolution or execution error.
 func runRewriteReadOperation[T any](
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	resolve instance.CredentialResolver,
 	operation func(context.Context, execution.Target[instance.Config]) (T, error),
 ) ([]T, int, error) {
-	targets, err := rewriteOrderedTargets(ctx, selection, resolve)
+	targets, err := selectOrderedTargets(ctx, selection, resolve)
 	if err != nil {
 		return nil, 0, fmt.Errorf("resolve rewrite read targets: %w", err)
 	}
@@ -480,143 +468,6 @@ func runRewriteReadOperation[T any](
 	}
 
 	return results, count, nil
-}
-
-// rewriteTargets resolves mutation targets in selection order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: resolved targets in selection order.
-//   - error: a wrapped selection error.
-func rewriteTargets(
-	ctx context.Context,
-	selection RewriteSelection,
-	resolve instance.CredentialResolver,
-) ([]execution.Target[instance.Config], error) {
-	selected, err := rewriteSelectedConfigs(ctx, selection, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("select rewrite targets: %w", err)
-	}
-
-	return rewriteTargetsFromConfigs(selected), nil
-}
-
-// rewriteOrderedTargets resolves read targets in configuration-file order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: resolved targets in configured order.
-//   - error: a wrapped selection error.
-func rewriteOrderedTargets(
-	ctx context.Context,
-	selection RewriteSelection,
-	resolve instance.CredentialResolver,
-) ([]execution.Target[instance.Config], error) {
-	selected, err := rewriteSelectedConfigs(ctx, selection, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("select rewrite read targets: %w", err)
-	}
-
-	selectedByName := make(map[string]instance.Config, len(selected))
-	for _, cfg := range selected {
-		selectedByName[cfg.Name] = cfg
-	}
-
-	names := rewriteConfiguredNames(selection.ConfigPath, selectedByName)
-	configs := make([]instance.Config, 0, len(names))
-
-	for _, name := range names {
-		if cfg, exists := selectedByName[name]; exists {
-			configs = append(configs, cfg)
-		}
-	}
-
-	return rewriteTargetsFromConfigs(configs), nil
-}
-
-// rewriteSelectedConfigs applies selection policy to the configured instances.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []instance.Config: selected configurations in selection order.
-//   - error: a wrapped credential or selection error.
-func rewriteSelectedConfigs(
-	ctx context.Context,
-	selection RewriteSelection,
-	resolve instance.CredentialResolver,
-) ([]instance.Config, error) {
-	catalog, err := instance.CatalogFromSourceResolved(ctx, selection.Instances, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("create rewrite catalog: %w", err)
-	}
-
-	mode := instance.ExplicitOrDefaultSelection
-	if selection.All {
-		mode = instance.AllSelection
-	}
-
-	selected, err := catalog.Select(selection.Names, mode)
-	if err != nil {
-		return nil, fmt.Errorf("select rewrite instances: %w", err)
-	}
-
-	return selected, nil
-}
-
-// rewriteConfiguredNames returns configured order with a sorted fallback.
-//
-// Parameters:
-//   - configPath: path to the configuration file; an empty path sorts directly.
-//   - selected: selected configurations keyed by instance name.
-//
-// Returns:
-//   - []string: instance names in configuration-file order, or sorted by name when
-//     the configuration order is unavailable.
-func rewriteConfiguredNames(
-	configPath string,
-	selected map[string]instance.Config,
-) []string {
-	if configPath == "" {
-		return slices.Sorted(maps.Keys(selected))
-	}
-
-	manager, err := config.Load(configPath)
-	if err != nil {
-		return slices.Sorted(maps.Keys(selected))
-	}
-
-	return manager.OrderedNames()
-}
-
-// rewriteTargetsFromConfigs wraps configurations as execution targets.
-//
-// Parameters:
-//   - configs: resolved instance configurations in target order.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: targets wrapping each configuration.
-func rewriteTargetsFromConfigs(configs []instance.Config) []execution.Target[instance.Config] {
-	targets := make([]execution.Target[instance.Config], 0, len(configs))
-	for _, cfg := range configs {
-		targets = append(targets, execution.Target[instance.Config]{Name: cfg.Name, Value: cfg})
-	}
-
-	return targets
 }
 
 // newAdguardRewriteService creates the production rewrite service factory.

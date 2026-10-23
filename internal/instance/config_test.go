@@ -13,9 +13,6 @@ import (
 // adguardHost is the host used by configuration parsing tests.
 const adguardHost = "adguard.example.com"
 
-// passwordKey is the raw instance password key.
-const passwordKey = "password"
-
 // unknownSource is a credential source that is not supported.
 const unknownSource = "vault"
 
@@ -37,39 +34,35 @@ const testPassword = "secret"
 // placeheldPassword is a placeholder that credential errors must never carry.
 const placeheldPassword = "must-not-appear-in-errors"
 
-// rawInstance returns a raw instance mapping with the given credential stanza.
+// homeConfig returns an unvalidated home instance with the given credential
+// reference.
 //
 // Parameters:
-//   - stanza: credential stanza fields, or nil to omit the stanza.
+//   - ref: credential reference, or nil to omit it.
 //   - password: plaintext password, or an empty string to omit it.
 //
 // Returns:
-//   - map[string]any: raw instance mapping.
-func rawInstance(stanza map[string]any, password string) map[string]any {
-	raw := map[string]any{hostKey: adguardHost}
-
-	if password != "" {
-		raw[passwordKey] = password
+//   - Config: unvalidated instance configuration.
+func homeConfig(ref *CredentialRef, password string) Config {
+	return Config{
+		Name:       "home",
+		Host:       adguardHost,
+		Scheme:     "",
+		Username:   "",
+		Password:   password,
+		Credential: ref,
 	}
-
-	if stanza != nil {
-		raw[credentialFieldName] = stanza
-	}
-
-	return raw
 }
 
-// TestConfigFromMap verifies defaults and mapping-derived identity.
-func TestConfigFromMap(t *testing.T) {
+// TestConfigValidateAppliesDefaults verifies defaults and name-derived identity.
+func TestConfigValidateAppliesDefaults(t *testing.T) {
 	t.Parallel()
 
-	give := map[string]any{
-		"host":     adguardHost,
-		"username": "admin",
-		"password": "secret",
-	}
+	give := homeConfig(nil, "secret")
 
-	cfg, err := ConfigFromMap("home", give)
+	give.Username = "admin"
+
+	cfg, err := give.Validate()
 
 	require.NoError(t, err)
 	assert.Equal(t, Config{
@@ -83,79 +76,79 @@ func TestConfigFromMap(t *testing.T) {
 	assert.Equal(t, ID("home"), cfg.Identity())
 }
 
-// TestConfigFromMapRejectsMissingHost verifies host validation.
-func TestConfigFromMapRejectsMissingHost(t *testing.T) {
+// TestConfigValidateRejectsMissingHost verifies host validation.
+func TestConfigValidateRejectsMissingHost(t *testing.T) {
 	t.Parallel()
 
-	_, err := ConfigFromMap("home", map[string]any{})
+	give := homeConfig(nil, "")
+
+	give.Host = ""
+
+	_, err := give.Validate()
 
 	require.ErrorIs(t, err, ErrMissingHost)
 }
 
-// TestConfigFromMapRejectsMissingName verifies mapping-derived name validation.
-func TestConfigFromMapRejectsMissingName(t *testing.T) {
+// TestConfigValidateRejectsMissingName verifies name validation.
+func TestConfigValidateRejectsMissingName(t *testing.T) {
 	t.Parallel()
 
-	_, err := ConfigFromMap("", map[string]any{hostKey: adguardHost})
+	give := homeConfig(nil, "")
+
+	give.Name = ""
+
+	_, err := give.Validate()
 
 	require.ErrorIs(t, err, ErrMissingName)
 }
 
-// TestConfigFromMapCredentialSources verifies decoding and normalization of every
-// supported credential source.
-func TestConfigFromMapCredentialSources(t *testing.T) {
+// TestConfigValidateCredentialSources verifies normalization of every supported
+// credential source.
+func TestConfigValidateCredentialSources(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		password string
-		stanza   map[string]any
+		give     *CredentialRef
 		want     *CredentialRef
 	}{
 		{
-			name:     "no stanza keeps the legacy password",
+			name:     "no reference keeps the legacy password",
 			password: testPassword,
+			give:     nil,
 			want:     nil,
 		},
 		{
-			name:   "keyring defaults an empty key to the instance name",
-			stanza: map[string]any{sourceFieldName: string(KeyringSource)},
-			want:   &CredentialRef{Source: KeyringSource, Key: "home"},
+			name: "keyring defaults an empty key to the instance name",
+			give: &CredentialRef{Source: KeyringSource},
+			want: &CredentialRef{Source: KeyringSource, Key: "home"},
 		},
 		{
 			name: "keyring keeps an explicit key",
-			stanza: map[string]any{
-				sourceFieldName: string(KeyringSource),
-				keyFieldName:    customKey,
-			},
+			give: &CredentialRef{Source: KeyringSource, Key: customKey},
 			want: &CredentialRef{Source: KeyringSource, Key: customKey},
 		},
 		{
 			name: "file requires an absolute path",
-			stanza: map[string]any{
-				sourceFieldName: string(FileSource),
-				pathFieldName:   secretPath,
-			},
+			give: &CredentialRef{Source: FileSource, Path: secretPath},
 			want: &CredentialRef{Source: FileSource, Path: secretPath},
 		},
 		{
 			name: "env requires a variable name",
-			stanza: map[string]any{
-				sourceFieldName: string(EnvSource),
-				envFieldName:    secretEnv,
-			},
+			give: &CredentialRef{Source: EnvSource, Env: secretEnv},
 			want: &CredentialRef{Source: EnvSource, Env: secretEnv},
 		},
 		{
 			name:     "plaintext uses the configured password",
 			password: testPassword,
-			stanza:   map[string]any{sourceFieldName: string(PlaintextSource)},
+			give:     &CredentialRef{Source: PlaintextSource},
 			want:     &CredentialRef{Source: PlaintextSource},
 		},
 		{
-			name:   "none sends no authentication",
-			stanza: map[string]any{sourceFieldName: string(NoneSource)},
-			want:   &CredentialRef{Source: NoneSource},
+			name: "none sends no authentication",
+			give: &CredentialRef{Source: NoneSource},
+			want: &CredentialRef{Source: NoneSource},
 		},
 	}
 
@@ -163,7 +156,7 @@ func TestConfigFromMapCredentialSources(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg, err := ConfigFromMap("home", rawInstance(test.stanza, test.password))
+			cfg, err := homeConfig(test.give, test.password).Validate()
 
 			require.NoError(t, err)
 			assert.Equal(t, test.want, cfg.Credential)
@@ -171,124 +164,91 @@ func TestConfigFromMapCredentialSources(t *testing.T) {
 	}
 }
 
-// TestConfigFromMapRejectsInvalidCredential verifies strict per-source validation.
-func TestConfigFromMapRejectsInvalidCredential(t *testing.T) {
+// TestConfigValidateRejectsInvalidCredential verifies strict per-source
+// validation.
+func TestConfigValidateRejectsInvalidCredential(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		password string
-		stanza   map[string]any
+		give     *CredentialRef
 		wantErr  error
 	}{
 		{
 			name:    "unknown source",
-			stanza:  map[string]any{sourceFieldName: unknownSource},
+			give:    &CredentialRef{Source: unknownSource},
 			wantErr: ErrInvalidCredentialSource,
 		},
 		{
 			name:    "empty source",
-			stanza:  map[string]any{keyFieldName: customKey},
+			give:    &CredentialRef{Key: customKey},
 			wantErr: ErrInvalidCredentialSource,
 		},
 		{
-			name: "keyring rejects a file path",
-			stanza: map[string]any{
-				sourceFieldName: string(KeyringSource),
-				keyFieldName:    customKey,
-				pathFieldName:   secretPath,
-			},
+			name:    "keyring rejects a file path",
+			give:    &CredentialRef{Source: KeyringSource, Key: customKey, Path: secretPath},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
-			name: "keyring rejects an environment variable",
-			stanza: map[string]any{
-				sourceFieldName: string(KeyringSource),
-				envFieldName:    secretEnv,
-			},
+			name:    "keyring rejects an environment variable",
+			give:    &CredentialRef{Source: KeyringSource, Env: secretEnv},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
-			name: "file rejects a key",
-			stanza: map[string]any{
-				sourceFieldName: string(FileSource),
-				keyFieldName:    customKey,
-				pathFieldName:   secretPath,
-			},
+			name:    "file rejects a key",
+			give:    &CredentialRef{Source: FileSource, Key: customKey, Path: secretPath},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
 			name:    "file requires a path",
-			stanza:  map[string]any{sourceFieldName: string(FileSource)},
+			give:    &CredentialRef{Source: FileSource},
 			wantErr: ErrInvalidCredentialPath,
 		},
 		{
-			name: "file requires an absolute path",
-			stanza: map[string]any{
-				sourceFieldName: string(FileSource),
-				pathFieldName:   relativeSecretPath,
-			},
+			name:    "file requires an absolute path",
+			give:    &CredentialRef{Source: FileSource, Path: relativeSecretPath},
 			wantErr: ErrInvalidCredentialPath,
 		},
 		{
-			name: "file rejects an environment variable",
-			stanza: map[string]any{
-				sourceFieldName: string(FileSource),
-				pathFieldName:   secretPath,
-				envFieldName:    secretEnv,
-			},
+			name:    "file rejects an environment variable",
+			give:    &CredentialRef{Source: FileSource, Path: secretPath, Env: secretEnv},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
 			name:    "env requires a variable name",
-			stanza:  map[string]any{sourceFieldName: string(EnvSource)},
+			give:    &CredentialRef{Source: EnvSource},
 			wantErr: ErrInvalidCredentialEnv,
 		},
 		{
-			name: "env rejects a key",
-			stanza: map[string]any{
-				sourceFieldName: string(EnvSource),
-				keyFieldName:    customKey,
-				envFieldName:    secretEnv,
-			},
+			name:    "env rejects a key",
+			give:    &CredentialRef{Source: EnvSource, Key: customKey, Env: secretEnv},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
 			name:    "plaintext requires a password",
-			stanza:  map[string]any{sourceFieldName: string(PlaintextSource)},
+			give:    &CredentialRef{Source: PlaintextSource},
 			wantErr: ErrMissingPassword,
 		},
 		{
 			name:     "plaintext rejects a key",
 			password: testPassword,
-			stanza: map[string]any{
-				sourceFieldName: string(PlaintextSource),
-				keyFieldName:    customKey,
-			},
+			give:     &CredentialRef{Source: PlaintextSource, Key: customKey},
+			wantErr:  ErrUnusedCredentialField,
+		},
+		{
+			name:    "none rejects a key",
+			give:    &CredentialRef{Source: NoneSource, Key: customKey},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
-			name: "none rejects a key",
-			stanza: map[string]any{
-				sourceFieldName: string(NoneSource),
-				keyFieldName:    customKey,
-			},
+			name:    "none rejects a file path",
+			give:    &CredentialRef{Source: NoneSource, Path: secretPath},
 			wantErr: ErrUnusedCredentialField,
 		},
 		{
-			name: "none rejects a file path",
-			stanza: map[string]any{
-				sourceFieldName: string(NoneSource),
-				pathFieldName:   secretPath,
-			},
-			wantErr: ErrUnusedCredentialField,
-		},
-		{
-			name: "none rejects an environment variable",
-			stanza: map[string]any{
-				sourceFieldName: string(NoneSource),
-				envFieldName:    secretEnv,
-			},
+			name:    "none rejects an environment variable",
+			give:    &CredentialRef{Source: NoneSource, Env: secretEnv},
 			wantErr: ErrUnusedCredentialField,
 		},
 	}
@@ -297,41 +257,36 @@ func TestConfigFromMapRejectsInvalidCredential(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ConfigFromMap("home", rawInstance(test.stanza, test.password))
+			_, err := homeConfig(test.give, test.password).Validate()
 
 			require.ErrorIs(t, err, test.wantErr)
 		})
 	}
 }
 
-// TestConfigFromMapRejectsNonMappingCredential verifies that a mistyped stanza is
-// rejected instead of silently falling back to the plaintext password.
-func TestConfigFromMapRejectsNonMappingCredential(t *testing.T) {
-	t.Parallel()
-
-	for _, give := range []any{"keyring", []any{KeyringSource}, 42} {
-		_, err := ConfigFromMap("home", map[string]any{
-			hostKey:             adguardHost,
-			credentialFieldName: give,
-		})
-
-		require.ErrorIs(t, err, ErrInvalidConfig)
-	}
-}
-
-// TestConfigFromMapCredentialErrorStaysSecretFree verifies that a credential
+// TestConfigValidateCredentialErrorStaysSecretFree verifies that a credential
 // error names the offending field without carrying the configured password.
-func TestConfigFromMapCredentialErrorStaysSecretFree(t *testing.T) {
+func TestConfigValidateCredentialErrorStaysSecretFree(t *testing.T) {
 	t.Parallel()
 
-	_, err := ConfigFromMap("home", rawInstance(map[string]any{
-		sourceFieldName: string(PlaintextSource),
-		envFieldName:    secretEnv,
-	}, placeheldPassword))
+	_, err := homeConfig(
+		&CredentialRef{Source: PlaintextSource, Env: secretEnv},
+		placeheldPassword,
+	).Validate()
 
 	require.ErrorIs(t, err, ErrUnusedCredentialField)
 	assert.NotContains(t, err.Error(), placeheldPassword)
 	require.ErrorContains(t, err, envFieldName)
+}
+
+// TestIDConflictsWith verifies that only distinct identities equal under case
+// folding conflict.
+func TestIDConflictsWith(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ID("Home").ConflictsWith("home"))
+	assert.False(t, ID("home").ConflictsWith("home"))
+	assert.False(t, ID("home").ConflictsWith("office"))
 }
 
 // TestConfigValidateCopiesCredential verifies that normalization never mutates

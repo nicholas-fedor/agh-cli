@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strings"
 )
 
 // ID is the stable, case-sensitive catalog identity derived from a Config name.
@@ -99,12 +100,6 @@ const (
 	NoneSource CredentialSource = "none"
 )
 
-// credentialFieldName is the instance key holding the credential stanza.
-const credentialFieldName = "credential"
-
-// sourceFieldName is the credential stanza key holding the source.
-const sourceFieldName = "source"
-
 // keyFieldName is the credential stanza key holding the keyring key.
 const keyFieldName = "key"
 
@@ -154,51 +149,20 @@ func (cfg Config) Identity() ID {
 	return ID(cfg.Name)
 }
 
-// ConfigFromMap converts a raw instance mapping into a validated Config.
+// ConflictsWith reports whether id and other are distinct identities that
+// differ only by letter case.
 //
-// The mapping key supplies Name and is never read from the raw configuration.
-// Missing or non-string values become empty strings, and an empty Scheme is
-// normalized to HTTPS. A credential stanza of another type is rejected instead
-// of ignored, so a mistyped stanza cannot silently fall back to the plaintext
-// password.
+// Identities are case-sensitive, yet two that differ only by case are refused.
+// An operator cannot tell them apart at a glance, and a keyring key defaults to
+// the instance name.
 //
 // Parameters:
-//   - name: instance name derived from the mapping key.
-//   - raw: raw instance settings to decode.
+//   - other: identity compared with id.
 //
 // Returns:
-//   - Config: validated instance configuration.
-//   - error: wrapped validation error when a required field is missing or the
-//     credential reference is invalid. The instance name is deliberately absent
-//     from the message: the caller that knows the name adds it once, so the
-//     operator reads the instance and the cause rather than the same name three
-//     times.
-func ConfigFromMap(name string, raw map[string]any) (Config, error) {
-	cfg := Config{
-		Name:       name,
-		Host:       stringValue(raw, "host"),
-		Scheme:     stringValue(raw, "scheme"),
-		Username:   stringValue(raw, "username"),
-		Password:   stringValue(raw, "password"),
-		Credential: nil,
-	}
-
-	stanza, hasCredential := raw[credentialFieldName]
-	if hasCredential {
-		credential, err := credentialFromMap(stanza)
-		if err != nil {
-			return Config{}, fmt.Errorf("credential: %w", err)
-		}
-
-		cfg.Credential = credential
-	}
-
-	validated, err := cfg.Validate()
-	if err != nil {
-		return Config{}, fmt.Errorf("%w", err)
-	}
-
-	return validated, nil
+//   - bool: true when the identities differ but are equal under case folding.
+func (id ID) ConflictsWith(other ID) bool {
+	return id != other && strings.EqualFold(string(id), string(other))
 }
 
 // Validate checks required fields and normalizes the transport scheme and
@@ -244,28 +208,6 @@ func (cfg Config) Validate() (Config, error) {
 	cfg.Credential = &credential
 
 	return cfg, nil
-}
-
-// credentialFromMap decodes one raw credential stanza.
-//
-// Parameters:
-//   - value: raw credential stanza.
-//
-// Returns:
-//   - *CredentialRef: the decoded reference.
-//   - error: ErrInvalidConfig when the stanza is not a mapping.
-func credentialFromMap(value any) (*CredentialRef, error) {
-	stanza, isMapping := value.(map[string]any)
-	if !isMapping {
-		return nil, fmt.Errorf("%w: %s must be a mapping", ErrInvalidConfig, credentialFieldName)
-	}
-
-	return &CredentialRef{
-		Source: CredentialSource(stringValue(stanza, sourceFieldName)),
-		Key:    stringValue(stanza, keyFieldName),
-		Path:   stringValue(stanza, pathFieldName),
-		Env:    stringValue(stanza, envFieldName),
-	}, nil
 }
 
 // defaultKey applies the keyring key default of the instance name.
@@ -379,22 +321,4 @@ func (ref *CredentialRef) validateSource(password string) error {
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidCredentialSource, ref.Source)
 	}
-}
-
-// stringValue returns a string mapping value or an empty string.
-//
-// Parameters:
-//   - raw: mapping to inspect.
-//   - key: key whose value is requested.
-//
-// Returns:
-//   - string: the string value, or an empty string when the key is absent or
-//     has another type.
-func stringValue(raw map[string]any, key string) string {
-	value, ok := raw[key].(string)
-	if !ok {
-		return ""
-	}
-
-	return value
 }

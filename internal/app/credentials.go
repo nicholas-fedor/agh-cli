@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/spf13/viper"
-
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
@@ -145,10 +143,6 @@ type PasswordClearResult struct {
 	Saved bool
 }
 
-// viperCredentialServiceKey is the configuration path of the credential store
-// namespace read from the Viper configuration.
-const viperCredentialServiceKey = "credentials.service"
-
 // ErrExternalCredentialSource reports a clear request for an instance whose
 // credential belongs to another system.
 //
@@ -193,22 +187,24 @@ func NewCredentialStore() *credentials.SystemStore {
 
 // NewCredentialResolver builds the production credential resolver.
 //
-// The namespace comes from the Viper configuration, because the root command
-// reads the configuration file into Viper before any subcommand runs. The store
-// is the operating system credential store, and the remaining sources are the
-// process environment and mounted secret files.
+// The namespace comes from the configuration of the run. The store is the
+// operating system credential store, and the remaining sources are the process
+// environment and mounted secret files.
 //
 // Construction only assembles dependencies. It never reads a secret and never
 // probes the credential store, so building a resolver cannot block on an
 // unavailable store or open a keyring session. A source is read when an instance
 // that names it is selected, not here.
 //
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
 // Returns:
 //   - *credentials.Resolver: resolver over the operating system credential
 //     store, mounted secret files, and the process environment.
-func NewCredentialResolver() *credentials.Resolver {
+func NewCredentialResolver(ctx context.Context) *credentials.Resolver {
 	return credentials.NewResolver(
-		credentialService(),
+		credentialService(ctx),
 		credentials.NewSystemStore(),
 		credentials.NewOSFileReader(),
 		credentials.NewOSEnvReader(),
@@ -227,6 +223,29 @@ func NewCredentialResolver() *credentials.Resolver {
 //   - *Credentials: coordinator bound to the supplied dependencies.
 func NewCredentials(store credentials.Store, local CredentialConfig) *Credentials {
 	return &Credentials{store: store, local: local}
+}
+
+// NewCredentialsCoordinator builds the production credential coordinator.
+//
+// Construction only assembles dependencies. The configuration comes from the
+// run, which already loaded it, and the credential store is not probed, so
+// building a coordinator cannot prompt, cannot block on an unavailable keyring,
+// and cannot discard a pending change.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
+// Returns:
+//   - *Credentials: coordinator bound to the run configuration and the operating
+//     system credential store.
+//   - error: ErrNoRunConfig when ctx carries no configuration.
+func NewCredentialsCoordinator(ctx context.Context) (*Credentials, error) {
+	manager, err := configFrom(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create credential coordinator: %w", err)
+	}
+
+	return NewCredentials(NewCredentialStore(), manager), nil
 }
 
 // ClearAllPasswords removes every credential stored under the configured service.
@@ -710,22 +729,23 @@ func credentialServiceOf(settings config.CredentialsSettings) string {
 	return settings.Service
 }
 
-// credentialService returns the credential store namespace from the Viper
-// configuration.
+// credentialService returns the credential store namespace of the run.
 //
-// The Viper configuration and the loaded configuration file are two views of the
-// same document, and both fall back to [credentials.DefaultService] when the
-// document sets no namespace.
+// A context without a run configuration uses [credentials.DefaultService], the
+// namespace an empty configuration declares.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
 //
 // Returns:
 //   - string: the configured credential store namespace.
-func credentialService() string {
-	service := viper.GetString(viperCredentialServiceKey)
-	if service == "" {
+func credentialService(ctx context.Context) string {
+	manager, err := configFrom(ctx)
+	if err != nil {
 		return credentials.DefaultService
 	}
 
-	return service
+	return credentialServiceOf(manager.Credentials())
 }
 
 // storeCredential writes one secret to the credential store and then points the

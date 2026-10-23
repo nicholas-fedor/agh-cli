@@ -84,10 +84,10 @@ var (
 //   - error: a wrapped resolution, selection, or service error.
 func (a *RewriteManagement) Diff(
 	ctx context.Context,
-	selection RewriteSelection,
+	selection Selection,
 	filePath string,
 ) (RewriteDiffResult, error) {
-	targets, err := rewriteTargets(ctx, selection, a.resolve)
+	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return RewriteDiffResult{}, fmt.Errorf("resolve rewrite diff targets: %w", err)
 	}

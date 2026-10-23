@@ -181,18 +181,49 @@ func TestLoadReadsInstanceCredentialReferences(t *testing.T) {
 	}
 }
 
-// TestLoadRejectsNonMappingCredentialStanza verifies a mistyped credential
-// stanza is rejected instead of falling back to the plaintext password.
-func TestLoadRejectsNonMappingCredentialStanza(t *testing.T) {
+// TestLoadReportsNonMappingCredentialStanza verifies a mistyped credential
+// stanza leaves the instance without a configuration instead of falling back to
+// the plaintext password.
+func TestLoadReportsNonMappingCredentialStanza(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfigFile(t, path,
 		"instances:\n  home:\n    host: home.example.com\n    credential: keyring\n")
 
-	_, err := Load(path)
+	manager, err := Load(path)
+	require.NoError(t, err)
 
-	require.Error(t, err)
+	configs, err := manager.Configs()
+	require.ErrorIs(t, err, instance.ErrInvalidConfig)
+	assert.Empty(t, configs)
+	require.Len(t, manager.ValidationProblems(), 1)
+}
+
+// TestLoadKeepsMistypedSecretOutOfProblems verifies a secret written where the
+// credential mapping belongs never appears in a reported problem, which names
+// only the stanza location.
+func TestLoadKeepsMistypedSecretOutOfProblems(t *testing.T) {
+	t.Parallel()
+
+	const secret = "hunter2-placeholder-secret"
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigFile(t, path,
+		"instances:\n  home:\n    host: home.example.com\n    credential: "+secret+"\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+
+	problems := manager.ValidationProblems()
+	require.Len(t, problems, 1)
+	require.ErrorIs(t, problems[0].Err, instance.ErrInvalidConfig)
+	assert.Contains(t, problems[0].Err.Error(), "line 2, column 3")
+	assert.NotContains(t, problems[0].Err.Error(), secret)
+
+	_, err = manager.Configs()
+	require.ErrorIs(t, err, instance.ErrInvalidConfig)
+	assert.NotContains(t, err.Error(), secret)
 }
 
 // TestSaveWritesCredentialsStanzaBeforeInstances verifies a loaded credentials

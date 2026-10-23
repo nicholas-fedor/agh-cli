@@ -6,6 +6,7 @@ package wildcard
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -16,9 +17,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 )
 
 // rewriteWildcardFlagExpectation describes one expected flag registration.
@@ -165,9 +167,9 @@ func TestNewCommandExecutionUsesFreshContext(t *testing.T) {
 
 // TestNewCommandRepeatedExecutionAppliesWildcardRules verifies that repeatedly
 // constructing and executing the command tree mutates every target instance.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestNewCommandRepeatedExecutionAppliesWildcardRules(t *testing.T) {
+	t.Parallel()
+
 	var listCalls atomic.Int32
 
 	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +187,7 @@ func TestNewCommandRepeatedExecutionAppliesWildcardRules(t *testing.T) {
 	}))
 	server.Start()
 
-	resetWildcardCommandState(t, server.Listener.Addr().String())
+	ctx := wildcardCommandContext(t, server.Listener.Addr().String())
 
 	for range 2 {
 		command := NewCommand()
@@ -194,7 +196,7 @@ func TestNewCommandRepeatedExecutionAppliesWildcardRules(t *testing.T) {
 		command.SetErr(io.Discard)
 		command.SetArgs([]string{WildcardCommandAdd, WildcardArgAll, RewriteWildcardCommandTestDomain})
 
-		require.NoError(t, command.Execute())
+		require.NoError(t, command.ExecuteContext(ctx))
 		assert.Contains(t, output.String(), "Added wildcard rewrite rules for example.com")
 	}
 
@@ -202,9 +204,9 @@ func TestNewCommandRepeatedExecutionAppliesWildcardRules(t *testing.T) {
 }
 
 // TestRunWildcardRewriteCommandsUseAppOutput verifies wildcard command wiring.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunWildcardRewriteCommandsUseAppOutput(t *testing.T) {
+	t.Parallel()
+
 	var listCalls atomic.Int32
 
 	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -233,14 +235,14 @@ func TestRunWildcardRewriteCommandsUseAppOutput(t *testing.T) {
 	}))
 	server.Start()
 
-	resetWildcardCommandState(t, server.Listener.Addr().String())
+	ctx := wildcardCommandContext(t, server.Listener.Addr().String())
 
-	addCommand := newWildcardCommand(t)
+	addCommand := newWildcardCommand(ctx)
 	addOutput := &bytes.Buffer{}
 	addCommand.SetOut(addOutput)
 	require.NoError(t, runWildcardAdd(addCommand, []string{RewriteWildcardCommandTestDomain}, testWildcardFlagValues()))
 
-	deleteCommand := newWildcardCommand(t)
+	deleteCommand := newWildcardCommand(ctx)
 	deleteOutput := &bytes.Buffer{}
 	deleteCommand.SetOut(deleteOutput)
 	require.NoError(t, runWildcardDelete(
@@ -273,38 +275,16 @@ func registeredFlagNames(command *cobra.Command) []string {
 	return names
 }
 
-// resetWildcardCommandState resets globals and configures one HTTP test instance.
+// newWildcardCommand returns a command bound to ctx.
 //
 // Parameters:
-//   - host: Address of the HTTP test server backing the test instance.
-func resetWildcardCommandState(t *testing.T, host string) {
-	t.Helper()
-
-	viper.Reset()
-
-	viper.Set("instances", map[string]any{
-		rewriteWildcardCommandTestInstance: map[string]any{
-			"host":   host,
-			"scheme": "http",
-		},
-	})
-	t.Cleanup(func() {
-		viper.Reset()
-	})
-}
-
-// newWildcardCommand returns a command bound to the test context.
-//
-// Parameters:
-//   - t: Testing handle bound to the command context.
+//   - ctx: Context carrying the configuration of the run.
 //
 // Returns:
 //   - *cobra.Command: The command receiving wildcard command output.
-func newWildcardCommand(t *testing.T) *cobra.Command {
-	t.Helper()
-
+func newWildcardCommand(ctx context.Context) *cobra.Command {
 	command := &cobra.Command{}
-	command.SetContext(t.Context())
+	command.SetContext(ctx)
 
 	return command
 }
@@ -360,4 +340,21 @@ func recordWildcardContext(t *testing.T, command *cobra.Command, observed *[]err
 
 		return nil
 	}
+}
+
+// wildcardCommandContext returns a test context carrying one HTTP test instance.
+//
+// Parameters:
+//   - host: Address of the HTTP test server backing the test instance.
+//
+// Returns:
+//   - [context.Context]: Test context carrying the configured instance.
+func wildcardCommandContext(t *testing.T, host string) context.Context {
+	t.Helper()
+
+	return apptest.Context(t, fmt.Sprintf(
+		"instances:\n  %q:\n    host: %q\n    scheme: http\n",
+		rewriteWildcardCommandTestInstance,
+		host,
+	))
 }

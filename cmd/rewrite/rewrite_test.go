@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -20,10 +21,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
 
@@ -232,12 +233,12 @@ func TestNewCommandExecutionUsesFreshContext(t *testing.T) {
 
 // TestNewCommandRepeatedExecutionAppliesRules verifies that repeatedly
 // constructing and executing the command tree mutates every target instance.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestNewCommandRepeatedExecutionAppliesRules(t *testing.T) {
+	t.Parallel()
+
 	recorder := &rewriteMutationRecorder{t: t, methods: make([]string, 0, 2)}
 	server := newRewriteCommandServer(t, recorder.serveRewriteMutation)
-	resetRewriteCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
 	for range 2 {
 		command := NewCommand()
@@ -252,7 +253,7 @@ func TestNewCommandRepeatedExecutionAppliesRules(t *testing.T) {
 			rewriteCommandTestAnswer,
 		})
 
-		require.NoError(t, command.Execute())
+		require.NoError(t, command.ExecuteContext(ctx))
 		assert.Contains(t, output.String(), "Added rewrite rule")
 	}
 
@@ -277,9 +278,9 @@ func TestNewCommandDeleteRequiresAnswer(t *testing.T) {
 }
 
 // TestRunRewriteListUsesAppOutput verifies list command output wiring.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunRewriteListUsesAppOutput(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteCommandServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/control/rewrite/list", r.URL.Path)
@@ -288,9 +289,9 @@ func TestRunRewriteListUsesAppOutput(t *testing.T) {
 		_, err := w.Write([]byte(`[{"domain":"example.com","answer":"192.0.2.1","enabled":false}]`))
 		assert.NoError(t, err)
 	})
-	resetRewriteCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
-	command := newRewriteCommand(t)
+	command := newRewriteCommand(ctx)
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
@@ -301,15 +302,15 @@ func TestRunRewriteListUsesAppOutput(t *testing.T) {
 }
 
 // TestRunRewriteListPreservesStructuredError verifies command error wrapping.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunRewriteListPreservesStructuredError(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteCommandServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	resetRewriteCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
-	err := runRewriteList(newRewriteCommand(t), nil, testRewriteFlagValues())
+	err := runRewriteList(newRewriteCommand(ctx), nil, testRewriteFlagValues())
 
 	gotErr, ok := errors.AsType[*adguard.Error](err)
 	require.True(t, ok)
@@ -317,12 +318,12 @@ func TestRunRewriteListPreservesStructuredError(t *testing.T) {
 }
 
 // TestRewriteMutationsUseAppOutput verifies add, delete, and update command wiring.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRewriteMutationsUseAppOutput(t *testing.T) {
+	t.Parallel()
+
 	recorder := &rewriteMutationRecorder{t: t, methods: make([]string, 0, 3)}
 	server := newRewriteCommandServer(t, recorder.serveRewriteMutation)
-	resetRewriteCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
 	addCommand := NewCommand()
 	addOutput := &bytes.Buffer{}
@@ -335,7 +336,7 @@ func TestRewriteMutationsUseAppOutput(t *testing.T) {
 		rewriteCommandTestDomain,
 		rewriteCommandTestAnswer,
 	})
-	require.NoError(t, addCommand.ExecuteContext(t.Context()))
+	require.NoError(t, addCommand.ExecuteContext(ctx))
 
 	updateCommand := NewCommand()
 	updateOutput := &bytes.Buffer{}
@@ -348,7 +349,7 @@ func TestRewriteMutationsUseAppOutput(t *testing.T) {
 		rewriteCommandTestDomain,
 		rewriteCommandTestAnswer,
 	})
-	require.NoError(t, updateCommand.ExecuteContext(t.Context()))
+	require.NoError(t, updateCommand.ExecuteContext(ctx))
 
 	deleteCommand := NewCommand()
 	deleteOutput := &bytes.Buffer{}
@@ -361,7 +362,7 @@ func TestRewriteMutationsUseAppOutput(t *testing.T) {
 		"--" + RewriteFlagEnabled + "=false",
 		rewriteCommandTestDomain,
 	})
-	require.NoError(t, deleteCommand.ExecuteContext(t.Context()))
+	require.NoError(t, deleteCommand.ExecuteContext(ctx))
 
 	assert.Equal(t, []string{
 		RewriteRouteAdd,
@@ -374,9 +375,9 @@ func TestRewriteMutationsUseAppOutput(t *testing.T) {
 }
 
 // TestRunRewriteDiffFileUsesAppOutput verifies file diff command wiring.
-//
-//nolint:paralleltest // The test mutates the process-global Viper instance.
 func TestRunRewriteDiffFileUsesAppOutput(t *testing.T) {
+	t.Parallel()
+
 	server := newRewriteCommandServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/control/rewrite/list", r.URL.Path)
@@ -385,7 +386,7 @@ func TestRunRewriteDiffFileUsesAppOutput(t *testing.T) {
 		_, err := w.Write([]byte(`[{"domain":"remote.example","answer":"192.0.2.2","enabled":true}]`))
 		assert.NoError(t, err)
 	})
-	resetRewriteCommandState(t, server.Listener.Addr().String())
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
 	path := filepath.Join(t.TempDir(), "rules.yaml")
 	contents := []byte("- domain: local.example\n  answer: 192.0.2.1\n  enabled: false\n")
@@ -395,7 +396,7 @@ func TestRunRewriteDiffFileUsesAppOutput(t *testing.T) {
 
 	values.file = path
 
-	command := newRewriteCommand(t)
+	command := newRewriteCommand(ctx)
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
@@ -500,38 +501,16 @@ func newRewriteCommandServer(
 	return server
 }
 
-// resetRewriteCommandState resets globals and configures one HTTP test instance.
+// newRewriteCommand returns a command bound to ctx.
 //
 // Parameters:
-//   - host: Address of the HTTP test server backing the test instance.
-func resetRewriteCommandState(t *testing.T, host string) {
-	t.Helper()
-
-	viper.Reset()
-
-	viper.Set("instances", map[string]any{
-		rewriteCommandTestInstance: map[string]any{
-			"host":   host,
-			"scheme": "http",
-		},
-	})
-	t.Cleanup(func() {
-		viper.Reset()
-	})
-}
-
-// newRewriteCommand returns a command bound to the test context.
-//
-// Parameters:
-//   - t: Testing handle bound to the command context.
+//   - ctx: Context carrying the configuration of the run.
 //
 // Returns:
 //   - *cobra.Command: The command receiving rewrite output.
-func newRewriteCommand(t *testing.T) *cobra.Command {
-	t.Helper()
-
+func newRewriteCommand(ctx context.Context) *cobra.Command {
 	command := &cobra.Command{}
-	command.SetContext(t.Context())
+	command.SetContext(ctx)
 
 	return command
 }
@@ -590,4 +569,21 @@ func recordRewriteContext(t *testing.T, command *cobra.Command, observed *[]erro
 
 		return nil
 	}
+}
+
+// rewriteCommandContext returns a test context carrying one HTTP test instance.
+//
+// Parameters:
+//   - host: Address of the HTTP test server backing the test instance.
+//
+// Returns:
+//   - [context.Context]: Test context carrying the configured instance.
+func rewriteCommandContext(t *testing.T, host string) context.Context {
+	t.Helper()
+
+	return apptest.Context(t, fmt.Sprintf(
+		"instances:\n  %q:\n    host: %q\n    scheme: http\n",
+		rewriteCommandTestInstance,
+		host,
+	))
 }

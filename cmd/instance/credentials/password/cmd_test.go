@@ -162,7 +162,7 @@ func (f *fakeCoordinator) StatusPassword(
 //   - *streams: test dependencies for the password commands.
 func testStreams(store coordinator, terminal bool, secret string) *streams {
 	return &streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return store, nil
 		},
 		isTerminal: func(io.Reader) bool {
@@ -306,7 +306,7 @@ func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
 	t.Parallel()
 
 	group := newCommandGroup(&streams{
-		coordinator: func() (coordinator, error) {
+		coordinator: func(context.Context) (coordinator, error) {
 			return nil, errTestFactory
 		},
 	})

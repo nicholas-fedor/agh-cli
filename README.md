@@ -177,11 +177,13 @@ The per-user configuration file is `agh-cli/config.yaml` under the platform conf
 - Set `XDG_CONFIG_HOME` to relocate the per-user file on Linux and other Unix systems.
 - The first write creates the per-user file and its directory. An explicit `--config` path behaves the same way, so a missing file in a directory that does not exist yet is created too.
 - A `--config` path that is a directory is refused by name.
+- The configuration file is YAML. A `--config` path with another extension, such as `.toml` or `.json`, is refused, because every write is YAML.
 - A file with no content is treated as missing, so a stray tab or a trailing space never blocks a command.
 - Top-level keys `agh-cli` does not own are preserved, so an annotation or a key kept for another tool survives every write.
 - A symlinked configuration is written through to the file it names, rather than the link being replaced.
 - A file that changed after it was read is never overwritten, so a concurrent editor or a second `agh-cli` process cannot have its change discarded.
-- An instance that cannot be used is reported as a warning at load, and stays removable.
+- Keys and instance names are case-sensitive. `Home` and `home` are different names, and `instance add` refuses a name that differs from a configured one only by letter case.
+- An instance that cannot be used is reported as a warning at load, and stays removable. So is a key `agh-cli` does not read, such as a misspelled `Host:`, and every write keeps that key.
 
 ### Config File
 

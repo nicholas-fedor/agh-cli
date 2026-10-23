@@ -16,7 +16,7 @@ import (
 //
 // Parameters:
 //   - ctx: request-scoped cancellation signal.
-//   - request: the instance identity and configuration file path.
+//   - request: the instance identity.
 //
 // Returns:
 //   - app.InstanceRemoveResult: the removed instance and the credential outcome.
@@ -32,7 +32,7 @@ type removal func(context.Context, app.InstanceRemoveRequest) (app.InstanceRemov
 //
 // Parameters:
 //   - ctx: request-scoped cancellation signal.
-//   - request: the instance identity and configuration file path.
+//   - request: the instance identity.
 //
 // Returns:
 //   - app.InstanceRemoveResult: the removed instance and the credential outcome.
@@ -83,8 +83,7 @@ operator or to another system, so nothing is deleted for them.`,
 //   - error: non-nil when config loading, removal, or saving fails.
 func runInstanceRemove(cmd *cobra.Command, args []string, remove removal) error {
 	result, removeErr := remove(cmd.Context(), app.InstanceRemoveRequest{
-		ConfigPath: app.ConfigPath(),
-		Name:       args[0],
+		Name: args[0],
 	})
 	if removeErr != nil {
 		reportFailedInstanceRemoval(cmd, result)

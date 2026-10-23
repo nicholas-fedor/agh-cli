@@ -6,29 +6,14 @@ package app
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net/url"
-	"slices"
 	"time"
 
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/execution"
 	"github.com/nicholas-fedor/agh-cli/internal/filtering"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
-
-// FilteringSelection contains the instance-selection inputs for a filtering operation.
-type FilteringSelection struct {
-	// Instances contains the configured instance mappings.
-	Instances instance.Source
-	// Names contains explicit instance names in first-occurrence order.
-	Names []string
-	// ConfigPath identifies the configuration file used to order status results.
-	ConfigPath string
-	// All selects every configured instance when true.
-	All bool
-}
 
 // FilteringMutationResult contains the success message for one instance.
 type FilteringMutationResult struct {
@@ -89,11 +74,14 @@ const filteringRequestTimeout = 10 * time.Second
 // mounted-file, or environment instance is served without the command layer
 // reading a secret.
 //
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//
 // Returns:
 //   - *FilteringManagement: management bound to the production service factory
 //     and the production credential resolver.
-func NewFilteringManagement() *FilteringManagement {
-	return NewFilteringManagementWithResolver(NewCredentialResolver())
+func NewFilteringManagement(ctx context.Context) *FilteringManagement {
+	return NewFilteringManagementWithResolver(NewCredentialResolver(ctx))
 }
 
 // NewFilteringManagementWithResolver creates filtering-management wiring that
@@ -128,7 +116,7 @@ func NewFilteringManagementWithResolver(
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) AddURL(
 	ctx context.Context,
-	selection FilteringSelection,
+	selection Selection,
 	name string,
 	location string,
 	whitelist bool,
@@ -165,7 +153,7 @@ func (a *FilteringManagement) AddURL(
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) RemoveURL(
 	ctx context.Context,
-	selection FilteringSelection,
+	selection Selection,
 	location string,
 ) ([]FilteringMutationResult, error) {
 	request := filtering.URLRequest{
@@ -199,9 +187,9 @@ func (a *FilteringManagement) RemoveURL(
 //   - error: a wrapped resolution, service, or execution error.
 func (a *FilteringManagement) Status(
 	ctx context.Context,
-	selection FilteringSelection,
+	selection Selection,
 ) ([]FilteringStatusResult, error) {
-	targets, err := filteringStatusTargets(ctx, selection, a.resolve)
+	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve filtering status targets: %w", err)
 	}
@@ -260,7 +248,7 @@ func (a *FilteringManagement) Status(
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) UpdateConfig(
 	ctx context.Context,
-	selection FilteringSelection,
+	selection Selection,
 	enabled bool,
 	interval int64,
 ) ([]FilteringMutationResult, error) {
@@ -300,11 +288,11 @@ func (a *FilteringManagement) UpdateConfig(
 //   - error: a wrapped resolution, service, or execution error.
 func (a *FilteringManagement) runMutation(
 	ctx context.Context,
-	selection FilteringSelection,
+	selection Selection,
 	successMessage string,
 	operation filteringMutationOperation,
 ) ([]FilteringMutationResult, error) {
-	targets, err := filteringTargets(ctx, selection, a.resolve)
+	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve filtering targets: %w", err)
 	}
@@ -341,144 +329,6 @@ func (a *FilteringManagement) useCase(cfg instance.Config) (*filtering.Service, 
 	}
 
 	return filtering.NewService(service), nil
-}
-
-// filteringSelectedConfigs applies filtering selection policy to the configured
-// instances.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []instance.Config: selected configurations in selection order.
-//   - error: a wrapped credential or selection error.
-func filteringSelectedConfigs(
-	ctx context.Context,
-	selection FilteringSelection,
-	resolve instance.CredentialResolver,
-) ([]instance.Config, error) {
-	catalog, err := instance.CatalogFromSourceResolved(ctx, selection.Instances, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("create filtering catalog: %w", err)
-	}
-
-	mode := instance.ExplicitOrDefaultSelection
-	if selection.All {
-		mode = instance.AllSelection
-	}
-
-	selected, err := catalog.Select(selection.Names, mode)
-	if err != nil {
-		return nil, fmt.Errorf("select filtering instances: %w", err)
-	}
-
-	return selected, nil
-}
-
-// filteringStatusNames returns configured order with a deterministic sorted fallback.
-//
-// Parameters:
-//   - configPath: path to the configuration file; an empty path sorts directly.
-//   - selected: selected configurations keyed by instance name.
-//
-// Returns:
-//   - []string: instance names in configuration-file order, or sorted by name when
-//     the configuration order is unavailable.
-func filteringStatusNames(configPath string, selected map[string]instance.Config) []string {
-	if configPath == "" {
-		return slices.Sorted(maps.Keys(selected))
-	}
-
-	manager, err := config.Load(configPath)
-	if err != nil {
-		return slices.Sorted(maps.Keys(selected))
-	}
-
-	return manager.OrderedNames()
-}
-
-// filteringStatusTargets resolves status targets in configuration-file order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: resolved targets in configured order.
-//   - error: a wrapped selection error.
-func filteringStatusTargets(
-	ctx context.Context,
-	selection FilteringSelection,
-	resolve instance.CredentialResolver,
-) ([]execution.Target[instance.Config], error) {
-	selected, err := filteringSelectedConfigs(ctx, selection, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("select filtering status targets: %w", err)
-	}
-
-	selectedByName := make(map[string]instance.Config, len(selected))
-	for _, cfg := range selected {
-		selectedByName[cfg.Name] = cfg
-	}
-
-	names := filteringStatusNames(selection.ConfigPath, selectedByName)
-	configs := make([]instance.Config, 0, len(names))
-
-	for _, name := range names {
-		if cfg, ok := selectedByName[name]; ok {
-			configs = append(configs, cfg)
-		}
-	}
-
-	return filteringTargetsFromConfigs(configs), nil
-}
-
-// filteringTargets resolves mutation targets in selection order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - resolve: resolver applied to every catalog entry, or nil to leave
-//     credentials unresolved.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: resolved targets in selection order.
-//   - error: a wrapped selection error.
-func filteringTargets(
-	ctx context.Context,
-	selection FilteringSelection,
-	resolve instance.CredentialResolver,
-) ([]execution.Target[instance.Config], error) {
-	selected, err := filteringSelectedConfigs(ctx, selection, resolve)
-	if err != nil {
-		return nil, fmt.Errorf("select filtering targets: %w", err)
-	}
-
-	return filteringTargetsFromConfigs(selected), nil
-}
-
-// filteringTargetsFromConfigs wraps resolved configurations as execution targets.
-//
-// Parameters:
-//   - configs: resolved instance configurations in target order.
-//
-// Returns:
-//   - []execution.Target[instance.Config]: targets wrapping each configuration.
-func filteringTargetsFromConfigs(configs []instance.Config) []execution.Target[instance.Config] {
-	targets := make([]execution.Target[instance.Config], 0, len(configs))
-	for _, cfg := range configs {
-		targets = append(targets, execution.Target[instance.Config]{
-			Name:  cfg.Name,
-			Value: cfg,
-		})
-	}
-
-	return targets
 }
 
 // newAdguardFilteringService creates the production filtering service factory.

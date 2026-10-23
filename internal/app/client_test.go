@@ -40,9 +40,8 @@ func TestClientManagementListContinuesAfterFailure(t *testing.T) {
 	results, err := testClientManagement(t, map[string]*mockAdguard.MockClientsService{
 		badInstance:  badService,
 		goodInstance: goodService,
-	}).List(t.Context(), ClientSelection{
-		Instances: testInstances(),
-		Names:     []string{badInstance, goodInstance},
+	}).List(testInstancesContext(t), Selection{
+		Names: []string{badInstance, goodInstance},
 	})
 
 	require.ErrorIs(t, err, wantErr)
@@ -91,13 +90,8 @@ func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 	management := &ClientManagement{newService: func(cfg instance.Config) (adguard.ClientsService, error) {
 		return newService(cfg.Name), nil
 	}}
-	results, err := management.List(t.Context(), ClientSelection{
-		Instances: instance.Source{
-			alphaInstance: map[string]any{testHostKey: testAlphaHost},
-			zuluInstance:  map[string]any{testHostKey: testZuluHost},
-		},
-		All:        true,
-		ConfigPath: configPath,
+	results, err := management.List(contextWithConfigFile(t.Context(), t, configPath), Selection{
+		All: true,
 	})
 
 	require.NoError(t, err)
@@ -122,9 +116,8 @@ func TestClientManagementAddContinuesAfterFailure(t *testing.T) {
 	results, err := testClientManagement(t, map[string]*mockAdguard.MockClientsService{
 		badInstance:  badService,
 		goodInstance: goodService,
-	}).Add(t.Context(), ClientSelection{
-		Instances: testInstances(),
-		Names:     []string{badInstance, goodInstance},
+	}).Add(testInstancesContext(t), Selection{
+		Names: []string{badInstance, goodInstance},
 	}, ClientMutation{Name: testClientName, IDs: []string{testClientID}})
 
 	require.ErrorIs(t, err, wantErr)
@@ -152,9 +145,8 @@ func TestClientManagementUpdatePreservesExplicitFalse(t *testing.T) {
 
 	results, err := testClientManagement(t, map[string]*mockAdguard.MockClientsService{
 		goodInstance: service,
-	}).Update(t.Context(), ClientSelection{
-		Instances: testInstances(),
-		Names:     []string{goodInstance},
+	}).Update(testInstancesContext(t), Selection{
+		Names: []string{goodInstance},
 	}, ClientMutation{
 		Name:                testClientName,
 		ParentalEnabled:     true,
@@ -174,7 +166,7 @@ func TestClientManagementUpdatePreservesExplicitFalse(t *testing.T) {
 func TestClientManagementCancellationStopsRemainingTargets(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(testInstancesContext(t))
 	service := mockAdguard.NewMockClientsService(t)
 	service.EXPECT().ClientsStatus(mock.Anything).RunAndReturn(
 		func(context.Context) (*adguard.ClientsStatus, error) {
@@ -191,9 +183,8 @@ func TestClientManagementCancellationStopsRemainingTargets(t *testing.T) {
 		return service, nil
 	}}
 
-	results, err := management.List(ctx, ClientSelection{
-		Instances: testInstances(),
-		All:       true,
+	results, err := management.List(ctx, Selection{
+		All: true,
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -224,9 +215,8 @@ func TestClientManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 		return service, nil
 	}}
 
-	results, err := management.Add(t.Context(), ClientSelection{
-		Instances: testInstances(),
-		Names:     []string{zuluInstance, alphaInstance, zuluInstance},
+	results, err := management.Add(testInstancesContext(t), Selection{
+		Names: []string{zuluInstance, alphaInstance, zuluInstance},
 	}, ClientMutation{Name: testClientName, IDs: []string{testClientID}})
 
 	require.NoError(t, err)

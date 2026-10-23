@@ -6,10 +6,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/nicholas-fedor/agh-cli/cmd/client"
 	"github.com/nicholas-fedor/agh-cli/cmd/filtering"
@@ -33,8 +31,8 @@ var newRootCommand = func() *cobra.Command {
 		Short: "CLI for managing multiple AdGuard Home instances",
 		Long: `A Go CLI that provides CRUD operations for interacting with
 multiple AdGuard Home instances simultaneously.`,
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-			return initConfig(cfgFile)
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			return initConfig(cmd, cfgFile)
 		},
 	}
 
@@ -96,50 +94,37 @@ func ExecuteContext(ctx context.Context) error {
 	return nil
 }
 
-// initConfig reads the Viper configuration.
+// initConfig resolves and loads the configuration for the run, then attaches it
+// to the command context.
 //
-// The configuration file is resolved once, here, and the outcome is published so
-// that every later read and every write agree on one file. Resolution decides
-// between an explicit path and the default search locations, and a blank
-// document is treated as no configuration so the first write creates it.
+// The configuration file is resolved and loaded once, here, so that every later
+// read and every write of the run agree on one file. Resolution decides between
+// an explicit path and the default search locations, and a blank document is
+// treated as no configuration so the first write creates it.
 //
 // A file that cannot be read is fatal and names the path, because an operator
-// must know which file failed. A file that does not exist is a warning, since
-// the first write creates it.
+// must know which file failed. A file that does not exist and an instance that
+// cannot be used are warnings, written to the command's error stream.
 //
 // Parameters:
+//   - cmd: command being executed, whose context receives the configuration.
 //   - cfgFile: explicit configuration file path, or an empty value that selects
 //     the default configuration locations.
 //
 // Returns:
-//   - error: non-nil when the configuration cannot be resolved or read.
-func initConfig(cfgFile string) error {
+//   - error: non-nil when the configuration cannot be resolved or loaded.
+func initConfig(cmd *cobra.Command, cfgFile string) error {
 	resolution, err := app.ResolveConfigPath(cfgFile)
 	if err != nil {
 		return fmt.Errorf("resolve config: %w", err)
 	}
 
-	app.PublishConfigResolution(resolution)
-
-	if !resolution.Exists {
-		_, writeErr := fmt.Fprintf(
-			os.Stderr,
-			"Warning: no configuration file at %s; one will be created on first write\n",
-			resolution.Path,
-		)
-		if writeErr != nil {
-			return fmt.Errorf("write config warning: %w", writeErr)
-		}
-
-		return nil
-	}
-
-	viper.SetConfigFile(resolution.Path)
-
-	err = viper.ReadInConfig()
+	runConfig, err := app.LoadRunConfig(resolution, cmd.ErrOrStderr())
 	if err != nil {
-		return fmt.Errorf("read config %q: %w", resolution.Path, err)
+		return fmt.Errorf("%w", err)
 	}
+
+	cmd.SetContext(app.WithRunConfig(cmd.Context(), runConfig))
 
 	return nil
 }
