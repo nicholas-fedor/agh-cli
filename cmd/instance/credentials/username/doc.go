@@ -8,7 +8,7 @@
 // configuration file, is never written to the credential store, and is accepted
 // as an ordinary argument because it is safe in a process listing and in shell
 // history. The package owns presentation only and hands every change to
-// [github.com/nicholas-fedor/agh-cli/internal/app.Credentials].
+// [github.com/nicholas-fedor/agh-cli/internal/credentials.Manager].
 //
 // The package never reads a secret and never prompts, because no command here
 // touches a password. Password management lives in the sibling password package.

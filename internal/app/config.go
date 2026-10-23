@@ -27,19 +27,6 @@ type RunConfig struct {
 // runConfigKey is the context key carrying the [RunConfig] of a run.
 type runConfigKey struct{}
 
-// ConfigResolution is the outcome of resolving which configuration file a run
-// uses. It is [config.Resolution], re-exported so the command layer names no
-// configuration package.
-type ConfigResolution = config.Resolution
-
-// DefaultConfigDirName is the agh-cli directory under the per-user
-// configuration root. It is [config.DefaultConfigDirName].
-const DefaultConfigDirName = config.DefaultConfigDirName
-
-// DefaultConfigFileName is the configuration file inside
-// [DefaultConfigDirName]. It is [config.DefaultConfigFileName].
-const DefaultConfigFileName = config.DefaultConfigFileName
-
 // ErrNoRunConfig indicates that an operation ran without a loaded configuration.
 var ErrNoRunConfig = errors.New("no configuration loaded for the run")
 
@@ -52,12 +39,12 @@ var ErrNoRunConfig = errors.New("no configuration loaded for the run")
 //   - explicit: an operator-supplied path, or an empty string to search.
 //
 // Returns:
-//   - ConfigResolution: the path to use and whether it holds content to read.
+//   - config.Resolution: the path to use and whether it holds content to read.
 //   - error: a wrapped error when an explicit path is not a usable file.
-func ResolveConfigPath(explicit string) (ConfigResolution, error) {
+func ResolveConfigPath(explicit string) (config.Resolution, error) {
 	resolution, err := config.Resolve(explicit)
 	if err != nil {
-		return ConfigResolution{}, fmt.Errorf("%w", err)
+		return config.Resolution{}, fmt.Errorf("%w", err)
 	}
 
 	return resolution, nil
@@ -80,7 +67,7 @@ func ResolveConfigPath(explicit string) (ConfigResolution, error) {
 // Returns:
 //   - RunConfig: the loaded configuration.
 //   - error: a wrapped error when the file cannot be read or parsed.
-func LoadRunConfig(resolution ConfigResolution, warnings io.Writer) (RunConfig, error) {
+func LoadRunConfig(resolution config.Resolution, warnings io.Writer) (RunConfig, error) {
 	manager, err := config.Load(resolution.Path)
 	if err != nil {
 		return RunConfig{}, fmt.Errorf("load config %q: %w", resolution.Path, err)

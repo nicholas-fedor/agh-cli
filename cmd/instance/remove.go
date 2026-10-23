@@ -26,9 +26,9 @@ type removal func(context.Context, app.InstanceRemoveRequest) (app.InstanceRemov
 
 // removeInstance builds the production instance removal.
 //
-// The credential store is constructed per execution, because the command layer
-// never names the credential store package and a store is never shared between
-// two runs.
+// The credential store is constructed per execution by the application layer,
+// because the command layer never constructs one itself and a store is never
+// shared between two runs.
 //
 // Parameters:
 //   - ctx: request-scoped cancellation signal.

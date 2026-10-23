@@ -149,7 +149,7 @@ func TestFilteringManagementUpdateConfigPreservesFalseAndZero(t *testing.T) {
 	}, false, 0)
 
 	require.NoError(t, err)
-	assert.Equal(t, []FilteringMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: filteringTestGoodInstance,
 		Message:  "Filtering config updated: enabled=false, interval=0",
 	}}, results)
@@ -173,7 +173,7 @@ func TestFilteringManagementAddURLPreservesEmptyAndFalse(t *testing.T) {
 	}, "", "", false)
 
 	require.NoError(t, err)
-	assert.Equal(t, []FilteringMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: filteringTestGoodInstance,
 		Message:  "Added filter URL ",
 	}}, results)
@@ -196,7 +196,7 @@ func TestFilteringManagementRemoveURLPreservesFalse(t *testing.T) {
 	}, "")
 
 	require.NoError(t, err)
-	assert.Equal(t, []FilteringMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: filteringTestGoodInstance,
 		Message:  "Removed filter URL ",
 	}}, results)
@@ -221,7 +221,7 @@ func TestFilteringManagementMutationContinuesAfterFailure(t *testing.T) {
 	}, "filters", "https://filters.example/list.txt", false)
 
 	require.ErrorIs(t, err, wantErr)
-	assert.Equal(t, []FilteringMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: filteringTestGoodInstance,
 		Message:  filteringTestAddedMessage,
 	}}, results)
@@ -289,7 +289,7 @@ func TestFilteringManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 	}, "filters", "https://filters.example/list.txt", false)
 
 	require.NoError(t, err)
-	assert.Equal(t, []FilteringMutationResult{
+	assert.Equal(t, []MutationResult{
 		{Instance: filteringTestZuluInstance, Message: filteringTestAddedMessage},
 		{Instance: filteringTestAlphaInstance, Message: filteringTestAddedMessage},
 	}, results)

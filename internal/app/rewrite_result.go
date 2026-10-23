@@ -7,14 +7,6 @@ import (
 	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 )
 
-// RewriteMutationResult contains the success message for one instance.
-type RewriteMutationResult struct {
-	// Instance identifies the successful target.
-	Instance string
-	// Message is the operation-specific success text.
-	Message string
-}
-
 // RewriteListResult contains the successfully retrieved rules for one instance.
 type RewriteListResult struct {
 	// Instance identifies the source instance.

@@ -13,22 +13,6 @@ import (
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
 
-// ClientMutation contains the client values supplied by command flags.
-type ClientMutation struct {
-	// Name is the client name reported by AdGuard Home.
-	Name string
-	// IDs contains the identifiers associated with the client name.
-	IDs []string
-	// UseGlobalSettings reports whether global client settings are inherited.
-	UseGlobalSettings bool
-	// FilteringEnabled reports whether per-client filtering is enabled.
-	FilteringEnabled bool
-	// ParentalEnabled reports whether the parental control is enabled.
-	ParentalEnabled bool
-	// SafebrowsingEnabled reports whether the safe-browsing filter is enabled.
-	SafebrowsingEnabled bool
-}
-
 // ClientListResult contains the successfully retrieved rows for one instance.
 type ClientListResult struct {
 	// Instance identifies the source instance.
@@ -40,14 +24,6 @@ type ClientListResult struct {
 	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
-}
-
-// ClientMutationResult contains the success message for one instance.
-type ClientMutationResult struct {
-	// Instance identifies the successful target.
-	Instance string
-	// Message is the operation-specific success text.
-	Message string
 }
 
 // clientServiceFactory creates a client-management service for one instance.
@@ -104,32 +80,23 @@ func NewClientManagementWithResolver(
 // Parameters:
 //   - ctx: request-scoped cancellation signal.
 //   - selection: instance-selection inputs for the operation.
-//   - mutation: client values sent to every selected instance.
+//   - settings: client values sent to every selected instance.
 //
 // Returns:
-//   - []ClientMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Add(
 	ctx context.Context,
 	selection Selection,
-	mutation ClientMutation,
-) ([]ClientMutationResult, error) {
-	request := client.AddRequest{
-		Name:                mutation.Name,
-		IDs:                 mutation.IDs,
-		UseGlobalSettings:   mutation.UseGlobalSettings,
-		FilteringEnabled:    mutation.FilteringEnabled,
-		ParentalEnabled:     mutation.ParentalEnabled,
-		SafebrowsingEnabled: mutation.SafebrowsingEnabled,
-	}
-
+	settings client.Settings,
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
 		"add client",
-		"Added client "+mutation.Name,
+		"Added client "+settings.Name,
 		func(ctx context.Context, service *client.Service) error {
-			err := service.Add(ctx, request)
+			err := service.Add(ctx, settings)
 			if err != nil {
 				return fmt.Errorf("add client: %w", err)
 			}
@@ -152,13 +119,13 @@ func (a *ClientManagement) Add(
 //   - name: client name to remove.
 //
 // Returns:
-//   - []ClientMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Delete(
 	ctx context.Context,
 	selection Selection,
 	name string,
-) ([]ClientMutationResult, error) {
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
@@ -226,32 +193,23 @@ func (a *ClientManagement) List(
 // Parameters:
 //   - ctx: request-scoped cancellation signal.
 //   - selection: instance-selection inputs for the operation.
-//   - mutation: client values sent to every selected instance.
+//   - settings: client values sent to every selected instance.
 //
 // Returns:
-//   - []ClientMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) Update(
 	ctx context.Context,
 	selection Selection,
-	mutation ClientMutation,
-) ([]ClientMutationResult, error) {
-	request := client.UpdateRequest{
-		Name:                mutation.Name,
-		IDs:                 mutation.IDs,
-		UseGlobalSettings:   mutation.UseGlobalSettings,
-		FilteringEnabled:    mutation.FilteringEnabled,
-		ParentalEnabled:     mutation.ParentalEnabled,
-		SafebrowsingEnabled: mutation.SafebrowsingEnabled,
-	}
-
+	settings client.Settings,
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
 		"update client",
-		"Updated client "+mutation.Name,
+		"Updated client "+settings.Name,
 		func(ctx context.Context, service *client.Service) error {
-			err := service.Update(ctx, request)
+			err := service.Update(ctx, settings)
 			if err != nil {
 				return fmt.Errorf("update client: %w", err)
 			}
@@ -276,7 +234,7 @@ func (a *ClientManagement) Update(
 //   - operation: domain mutation applied to each resolved instance service.
 //
 // Returns:
-//   - []ClientMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *ClientManagement) runMutation(
 	ctx context.Context,
@@ -284,15 +242,15 @@ func (a *ClientManagement) runMutation(
 	operationName string,
 	successMessage string,
 	operation clientMutationOperation,
-) ([]ClientMutationResult, error) {
+) ([]MutationResult, error) {
 	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve client targets: %w", err)
 	}
 
 	results, err := mutateInstances(ctx, targets, a.useCase, operation,
-		func(name string) ClientMutationResult {
-			return ClientMutationResult{Instance: name, Message: successMessage}
+		func(name string) MutationResult {
+			return MutationResult{Instance: name, Message: successMessage}
 		},
 	)
 	if err != nil {

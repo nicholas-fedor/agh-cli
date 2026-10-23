@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // migrateValues stores the flag values bound to one migrate command.
@@ -78,7 +78,7 @@ func runMigrate(cmd *cobra.Command, values *migrateValues, seams *streams) error
 		return fmt.Errorf("build credential coordinator: %w", err)
 	}
 
-	report, migrateErr := store.Migrate(cmd.Context(), app.MigrationRequest{
+	report, migrateErr := store.Migrate(cmd.Context(), credentials.MigrationRequest{
 		DryRun: values.dryRun,
 	})
 
@@ -99,7 +99,7 @@ func runMigrate(cmd *cobra.Command, values *migrateValues, seams *streams) error
 // Parameters:
 //   - cmd: Cobra command context.
 //   - report: outcome of the migration run.
-func reportMigration(cmd *cobra.Command, report app.MigrationReport) {
+func reportMigration(cmd *cobra.Command, report credentials.MigrationReport) {
 	for _, result := range report.Results {
 		cmd.Println(migrationLine(result))
 	}
@@ -119,7 +119,7 @@ func reportMigration(cmd *cobra.Command, report app.MigrationReport) {
 //
 // Returns:
 //   - string: the rendered line.
-func migrationLine(result app.MigrationResult) string {
+func migrationLine(result credentials.MigrationResult) string {
 	subject := strconv.Quote(result.Instance) + " to keyring key " + strconv.Quote(result.Key)
 
 	if result.DryRun && result.Err != nil {
@@ -148,7 +148,7 @@ func migrationLine(result app.MigrationResult) string {
 //
 // Returns:
 //   - string: the rendered summary line.
-func migrationSummary(report app.MigrationReport) string {
+func migrationSummary(report credentials.MigrationReport) string {
 	if report.DryRun {
 		return fmt.Sprintf(
 			"nothing was written: %d credential(s) would be migrated",
@@ -178,7 +178,7 @@ func migrationSummary(report app.MigrationReport) string {
 //
 // Returns:
 //   - int: the number of outcomes without an error.
-func migratable(results []app.MigrationResult) int {
+func migratable(results []credentials.MigrationResult) int {
 	count := 0
 
 	for _, result := range results {

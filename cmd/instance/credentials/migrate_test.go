@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // TestRunMigratePreviewsWithoutWriting verifies that a dry run reports the change
@@ -19,11 +19,11 @@ func TestRunMigratePreviewsWithoutWriting(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
 			DryRun:  true,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,
@@ -65,11 +65,11 @@ func TestRunMigratePreviewsRefusedInstance(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
 			DryRun:  true,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,
@@ -102,11 +102,11 @@ func TestRunMigrateReportsAppliedMigration(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
 			DryRun:  false,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,
@@ -141,10 +141,10 @@ func TestRunMigrateReportsNothingToDo(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
-			Results: []app.MigrationResult{},
+			Results: []credentials.MigrationResult{},
 		},
 	}
 
@@ -168,10 +168,10 @@ func TestRunMigrateReportsPerInstanceOutcome(t *testing.T) {
 	saveErr := errors.New("configuration file is read-only")
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,
@@ -211,10 +211,10 @@ func TestRunMigrateWarnsAboutUnsavedConfiguration(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,
@@ -245,10 +245,10 @@ func TestRunMigrateNeverReadsOrPrintsAPassword(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		report: app.MigrationReport{
+		report: credentials.MigrationReport{
 			Backend: testBackend,
 			Service: testService,
-			Results: []app.MigrationResult{
+			Results: []credentials.MigrationResult{
 				{
 					Instance: testInstanceName,
 					Key:      testKeyringKey,

@@ -35,7 +35,7 @@ func NewService(clients adguard.ClientsService) *Service {
 //
 // Returns:
 //   - error: a wrapped client-creation error.
-func (s *Service) Add(ctx context.Context, request AddRequest) error {
+func (s *Service) Add(ctx context.Context, request Settings) error {
 	config := adguard.ClientConfig{
 		Name:                     request.Name,
 		IDs:                      request.IDs,
@@ -120,7 +120,7 @@ func (s *Service) List(ctx context.Context) (Result, error) {
 //
 // Returns:
 //   - error: a wrapped client-update error.
-func (s *Service) Update(ctx context.Context, request UpdateRequest) error {
+func (s *Service) Update(ctx context.Context, request Settings) error {
 	data := adguard.ClientUpdateData{
 		Name:                new(request.Name),
 		UseGlobalSettings:   new(request.UseGlobalSettings),

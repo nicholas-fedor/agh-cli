@@ -17,11 +17,12 @@ import (
 	"golang.org/x/term"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // coordinator is the password use-case surface the commands depend on.
 //
-// [github.com/nicholas-fedor/agh-cli/internal/app.Credentials] satisfies the
+// [github.com/nicholas-fedor/agh-cli/internal/credentials.Manager] satisfies the
 // interface. The interface is declared here so the commands can be exercised
 // without an operating system credential store.
 type coordinator interface {
@@ -31,9 +32,9 @@ type coordinator interface {
 	//   - ctx: request-scoped cancellation signal.
 	//
 	// Returns:
-	//   - app.PasswordClearResult: the cleared service.
+	//   - credentials.PasswordClearResult: the cleared service.
 	//   - error: non-nil when the credentials could not be cleared.
-	ClearAllPasswords(ctx context.Context) (app.PasswordClearResult, error)
+	ClearAllPasswords(ctx context.Context) (credentials.PasswordClearResult, error)
 	// ClearPassword removes the stored credential of one instance.
 	//
 	// Parameters:
@@ -41,10 +42,10 @@ type coordinator interface {
 	//   - name: configured instance name.
 	//
 	// Returns:
-	//   - app.PasswordClearResult: the cleared identity and whether a credential
+	//   - credentials.PasswordClearResult: the cleared identity and whether a credential
 	//     was removed.
 	//   - error: non-nil when the credential could not be cleared.
-	ClearPassword(ctx context.Context, name string) (app.PasswordClearResult, error)
+	ClearPassword(ctx context.Context, name string) (credentials.PasswordClearResult, error)
 	// SetPassword stores one credential and repoints the instance at it.
 	//
 	// Parameters:
@@ -54,13 +55,13 @@ type coordinator interface {
 	//   - secret: secret read by the command layer.
 	//
 	// Returns:
-	//   - app.PasswordSetResult: the written identity and whether it replaced a
+	//   - credentials.PasswordSetResult: the written identity and whether it replaced a
 	//     credential.
 	//   - error: non-nil when the credential could not be stored.
 	SetPassword(
 		ctx context.Context,
 		name, key, secret string,
-	) (app.PasswordSetResult, error)
+	) (credentials.PasswordSetResult, error)
 	// StatusPassword reports credential store state for the named instances.
 	//
 	// Parameters:
@@ -68,10 +69,10 @@ type coordinator interface {
 	//   - names: instance names to inspect, or an empty slice for every instance.
 	//
 	// Returns:
-	//   - app.PasswordReport: the backend, the service, and one entry per
+	//   - credentials.PasswordReport: the backend, the service, and one entry per
 	//     instance.
 	//   - error: non-nil when a requested name is unknown.
-	StatusPassword(ctx context.Context, names []string) (app.PasswordReport, error)
+	StatusPassword(ctx context.Context, names []string) (credentials.PasswordReport, error)
 }
 
 // factory builds the password coordinator for one command execution from the

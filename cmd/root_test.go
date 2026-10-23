@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
 
@@ -101,12 +100,12 @@ func TestRootCommandPrefersUserConfigOverWorkingDirectory(t *testing.T) {
 
 	configRoot := isolateRootUserConfigRoot(t)
 
-	userDirectory := filepath.Join(configRoot, app.DefaultConfigDirName)
+	userDirectory := filepath.Join(configRoot, config.DefaultConfigDirName)
 	require.NoError(t, os.MkdirAll(userDirectory, RootConfigDirMode))
 
-	writeRootConfigFile(t, userDirectory, app.DefaultConfigFileName)
+	writeRootConfigFile(t, userDirectory, config.DefaultConfigFileName)
 	require.NoError(t, os.WriteFile(
-		filepath.Join(workingDirectory, app.DefaultConfigFileName),
+		filepath.Join(workingDirectory, config.DefaultConfigFileName),
 		[]byte("instances:\n  "+RootShadowInstanceName+":\n    host: "+RootConfigHost+"\n"),
 		0o600,
 	))
@@ -136,12 +135,12 @@ func TestRootCommandWritesFirstConfigToUserDirectory(t *testing.T) {
 
 	userConfig := filepath.Join(
 		configRoot,
-		app.DefaultConfigDirName,
-		app.DefaultConfigFileName,
+		config.DefaultConfigDirName,
+		config.DefaultConfigFileName,
 	)
 
 	assert.FileExists(t, userConfig)
-	assert.NoFileExists(t, filepath.Join(workingDirectory, app.DefaultConfigFileName))
+	assert.NoFileExists(t, filepath.Join(workingDirectory, config.DefaultConfigFileName))
 	assert.Contains(t, readRootConfigFile(t, userConfig), RootConfigHost)
 }
 
@@ -167,8 +166,8 @@ func TestRootCommandConfiguresCredentialsThroughCredentialsGroup(t *testing.T) {
 
 	userConfig := filepath.Join(
 		configRoot,
-		app.DefaultConfigDirName,
-		app.DefaultConfigFileName,
+		config.DefaultConfigDirName,
+		config.DefaultConfigFileName,
 	)
 
 	afterAdd := readRootConfigFile(t, userConfig)

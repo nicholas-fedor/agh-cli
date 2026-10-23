@@ -47,7 +47,7 @@ func TestServiceListShapesRows(t *testing.T) {
 func TestServiceAddShapesRequest(t *testing.T) {
 	t.Parallel()
 
-	request := AddRequest{
+	request := Settings{
 		Name:                clientTestName,
 		IDs:                 []string{clientTestID},
 		UseGlobalSettings:   true,
@@ -95,7 +95,7 @@ func TestServiceDeleteShapesRequest(t *testing.T) {
 func TestServiceUpdatePreservesExplicitFalse(t *testing.T) {
 	t.Parallel()
 
-	request := UpdateRequest{
+	request := Settings{
 		Name:                clientTestName,
 		IDs:                 []string{clientTestID},
 		UseGlobalSettings:   false,
@@ -142,7 +142,7 @@ func TestServicePropagatesOperationErrors(t *testing.T) {
 		service := mockAdguard.NewMockClientsService(t)
 		service.EXPECT().ClientsAdd(mock.Anything, mock.Anything).Return(wantErr).Once()
 
-		err := NewService(service).Add(t.Context(), AddRequest{Name: clientTestName})
+		err := NewService(service).Add(t.Context(), Settings{Name: clientTestName})
 
 		require.ErrorIs(t, err, wantErr)
 	})
@@ -164,7 +164,7 @@ func TestServicePropagatesOperationErrors(t *testing.T) {
 		service := mockAdguard.NewMockClientsService(t)
 		service.EXPECT().ClientsUpdate(mock.Anything, mock.Anything).Return(wantErr).Once()
 
-		err := NewService(service).Update(t.Context(), UpdateRequest{Name: clientTestName})
+		err := NewService(service).Update(t.Context(), Settings{Name: clientTestName})
 
 		require.ErrorIs(t, err, wantErr)
 	})

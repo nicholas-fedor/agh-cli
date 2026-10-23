@@ -6,12 +6,13 @@
 //
 // The package owns presentation and secret input only. A secret is read from a
 // hidden terminal prompt or from standard input, is handed to
-// [github.com/nicholas-fedor/agh-cli/internal/app.Credentials], and is never
+// [github.com/nicholas-fedor/agh-cli/internal/credentials.Manager], and is never
 // echoed, logged, returned, or written to an output stream. There is
 // intentionally no command that prints a stored secret.
 //
 // The package depends on [github.com/nicholas-fedor/agh-cli/internal/app],
-// Cobra, and the terminal reader. It never imports the credential store
-// adapter or the configuration package, so credential policy and persistence
-// stay in the application layer.
+// Cobra, and the terminal reader, and it names the report and request types of
+// [github.com/nicholas-fedor/agh-cli/internal/credentials]. It never calls into
+// that package or imports the configuration package, so credential policy and
+// persistence stay behind the application layer.
 package credentials

@@ -13,16 +13,6 @@ import (
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
 
-// RewriteRuleInput contains command values for one rewrite-rule mutation.
-type RewriteRuleInput struct {
-	// Domain is the rewritten domain.
-	Domain string
-	// Answer is the rewritten answer.
-	Answer string
-	// Enabled controls whether the rule is active.
-	Enabled bool
-}
-
 // RewriteRule contains display values for one rewrite rule.
 type RewriteRule struct {
 	// Domain is the rewritten domain or an empty string when absent.
@@ -90,23 +80,19 @@ func NewRewriteManagementWithResolver(
 //   - request: rewrite values sent to every selected instance.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Add(
 	ctx context.Context,
 	selection Selection,
-	request RewriteRuleInput,
-) ([]RewriteMutationResult, error) {
+	request rewrite.RuleRequest,
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
 		fmt.Sprintf("Added rewrite rule %s -> %s", request.Domain, request.Answer),
 		func(ctx context.Context, service *rewrite.Service) error {
-			return service.Add(ctx, rewrite.RuleRequest{
-				Domain:  request.Domain,
-				Answer:  request.Answer,
-				Enabled: request.Enabled,
-			})
+			return service.Add(ctx, request)
 		},
 	)
 	if err != nil {
@@ -124,23 +110,19 @@ func (a *RewriteManagement) Add(
 //   - request: rewrite values identifying the rule to remove.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Delete(
 	ctx context.Context,
 	selection Selection,
-	request RewriteRuleInput,
-) ([]RewriteMutationResult, error) {
+	request rewrite.RuleRequest,
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
 		fmt.Sprintf("Deleted rewrite rule %s -> %s", request.Domain, request.Answer),
 		func(ctx context.Context, service *rewrite.Service) error {
-			return service.Delete(ctx, rewrite.RuleRequest{
-				Domain:  request.Domain,
-				Answer:  request.Answer,
-				Enabled: request.Enabled,
-			})
+			return service.Delete(ctx, request)
 		},
 	)
 	if err != nil {
@@ -248,23 +230,19 @@ func (a *RewriteManagement) List(
 //   - request: rewrite values sent to every selected instance.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) Update(
 	ctx context.Context,
 	selection Selection,
-	request RewriteRuleInput,
-) ([]RewriteMutationResult, error) {
+	request rewrite.RuleRequest,
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
 		fmt.Sprintf("Updated rewrite rule %s -> %s", request.Domain, request.Answer),
 		func(ctx context.Context, service *rewrite.Service) error {
-			return service.Update(ctx, rewrite.RuleRequest{
-				Domain:  request.Domain,
-				Answer:  request.Answer,
-				Enabled: request.Enabled,
-			})
+			return service.Update(ctx, request)
 		},
 	)
 	if err != nil {
@@ -282,13 +260,13 @@ func (a *RewriteManagement) Update(
 //   - enabled: enables or disables DNS rewrites.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) UpdateSettings(
 	ctx context.Context,
 	selection Selection,
 	enabled bool,
-) ([]RewriteMutationResult, error) {
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
@@ -312,13 +290,13 @@ func (a *RewriteManagement) UpdateSettings(
 //   - zone: DNS zone covered by the wildcard rules.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) WildcardAdd(
 	ctx context.Context,
 	selection Selection,
 	zone string,
-) ([]RewriteMutationResult, error) {
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
@@ -342,13 +320,13 @@ func (a *RewriteManagement) WildcardAdd(
 //   - zone: DNS zone whose bare and wildcard rules are removed.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *RewriteManagement) WildcardDelete(
 	ctx context.Context,
 	selection Selection,
 	zone string,
-) ([]RewriteMutationResult, error) {
+) ([]MutationResult, error) {
 	results, err := a.runMutation(
 		ctx,
 		selection,
@@ -373,14 +351,14 @@ func (a *RewriteManagement) WildcardDelete(
 //   - operation: domain mutation applied to each resolved instance service.
 //
 // Returns:
-//   - []RewriteMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped resolution, service, or execution error.
 func (a *RewriteManagement) runMutation(
 	ctx context.Context,
 	selection Selection,
 	successMessage string,
 	operation rewriteMutationOperation,
-) ([]RewriteMutationResult, error) {
+) ([]MutationResult, error) {
 	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rewrite targets: %w", err)
@@ -391,8 +369,8 @@ func (a *RewriteManagement) runMutation(
 		targets,
 		a.useCase,
 		operation,
-		func(name string) RewriteMutationResult {
-			return RewriteMutationResult{Instance: name, Message: successMessage}
+		func(name string) MutationResult {
+			return MutationResult{Instance: name, Message: successMessage}
 		},
 	)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/client"
 )
 
 // selectionValues stores the selection flag values bound to one client command.
@@ -30,8 +31,8 @@ type clientMutation func(
 	*app.ClientManagement,
 	context.Context,
 	app.Selection,
-	app.ClientMutation,
-) ([]app.ClientMutationResult, error)
+	client.Settings,
+) ([]app.MutationResult, error)
 
 const (
 	// ClientAllFlag names the flag selecting every configured instance.
@@ -202,35 +203,35 @@ func runClientMutation(
 //   - cmd: Cobra command providing the client mutation flags.
 //
 // Returns:
-//   - app.ClientMutation: The mutation values parsed from the flags.
+//   - client.Settings: The mutation values parsed from the flags.
 //   - error: An error when a flag cannot be retrieved.
-func clientMutationFromFlags(cmd *cobra.Command) (app.ClientMutation, error) {
+func clientMutationFromFlags(cmd *cobra.Command) (client.Settings, error) {
 	ids, err := cmd.Flags().GetStringArray(clientIDFlag)
 	if err != nil {
-		return app.ClientMutation{}, fmt.Errorf("parse id flag: %w", err)
+		return client.Settings{}, fmt.Errorf("parse id flag: %w", err)
 	}
 
 	useGlobalSettings, err := cmd.Flags().GetBool(clientUseGlobalFlag)
 	if err != nil {
-		return app.ClientMutation{}, fmt.Errorf("parse use-global flag: %w", err)
+		return client.Settings{}, fmt.Errorf("parse use-global flag: %w", err)
 	}
 
 	filteringEnabled, err := cmd.Flags().GetBool(clientFilteringFlag)
 	if err != nil {
-		return app.ClientMutation{}, fmt.Errorf("parse filtering flag: %w", err)
+		return client.Settings{}, fmt.Errorf("parse filtering flag: %w", err)
 	}
 
 	parentalEnabled, err := cmd.Flags().GetBool(clientParentalFlag)
 	if err != nil {
-		return app.ClientMutation{}, fmt.Errorf("parse parental flag: %w", err)
+		return client.Settings{}, fmt.Errorf("parse parental flag: %w", err)
 	}
 
 	safebrowsingEnabled, err := cmd.Flags().GetBool(clientSafebrowsingFlag)
 	if err != nil {
-		return app.ClientMutation{}, fmt.Errorf("parse safebrowsing flag: %w", err)
+		return client.Settings{}, fmt.Errorf("parse safebrowsing flag: %w", err)
 	}
 
-	return app.ClientMutation{
+	return client.Settings{
 		IDs:                 ids,
 		UseGlobalSettings:   useGlobalSettings,
 		FilteringEnabled:    filteringEnabled,
@@ -244,7 +245,7 @@ func clientMutationFromFlags(cmd *cobra.Command) (app.ClientMutation, error) {
 // Parameters:
 //   - cmd: Cobra command receiving the rendered messages.
 //   - results: Per-instance mutation results to render.
-func writeClientMutationResults(cmd *cobra.Command, results []app.ClientMutationResult) {
+func writeClientMutationResults(cmd *cobra.Command, results []app.MutationResult) {
 	for _, result := range results {
 		cmd.Printf("[%s] %s\n", result.Instance, result.Message)
 	}

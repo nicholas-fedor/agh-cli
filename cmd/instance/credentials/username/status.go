@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // statusValues stores the flag values bound to the status command.
@@ -130,7 +130,7 @@ func selectedNames(args []string) []string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be written.
-func writeStatusText(out io.Writer, report app.UsernameReport) error {
+func writeStatusText(out io.Writer, report credentials.UsernameReport) error {
 	lines := make([]string, 0, len(report.Instances))
 
 	for _, entry := range report.Instances {
@@ -152,7 +152,7 @@ func writeStatusText(out io.Writer, report app.UsernameReport) error {
 //
 // Returns:
 //   - string: the rendered line.
-func statusLine(entry app.UsernameStatus) string {
+func statusLine(entry credentials.UsernameStatus) string {
 	if entry.Username == "" {
 		return "instance " + strconv.Quote(entry.Instance) + ": " + unsetLabel
 	}
@@ -172,7 +172,7 @@ func statusLine(entry app.UsernameStatus) string {
 //
 // Returns:
 //   - error: a wrapped error when the report cannot be encoded or written.
-func writeStatusJSON(out io.Writer, report app.UsernameReport) error {
+func writeStatusJSON(out io.Writer, report credentials.UsernameReport) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
@@ -191,7 +191,7 @@ func writeStatusJSON(out io.Writer, report app.UsernameReport) error {
 //
 // Returns:
 //   - []statusEntry: one entry per reported username in the same order.
-func statusEntries(states []app.UsernameStatus) []statusEntry {
+func statusEntries(states []credentials.UsernameStatus) []statusEntry {
 	entries := make([]statusEntry, 0, len(states))
 
 	for _, state := range states {

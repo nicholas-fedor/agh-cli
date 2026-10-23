@@ -32,9 +32,8 @@ var allowedProductionImports = map[string]struct{}{
 // forbiddenProductionImports names the packages the command layer must not
 // depend on, with the reason each dependency is refused.
 var forbiddenProductionImports = map[string]string{
-	"github.com/nicholas-fedor/agh-cli/internal/config":      "load-mutate-save belongs to internal/app",
-	"github.com/nicholas-fedor/agh-cli/internal/credentials": "credential policy belongs to internal/app",
-	"github.com/nicholas-fedor/agh-cli/internal/instance":    "instance policy belongs to internal/app",
+	"github.com/nicholas-fedor/agh-cli/internal/config":   "load-mutate-save belongs to internal/app",
+	"github.com/nicholas-fedor/agh-cli/internal/instance": "instance policy belongs to internal/app",
 }
 
 // TestProductionFilesImportOnlyAppLayer verifies the dependency direction of the

@@ -9,11 +9,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // coordinator is the username use-case surface the commands depend on.
 //
-// [github.com/nicholas-fedor/agh-cli/internal/app.Credentials] satisfies the
+// [github.com/nicholas-fedor/agh-cli/internal/credentials.Manager] satisfies the
 // interface. The interface is declared here so the commands can be exercised
 // without a configuration file on disk.
 type coordinator interface {
@@ -23,9 +24,9 @@ type coordinator interface {
 	//   - name: configured instance name.
 	//
 	// Returns:
-	//   - app.UsernameResult: the instance and the configuration write outcome.
+	//   - credentials.UsernameResult: the instance and the configuration write outcome.
 	//   - error: non-nil when the username could not be removed.
-	ClearUsername(name string) (app.UsernameResult, error)
+	ClearUsername(name string) (credentials.UsernameResult, error)
 	// SetUsername records the administrator username of one instance.
 	//
 	// Parameters:
@@ -33,19 +34,19 @@ type coordinator interface {
 	//   - username: AdGuard Home administrator username.
 	//
 	// Returns:
-	//   - app.UsernameResult: the instance, the recorded username, and the
+	//   - credentials.UsernameResult: the instance, the recorded username, and the
 	//     configuration write outcome.
 	//   - error: non-nil when the username could not be recorded.
-	SetUsername(name, username string) (app.UsernameResult, error)
+	SetUsername(name, username string) (credentials.UsernameResult, error)
 	// StatusUsername reports the configured username of the named instances.
 	//
 	// Parameters:
 	//   - names: instance names to inspect, or an empty slice for every instance.
 	//
 	// Returns:
-	//   - app.UsernameReport: one entry per inspected instance.
+	//   - credentials.UsernameReport: one entry per inspected instance.
 	//   - error: non-nil when a requested name is unknown.
-	StatusUsername(names []string) (app.UsernameReport, error)
+	StatusUsername(names []string) (credentials.UsernameReport, error)
 }
 
 // factory builds the username coordinator for one command execution from the

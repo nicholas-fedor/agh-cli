@@ -56,6 +56,8 @@ main.go
 
 Do not let `cmd` import `pkg/adguard` for feature operations. Route feature behavior through `internal/app` and its domain package.
 
+`cmd` may import the domain packages `internal/client`, `internal/filtering`, `internal/rewrite`, and `internal/credentials` for their value types only, such as requests, results, and sentinel errors. It never calls into them, not even a constructor, a method, or a conversion, so every behavior still goes through `internal/app`. `internal/app` does not copy or re-export a domain type that `cmd` can name directly. `cmd` never imports `pkg/adguard`, `internal/config`, `internal/instance`, `internal/execution`, or `internal/connection` in production code. `cmd/layering_test.go` enforces both rules.
+
 ## Command construction
 
 Every command tree must be constructed fresh:

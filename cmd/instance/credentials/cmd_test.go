@@ -19,14 +19,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // fakeCoordinator records the migration request and returns the configured
 // outcome.
 type fakeCoordinator struct {
 	// report is the outcome returned by Migrate.
-	report app.MigrationReport
+	report credentials.MigrationReport
 	// migrateErr is the error returned by Migrate.
 	migrateErr error
 	// dryRun records the dry-run selection handed to Migrate.
@@ -80,30 +80,32 @@ var errTestFactory = errors.New("no configuration file")
 //
 // The package renders a report and hands a migration request to the application
 // layer. Configuration loading and credential policy belong there, so these files
-// must never name the configuration package, the credential store package, or the
-// instance domain package. The two subpackages are listed because this package
-// composes them, and the composition is the only import either one earns here.
+// must never name the configuration package or the instance domain package. The
+// credential package is listed for its report and request types only, and the
+// command layer's layering test refuses any call into it. The two subpackages
+// are listed because this package composes them, and the composition is the
+// only import either one earns here.
 var allowedProductionImports = map[string]struct{}{
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials/password": {},
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials/username": {},
 	"github.com/nicholas-fedor/agh-cli/internal/app":                      {},
-	"github.com/spf13/cobra": {},
-	"golang.org/x/term":      {},
+	"github.com/nicholas-fedor/agh-cli/internal/credentials":              {},
+	"github.com/spf13/cobra":                                              {},
+	"golang.org/x/term":                                                   {},
 }
 
 // forbiddenProductionImports names the packages the command files must not
 // depend on, with the reason each dependency is refused.
 var forbiddenProductionImports = map[string]string{
-	"github.com/nicholas-fedor/agh-cli/internal/config":      "configuration loading belongs to internal/app",
-	"github.com/nicholas-fedor/agh-cli/internal/credentials": "credential policy belongs to internal/app",
-	"github.com/nicholas-fedor/agh-cli/internal/instance":    "instance policy belongs to internal/app",
+	"github.com/nicholas-fedor/agh-cli/internal/config":   "configuration loading belongs to internal/app",
+	"github.com/nicholas-fedor/agh-cli/internal/instance": "instance policy belongs to internal/app",
 }
 
 // Migrate records the request and returns the configured outcome.
 func (f *fakeCoordinator) Migrate(
 	_ context.Context,
-	request app.MigrationRequest,
-) (app.MigrationReport, error) {
+	request credentials.MigrationRequest,
+) (credentials.MigrationReport, error) {
 	f.migrations++
 
 	f.dryRun = request.DryRun
@@ -242,18 +244,23 @@ func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
 	assert.Contains(t, err.Error(), "build credential coordinator")
 }
 
-// TestProductionFilesImportOnlyAppLayer verifies that every production command
-// file, in this package and in both subpackages, depends on the application layer
-// and nothing below it.
-func TestProductionFilesImportOnlyAppLayer(t *testing.T) {
+// TestProductionFilesImportOnlyAllowedInternalPackages verifies that the only
+// project-internal packages a production command file imports are the
+// application layer and the credential types.
+func TestProductionFilesImportOnlyAllowedInternalPackages(t *testing.T) {
 	t.Parallel()
+
+	allowed := []string{
+		"github.com/nicholas-fedor/agh-cli/internal/app",
+		"github.com/nicholas-fedor/agh-cli/internal/credentials",
+	}
 
 	forEachProductionFile(t, func(t *testing.T, name string, imports []string) {
 		t.Helper()
 
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, "github.com/nicholas-fedor/agh-cli/internal/") {
-				assert.Equal(t, "github.com/nicholas-fedor/agh-cli/internal/app", imported, name)
+				assert.Contains(t, allowed, imported, name)
 			}
 		}
 	})

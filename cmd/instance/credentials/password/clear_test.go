@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // TestRunClearRemovesNamedCredential verifies the single-instance clear and the
@@ -20,7 +20,7 @@ func TestRunClearRemovesNamedCredential(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.PasswordClearResult{
+		clearResult: credentials.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -62,7 +62,7 @@ func TestRunClearReportsAbsentCredential(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.PasswordClearResult{
+		clearResult: credentials.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -92,7 +92,7 @@ func TestRunClearReportsKeptSharedCredential(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.PasswordClearResult{
+		clearResult: credentials.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -121,7 +121,7 @@ func TestRunClearWarnsWhenReferenceSurvives(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearResult: app.PasswordClearResult{
+		clearResult: credentials.PasswordClearResult{
 			Instance: testInstanceName,
 			Service:  testService,
 			Key:      testKeyringKey,
@@ -152,7 +152,7 @@ func TestRunClearRemovesWholeService(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeCoordinator{
-		clearAllResult: app.PasswordClearResult{
+		clearAllResult: credentials.PasswordClearResult{
 			Service: testService,
 			Removed: true,
 			All:     true,
@@ -250,7 +250,7 @@ func TestRunClearForwardsExternalSourceRefusal(t *testing.T) {
 		clearErr: fmt.Errorf(
 			"clear credential of %q: %w: source is %q",
 			testInstanceName,
-			app.ErrExternalCredentialSource,
+			credentials.ErrExternalCredentialSource,
 			"env",
 		),
 	}
@@ -266,7 +266,7 @@ func TestRunClearForwardsExternalSourceRefusal(t *testing.T) {
 		"--"+yesFlagName,
 	)
 
-	require.ErrorIs(t, run.err, app.ErrExternalCredentialSource)
+	require.ErrorIs(t, run.err, credentials.ErrExternalCredentialSource)
 	assert.Contains(t, run.err.Error(), "env")
 }
 

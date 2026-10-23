@@ -27,6 +27,11 @@ type PasswordStatus struct {
 	// mounted-secret path, or an environment variable name. It is empty for a
 	// source that owns no identity, such as plaintext or none.
 	Target string
+	// TargetKind names the field the configured source reads: "key", "path", or
+	// "variable". It is empty when Target is, so command output never confuses a
+	// keyring key, a mounted-secret path, and an environment variable name, and
+	// the command layer never names a credential source itself.
+	TargetKind string
 	// Presence reports how the configured source currently supplies a password.
 	Presence Presence
 	// Err explains why Presence is unknown for a keyring source. Its message
@@ -60,35 +65,6 @@ const (
 	// PresencePresent means the configured source supplies a password.
 	PresencePresent
 )
-
-// TargetKind names the kind of configured credential identity of one instance.
-//
-// The kind names the field the configured source reads, so a keyring key, a
-// mounted-secret path, and an environment variable name are never confused in
-// command output. A source that owns no identity, such as the legacy plaintext
-// password and the unauthenticated source, has no kind.
-//
-// This method exists so the command layer never names a credential source
-// itself and therefore never depends on the instance domain package.
-//
-// Returns:
-//   - string: "key", "path", or "variable", or an empty string when the
-//     configured source owns no identity.
-func (s PasswordStatus) TargetKind() string {
-	switch s.Source {
-	case instance.KeyringSource:
-		return "key"
-	case instance.FileSource:
-		return "path"
-	case instance.EnvSource:
-		return "variable"
-	default:
-		// The legacy plaintext password and the unauthenticated source own no
-		// credential identity, and an unsupported source is reported by its
-		// configuration alone.
-		return ""
-	}
-}
 
 // StatusPassword reports credential store state without ever returning a secret.
 //
@@ -152,7 +128,14 @@ func (m *Manager) passwordStatus(
 	cfg instance.Config,
 ) PasswordStatus {
 	source, target := credentialIdentity(cfg)
-	entry := PasswordStatus{Instance: cfg.Name, Source: source, Target: target}
+	entry := PasswordStatus{
+		Instance:   cfg.Name,
+		Source:     source,
+		Target:     target,
+		TargetKind: targetKind(source),
+		Presence:   PresenceUnknown,
+		Err:        nil,
+	}
 
 	if source != instance.KeyringSource {
 		entry.Presence = externalPresence(source, cfg)
@@ -241,6 +224,30 @@ func credentialIdentity(cfg instance.Config) (instance.CredentialSource, string)
 		return instance.EnvSource, cfg.Credential.Env
 	default:
 		return cfg.Credential.Source, ""
+	}
+}
+
+// targetKind names the kind of credential identity a source reads.
+//
+// Parameters:
+//   - source: configured credential source.
+//
+// Returns:
+//   - string: "key", "path", or "variable", or an empty string when the source
+//     owns no identity.
+func targetKind(source instance.CredentialSource) string {
+	switch source {
+	case instance.KeyringSource:
+		return "key"
+	case instance.FileSource:
+		return "path"
+	case instance.EnvSource:
+		return "variable"
+	default:
+		// The legacy plaintext password and the unauthenticated source own no
+		// credential identity, and an unsupported source is reported by its
+		// configuration alone.
+		return ""
 	}
 }
 

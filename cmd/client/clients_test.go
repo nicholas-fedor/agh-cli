@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/client"
 )
 
 // clientExpectedFlag describes one published flag of a client subcommand.
@@ -118,7 +119,7 @@ func TestClientMutationFromFlagsPreservesFalse(t *testing.T) {
 	mutation, err := clientMutationFromFlags(command)
 
 	require.NoError(t, err)
-	assert.Equal(t, app.ClientMutation{
+	assert.Equal(t, client.Settings{
 		IDs:                 []string{"192.0.2.10"},
 		UseGlobalSettings:   false,
 		FilteringEnabled:    false,
@@ -135,7 +136,7 @@ func TestClientMutationFromFlagsPreservesPublishedDefaults(t *testing.T) {
 	mutation, err := clientMutationFromFlags(newClientUpdateCommand())
 
 	require.NoError(t, err)
-	assert.Equal(t, app.ClientMutation{
+	assert.Equal(t, client.Settings{
 		IDs:               []string{},
 		UseGlobalSettings: true,
 	}, mutation)
@@ -149,7 +150,7 @@ func TestClientMutationFromFlagsRejectsMissingFlags(t *testing.T) {
 	mutation, err := clientMutationFromFlags(newClientDeleteCommand())
 
 	require.ErrorContains(t, err, "parse id flag")
-	assert.Equal(t, app.ClientMutation{}, mutation)
+	assert.Equal(t, client.Settings{}, mutation)
 }
 
 // TestNewCommandPreservesSubcommandSyntax verifies the published CLI surface.
@@ -297,7 +298,7 @@ func TestWriteClientMutationResults(t *testing.T) {
 	command := &cobra.Command{}
 	command.SetOut(&output)
 	command.SetErr(&output)
-	writeClientMutationResults(command, []app.ClientMutationResult{
+	writeClientMutationResults(command, []app.MutationResult{
 		{Instance: clientCommandAlphaInstance, Message: "Updated client desk"},
 	})
 

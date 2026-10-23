@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
+	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 	mockAdguard "github.com/nicholas-fedor/agh-cli/pkg/adguard/mocks"
 )
@@ -130,14 +131,14 @@ func TestRewriteManagementMutationUsesExplicitOrderAndReturnsPartialResults(t *t
 		alphaInstance: alphaService,
 	}).Add(testInstancesContext(t), Selection{
 		Names: []string{zuluInstance, alphaInstance, zuluInstance},
-	}, RewriteRuleInput{
+	}, rewrite.RuleRequest{
 		Domain:  rewriteTestDomain,
 		Answer:  rewriteTestAnswer,
 		Enabled: false,
 	})
 
 	require.ErrorIs(t, err, wantErr)
-	assert.Equal(t, []RewriteMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: zuluInstance,
 		Message:  "Added rewrite rule example.com -> 192.0.2.1",
 	}}, results)
@@ -159,14 +160,14 @@ func TestRewriteManagementUpdatePreservesFalseAndZeroTarget(t *testing.T) {
 		goodInstance: service,
 	}).Update(testInstancesContext(t), Selection{
 		Names: []string{goodInstance},
-	}, RewriteRuleInput{
+	}, rewrite.RuleRequest{
 		Domain:  rewriteTestDomain,
 		Answer:  rewriteTestAnswer,
 		Enabled: false,
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, []RewriteMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: goodInstance,
 		Message:  "Updated rewrite rule example.com -> 192.0.2.1",
 	}}, results)
@@ -213,7 +214,7 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 	}, false)
 
 	require.NoError(t, err)
-	assert.Equal(t, []RewriteMutationResult{{
+	assert.Equal(t, []MutationResult{{
 		Instance: goodInstance,
 		Message:  "Rewrite settings updated: enabled=false",
 	}}, updateResults)

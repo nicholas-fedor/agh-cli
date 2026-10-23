@@ -13,33 +13,13 @@ import (
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
 
-// FilteringMutationResult contains the success message for one instance.
-type FilteringMutationResult struct {
-	// Instance identifies the successful target.
-	Instance string
-	// Message is the operation-specific success text.
-	Message string
-}
-
-// FilteringSubscription contains one display-ready filtering subscription.
-type FilteringSubscription struct {
-	// Name is the subscription display name.
-	Name string
-	// URL is the subscription location.
-	URL string
-	// Enabled reports whether the subscription is enabled.
-	Enabled bool
-	// RulesCount is the number of rules in the subscription.
-	RulesCount uint32
-}
-
 // FilteringStatusResult contains one successfully retrieved filtering status.
 type FilteringStatusResult struct {
 	// Filters contains the filtering subscriptions when the service reports them.
-	Filters *[]FilteringSubscription
+	Filters *[]filtering.Subscription
 	// WhitelistFilters contains the allowlist subscriptions when the service
 	// reports them.
-	WhitelistFilters *[]FilteringSubscription
+	WhitelistFilters *[]filtering.Subscription
 	// Instance identifies the source instance.
 	Instance string
 	// Index is the zero-based position of the result among the results of the
@@ -108,7 +88,7 @@ func NewFilteringManagementWithResolver(
 //   - whitelist: selects allowlist mode.
 //
 // Returns:
-//   - []FilteringMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) AddURL(
 	ctx context.Context,
@@ -116,7 +96,7 @@ func (a *FilteringManagement) AddURL(
 	name string,
 	location string,
 	whitelist bool,
-) ([]FilteringMutationResult, error) {
+) ([]MutationResult, error) {
 	request := filtering.URLRequest{
 		Name:      name,
 		URL:       location,
@@ -145,13 +125,13 @@ func (a *FilteringManagement) AddURL(
 //   - location: subscription location to remove.
 //
 // Returns:
-//   - []FilteringMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) RemoveURL(
 	ctx context.Context,
 	selection Selection,
 	location string,
-) ([]FilteringMutationResult, error) {
+) ([]MutationResult, error) {
 	request := filtering.URLRequest{
 		Name:      "",
 		URL:       location,
@@ -198,8 +178,8 @@ func (a *FilteringManagement) Status(
 			}
 
 			return FilteringStatusResult{
-				Filters:          shapeFilteringSubscriptions(status.Filters),
-				WhitelistFilters: shapeFilteringSubscriptions(status.WhitelistFilters),
+				Filters:          status.Filters,
+				WhitelistFilters: status.WhitelistFilters,
 				Instance:         name,
 				Index:            0,
 				InstanceCount:    len(targets),
@@ -227,14 +207,14 @@ func (a *FilteringManagement) Status(
 //   - interval: automatic filter refresh interval in hours.
 //
 // Returns:
-//   - []FilteringMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
 func (a *FilteringManagement) UpdateConfig(
 	ctx context.Context,
 	selection Selection,
 	enabled bool,
 	interval int64,
-) ([]FilteringMutationResult, error) {
+) ([]MutationResult, error) {
 	request := filtering.ConfigRequest{
 		Enabled:  enabled,
 		Interval: interval,
@@ -267,14 +247,14 @@ func (a *FilteringManagement) UpdateConfig(
 //   - operation: domain mutation applied to each resolved instance service.
 //
 // Returns:
-//   - []FilteringMutationResult: one success message per successful instance.
+//   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped resolution, service, or execution error.
 func (a *FilteringManagement) runMutation(
 	ctx context.Context,
 	selection Selection,
 	successMessage string,
 	operation filteringMutationOperation,
-) ([]FilteringMutationResult, error) {
+) ([]MutationResult, error) {
 	targets, err := selectTargets(ctx, selection, a.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve filtering targets: %w", err)
@@ -285,8 +265,8 @@ func (a *FilteringManagement) runMutation(
 		targets,
 		a.useCase,
 		operation,
-		func(name string) FilteringMutationResult {
-			return FilteringMutationResult{Instance: name, Message: successMessage}
+		func(name string) MutationResult {
+			return MutationResult{Instance: name, Message: successMessage}
 		},
 	)
 	if err != nil {
@@ -330,31 +310,4 @@ func newAdguardFilteringService(cfg instance.Config) (adguard.FilteringService, 
 	}
 
 	return service, nil
-}
-
-// shapeFilteringSubscriptions converts domain subscriptions into display results.
-//
-// Parameters:
-//   - subscriptions: domain subscriptions; nil stays nil.
-//
-// Returns:
-//   - *[]FilteringSubscription: display subscriptions, or nil for absent input.
-func shapeFilteringSubscriptions(
-	subscriptions *[]filtering.Subscription,
-) *[]FilteringSubscription {
-	if subscriptions == nil {
-		return nil
-	}
-
-	shaped := make([]FilteringSubscription, 0, len(*subscriptions))
-	for _, subscription := range *subscriptions {
-		shaped = append(shaped, FilteringSubscription{
-			Name:       subscription.Name,
-			Enabled:    subscription.Enabled,
-			RulesCount: subscription.RulesCount,
-			URL:        subscription.URL,
-		})
-	}
-
-	return &shaped
 }

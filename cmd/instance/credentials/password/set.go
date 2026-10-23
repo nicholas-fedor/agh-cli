@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/credentials"
 )
 
 // setValues stores the flag values bound to one set command.
@@ -156,7 +156,7 @@ func runSet(cmd *cobra.Command, args []string, values *setValues, seams *streams
 // Parameters:
 //   - cmd: Cobra command context.
 //   - result: outcome of the credential write.
-func reportSetResult(cmd *cobra.Command, result app.PasswordSetResult) {
+func reportSetResult(cmd *cobra.Command, result credentials.PasswordSetResult) {
 	action := "Stored"
 	if result.Replaced {
 		action = "Replaced"
