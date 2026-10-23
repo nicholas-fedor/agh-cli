@@ -4,10 +4,10 @@
 package output
 
 import (
-	"bytes"
+	"cmp"
 	"fmt"
 	"io"
-	"net"
+	"net/netip"
 	"os"
 	"slices"
 	"strings"
@@ -24,6 +24,19 @@ type TableWriter struct {
 	// sortFunc compares complete rows when sorting is configured.
 	sortFunc func(a, b []string) bool
 }
+
+// answerFamily ranks the kinds of rewrite answer in sort order.
+type answerFamily int
+
+// Answer families in the order they sort.
+const (
+	// IPv4Answer is an IPv4 address, including an IPv4-mapped IPv6 address.
+	ipv4Answer answerFamily = iota
+	// IPv6Answer is any other IP address.
+	ipv6Answer
+	// OtherAnswer is a value that is not an IP address, such as a domain name.
+	otherAnswer
+)
 
 // NewTableWriter creates a TableWriter with the given column headers.
 //
@@ -195,26 +208,23 @@ func (t *TableWriter) renderLine(values ...string) string {
 //   - func(a, b []string) bool: less function for domain-aware comparison.
 func DomainLess(index int) func(leftRow, rightRow []string) bool {
 	return func(leftRow, rightRow []string) bool {
-		if len(leftRow) <= index || len(rightRow) <= index {
-			return true
-		}
+		left := columnValue(leftRow, index)
+		right := columnValue(rightRow, index)
 
-		left := reverseDomainLabels(leftRow[index])
-		right := reverseDomainLabels(rightRow[index])
-		if left != right {
-			return left < right
-		}
-
-		return leftRow[index] < rightRow[index]
+		return cmp.Or(
+			strings.Compare(reverseDomainLabels(left), reverseDomainLabels(right)),
+			strings.Compare(left, right),
+		) < 0
 	}
 }
 
 // AnswerLess returns a less function for IP-aware sorting on the given column
 // index.
 //
-// IPv4 addresses sort before IPv6. Within each family, addresses are
-// compared numerically octet/hextet by octet/hextet.
-// Non-IP values fall back to lexicographic string comparison.
+// IPv4 addresses sort first and IPv6 addresses next, each family in numeric
+// order. Every value that is not an IP address, such as a domain name, sorts
+// after the addresses in lexicographic order. The order is total, so the sorted
+// rows never depend on the order they arrived in.
 //
 // Parameters:
 //   - index: column index to sort by.
@@ -223,45 +233,58 @@ func DomainLess(index int) func(leftRow, rightRow []string) bool {
 //   - func(a, b []string) bool: less function for IP-aware comparison.
 func AnswerLess(index int) func(leftRow, rightRow []string) bool {
 	return func(leftRow, rightRow []string) bool {
-		if len(leftRow) <= index || len(rightRow) <= index {
-			return true
-		}
-
-		return compareIPs(leftRow[index], rightRow[index])
+		return compareAnswers(columnValue(leftRow, index), columnValue(rightRow, index)) < 0
 	}
 }
 
-// compareIPs compares two IP address strings numerically.
+// compareAnswers orders two formatted answers.
 //
-// IPv4 addresses sort before IPv6. Within each family, addresses are compared
-// numerically. Non-IP values fall back to lexicographic comparison.
+// Answers compare by family first, then by address within a family. Any
+// remaining tie, such as between two values that are not addresses, falls back
+// to the formatted text.
 //
 // Parameters:
-//   - leftAnswer: first IP string.
-//   - rightAnswer: second IP string.
+//   - leftAnswer: first formatted answer.
+//   - rightAnswer: second formatted answer.
 //
 // Returns:
-//   - bool: true when leftAnswer sorts before rightAnswer.
-func compareIPs(leftAnswer, rightAnswer string) bool {
-	leftIP := net.ParseIP(answerValue(leftAnswer))
-	rightIP := net.ParseIP(answerValue(rightAnswer))
-	if leftIP == nil || rightIP == nil {
-		return leftAnswer < rightAnswer
+//   - int: a negative number when leftAnswer sorts first, a positive number when
+//     rightAnswer sorts first, and zero when they are equal.
+func compareAnswers(leftAnswer, rightAnswer string) int {
+	leftFamily, leftAddr := parseAnswer(leftAnswer)
+	rightFamily, rightAddr := parseAnswer(rightAnswer)
+
+	return cmp.Or(
+		cmp.Compare(leftFamily, rightFamily),
+		leftAddr.Compare(rightAddr),
+		strings.Compare(leftAnswer, rightAnswer),
+	)
+}
+
+// parseAnswer reports the family and address of one formatted answer.
+//
+// An IPv4-mapped IPv6 address is unmapped, so it sorts with the IPv4 address it
+// carries.
+//
+// Parameters:
+//   - formattedAnswer: formatted answer string.
+//
+// Returns:
+//   - answerFamily: the family the answer sorts in.
+//   - [netip.Addr]: the parsed address, or the zero address for a value that is
+//     not an IP address.
+func parseAnswer(formattedAnswer string) (answerFamily, netip.Addr) {
+	addr, err := netip.ParseAddr(answerValue(formattedAnswer))
+	if err != nil {
+		return otherAnswer, netip.Addr{}
 	}
 
-	leftIPv4 := leftIP.To4()
-	rightIPv4 := rightIP.To4()
-
-	switch {
-	case leftIPv4 != nil && rightIPv4 == nil:
-		return true
-	case leftIPv4 == nil && rightIPv4 != nil:
-		return false
-	case leftIPv4 != nil:
-		return bytes.Compare(leftIPv4, rightIPv4) < 0
-	default:
-		return bytes.Compare(leftIP, rightIP) < 0
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return ipv4Answer, addr
 	}
+
+	return ipv6Answer, addr
 }
 
 // answerValue extracts the raw IP portion from a formatted answer string.
@@ -284,6 +307,25 @@ func answerValue(formattedAnswer string) string {
 	}
 
 	return formattedAnswer
+}
+
+// columnValue returns one column of a row.
+//
+// A row too short to hold the column reads as an empty value, so it sorts
+// consistently instead of comparing before every other row.
+//
+// Parameters:
+//   - row: table row.
+//   - index: column index.
+//
+// Returns:
+//   - string: the column value, or an empty string when the row lacks it.
+func columnValue(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
+	}
+
+	return row[index]
 }
 
 // reverseDomainLabels reverses the dot-separated labels of a domain for
