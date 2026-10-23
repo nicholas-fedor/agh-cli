@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Move credential use cases into a manager by @nicholas-fedor in [#115](https://github.com/nicholas-fedor/agh-cli/pull/115)
 - Share instance execution across features by @nicholas-fedor in [#113](https://github.com/nicholas-fedor/agh-cli/pull/113)
 - Load the configuration once without viper by @nicholas-fedor in [#111](https://github.com/nicholas-fedor/agh-cli/pull/111)
 - Adopt current exhaustive option names by @nicholas-fedor in [#101](https://github.com/nicholas-fedor/agh-cli/pull/101)
