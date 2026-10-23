@@ -72,7 +72,7 @@ func TestRewriteManagementListUsesConfigurationOrder(t *testing.T) {
 	var mutex sync.Mutex
 
 	calls := make([]string, 0, 2)
-	management := &RewriteManagement{newService: func(cfg instance.Config) (adguard.RewriteService, error) {
+	management := wireRewriteManagement(func(cfg instance.Config) (adguard.RewriteService, error) {
 		service := mockAdguard.NewMockRewriteService(t)
 		service.EXPECT().ListRewriteRules(mock.Anything).RunAndReturn(
 			func(context.Context) ([]adguard.RewriteRule, error) {
@@ -86,7 +86,7 @@ func TestRewriteManagementListUsesConfigurationOrder(t *testing.T) {
 		).Once()
 
 		return service, nil
-	}}
+	}, nil)
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	configData := fmt.Appendf(
@@ -235,11 +235,11 @@ func TestRewriteManagementCancellationStopsRemainingTargets(t *testing.T) {
 	).Once()
 
 	factoryCalls := 0
-	management := &RewriteManagement{newService: func(_ instance.Config) (adguard.RewriteService, error) {
+	management := wireRewriteManagement(func(_ instance.Config) (adguard.RewriteService, error) {
 		factoryCalls++
 
 		return service, nil
-	}}
+	}, nil)
 
 	results, err := management.List(ctx, Selection{
 		All: true,
@@ -287,7 +287,7 @@ func TestRewriteManagementDiffInstancesUsesSortedNames(t *testing.T) {
 	var mutex sync.Mutex
 
 	calls := make([]string, 0, 2)
-	management := &RewriteManagement{newService: func(cfg instance.Config) (adguard.RewriteService, error) {
+	management := wireRewriteManagement(func(cfg instance.Config) (adguard.RewriteService, error) {
 		mutex.Lock()
 
 		calls = append(calls, cfg.Name)
@@ -297,7 +297,7 @@ func TestRewriteManagementDiffInstancesUsesSortedNames(t *testing.T) {
 		service.EXPECT().ListRewriteRules(mock.Anything).Return(nil, nil).Once()
 
 		return service, nil
-	}}
+	}, nil)
 
 	result, err := management.Diff(testInstancesContext(t), Selection{
 		Names: []string{zuluInstance, alphaInstance},
@@ -322,12 +322,12 @@ func testRewriteManagement(
 ) *RewriteManagement {
 	t.Helper()
 
-	return &RewriteManagement{newService: func(cfg instance.Config) (adguard.RewriteService, error) {
+	return wireRewriteManagement(func(cfg instance.Config) (adguard.RewriteService, error) {
 		service, exists := services[cfg.Name]
 		if !exists {
 			return nil, fmt.Errorf("unexpected instance %q", cfg.Name)
 		}
 
 		return service, nil
-	}}
+	}, nil)
 }

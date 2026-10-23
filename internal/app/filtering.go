@@ -31,18 +31,8 @@ type FilteringStatusResult struct {
 
 // FilteringManagement coordinates filtering use cases across selected instances.
 type FilteringManagement struct {
-	newService filteringServiceFactory
-	// resolve serves the configured credential source of every catalog entry.
-	// A nil resolver leaves the configured password untouched, which keeps a
-	// legacy plaintext configuration working.
-	resolve instance.CredentialResolver
+	feature[adguard.FilteringService, filtering.Service]
 }
-
-// filteringServiceFactory builds one public filtering service per instance.
-type filteringServiceFactory func(instance.Config) (adguard.FilteringService, error)
-
-// filteringMutationOperation applies one domain mutation to a resolved instance.
-type filteringMutationOperation func(context.Context, *filtering.Service) error
 
 // NewFilteringManagement creates production filtering-management wiring.
 //
@@ -72,9 +62,32 @@ func NewFilteringManagement(ctx context.Context) *FilteringManagement {
 func NewFilteringManagementWithResolver(
 	resolve instance.CredentialResolver,
 ) *FilteringManagement {
+	return wireFilteringManagement(
+		func(cfg instance.Config) (adguard.FilteringService, error) {
+			return connection.New(cfg)
+		},
+		resolve,
+	)
+}
+
+// wireFilteringManagement creates filtering-management wiring around a service factory.
+//
+// Parameters:
+//   - newService: factory building the public service of one instance.
+//   - resolve: resolver applied to every catalog entry, or nil to leave
+//     credentials unresolved.
+//
+// Returns:
+//   - *FilteringManagement: management bound to the factory and the resolver.
+func wireFilteringManagement(
+	newService func(instance.Config) (adguard.FilteringService, error),
+	resolve instance.CredentialResolver,
+) *FilteringManagement {
 	return &FilteringManagement{
-		newService: newAdguardFilteringService,
+		newService: newService,
+		wrap:       filtering.NewService,
 		resolve:    resolve,
+		name:       "filtering",
 	}
 }
 
@@ -90,7 +103,7 @@ func NewFilteringManagementWithResolver(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *FilteringManagement) AddURL(
+func (m *FilteringManagement) AddURL(
 	ctx context.Context,
 	selection Selection,
 	name string,
@@ -102,7 +115,7 @@ func (a *FilteringManagement) AddURL(
 		URL:       location,
 		Whitelist: whitelist,
 	}
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		"Added filter URL "+name,
@@ -127,7 +140,7 @@ func (a *FilteringManagement) AddURL(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *FilteringManagement) RemoveURL(
+func (m *FilteringManagement) RemoveURL(
 	ctx context.Context,
 	selection Selection,
 	location string,
@@ -137,7 +150,7 @@ func (a *FilteringManagement) RemoveURL(
 		URL:       location,
 		Whitelist: false,
 	}
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		"Removed filter URL "+location,
@@ -161,16 +174,16 @@ func (a *FilteringManagement) RemoveURL(
 // Returns:
 //   - []FilteringStatusResult: retrieved statuses in configuration order.
 //   - error: a wrapped resolution, service, or execution error.
-func (a *FilteringManagement) Status(
+func (m *FilteringManagement) Status(
 	ctx context.Context,
 	selection Selection,
 ) ([]FilteringStatusResult, error) {
-	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	targets, err := selectOrderedTargets(ctx, selection, m.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve filtering status targets: %w", err)
 	}
 
-	results, err := runOnInstances(ctx, targets, a.useCase,
+	results, err := runOnInstances(ctx, targets, m.useCase,
 		func(ctx context.Context, service *filtering.Service, name string) (FilteringStatusResult, error) {
 			status, statusErr := service.Status(ctx)
 			if statusErr != nil {
@@ -209,7 +222,7 @@ func (a *FilteringManagement) Status(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *FilteringManagement) UpdateConfig(
+func (m *FilteringManagement) UpdateConfig(
 	ctx context.Context,
 	selection Selection,
 	enabled bool,
@@ -219,7 +232,7 @@ func (a *FilteringManagement) UpdateConfig(
 		Enabled:  enabled,
 		Interval: interval,
 	}
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		fmt.Sprintf(
@@ -236,78 +249,4 @@ func (a *FilteringManagement) UpdateConfig(
 	}
 
 	return results, nil
-}
-
-// runMutation coordinates one domain mutation across selected instances.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - successMessage: per-instance success text reported on success.
-//   - operation: domain mutation applied to each resolved instance service.
-//
-// Returns:
-//   - []MutationResult: one success message per successful instance.
-//   - error: a wrapped resolution, service, or execution error.
-func (a *FilteringManagement) runMutation(
-	ctx context.Context,
-	selection Selection,
-	successMessage string,
-	operation filteringMutationOperation,
-) ([]MutationResult, error) {
-	targets, err := selectTargets(ctx, selection, a.resolve)
-	if err != nil {
-		return nil, fmt.Errorf("resolve filtering targets: %w", err)
-	}
-
-	results, err := mutateInstances(
-		ctx,
-		targets,
-		a.useCase,
-		operation,
-		func(name string) MutationResult {
-			return MutationResult{Instance: name, Message: successMessage}
-		},
-	)
-	if err != nil {
-		return results, fmt.Errorf("run filtering mutation: %w", err)
-	}
-
-	return results, nil
-}
-
-// useCase creates the domain service for one instance configuration.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - *domainfiltering.Service: domain service wrapping the instance service.
-//   - error: a wrapped service-construction error.
-func (a *FilteringManagement) useCase(cfg instance.Config) (*filtering.Service, error) {
-	service, err := a.newService(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("configure filtering service: %w", err)
-	}
-
-	return filtering.NewService(service), nil
-}
-
-// newAdguardFilteringService creates the production filtering service factory.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - adguard.FilteringService: the configured public filtering service.
-//   - error: a wrapped client-construction error.
-//
-//nolint:ireturn // The factory intentionally depends on the public service interface.
-func newAdguardFilteringService(cfg instance.Config) (adguard.FilteringService, error) {
-	service, err := connection.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("build filtering service: %w", err)
-	}
-
-	return service, nil
 }

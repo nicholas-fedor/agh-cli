@@ -25,18 +25,8 @@ type RewriteRule struct {
 
 // RewriteManagement coordinates rewrite use cases across selected instances.
 type RewriteManagement struct {
-	newService rewriteServiceFactory
-	// resolve serves the configured credential source of every catalog entry.
-	// A nil resolver leaves the configured password untouched, which keeps a
-	// legacy plaintext configuration working.
-	resolve instance.CredentialResolver
+	feature[adguard.RewriteService, rewrite.Service]
 }
-
-// rewriteServiceFactory creates one public rewrite service per instance.
-type rewriteServiceFactory func(instance.Config) (adguard.RewriteService, error)
-
-// rewriteMutationOperation applies one domain mutation to an instance service.
-type rewriteMutationOperation func(context.Context, *rewrite.Service) error
 
 // NewRewriteManagement creates production rewrite-management wiring.
 //
@@ -66,9 +56,32 @@ func NewRewriteManagement(ctx context.Context) *RewriteManagement {
 func NewRewriteManagementWithResolver(
 	resolve instance.CredentialResolver,
 ) *RewriteManagement {
+	return wireRewriteManagement(
+		func(cfg instance.Config) (adguard.RewriteService, error) {
+			return connection.New(cfg)
+		},
+		resolve,
+	)
+}
+
+// wireRewriteManagement creates rewrite-management wiring around a service factory.
+//
+// Parameters:
+//   - newService: factory building the public service of one instance.
+//   - resolve: resolver applied to every catalog entry, or nil to leave
+//     credentials unresolved.
+//
+// Returns:
+//   - *RewriteManagement: management bound to the factory and the resolver.
+func wireRewriteManagement(
+	newService func(instance.Config) (adguard.RewriteService, error),
+	resolve instance.CredentialResolver,
+) *RewriteManagement {
 	return &RewriteManagement{
-		newService: newAdguardRewriteService,
+		newService: newService,
+		wrap:       rewrite.NewService,
 		resolve:    resolve,
+		name:       "rewrite",
 	}
 }
 
@@ -82,12 +95,12 @@ func NewRewriteManagementWithResolver(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) Add(
+func (m *RewriteManagement) Add(
 	ctx context.Context,
 	selection Selection,
 	request rewrite.RuleRequest,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		fmt.Sprintf("Added rewrite rule %s -> %s", request.Domain, request.Answer),
@@ -112,12 +125,12 @@ func (a *RewriteManagement) Add(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) Delete(
+func (m *RewriteManagement) Delete(
 	ctx context.Context,
 	selection Selection,
 	request rewrite.RuleRequest,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		fmt.Sprintf("Deleted rewrite rule %s -> %s", request.Domain, request.Answer),
@@ -141,16 +154,16 @@ func (a *RewriteManagement) Delete(
 // Returns:
 //   - []RewriteSettingsResult: retrieved settings in configuration order.
 //   - error: a wrapped resolution, service, or execution error.
-func (a *RewriteManagement) GetSettings(
+func (m *RewriteManagement) GetSettings(
 	ctx context.Context,
 	selection Selection,
 ) ([]RewriteSettingsResult, error) {
-	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	targets, err := selectOrderedTargets(ctx, selection, m.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rewrite read targets: %w", err)
 	}
 
-	results, err := runOnInstances(ctx, targets, a.useCase,
+	results, err := runOnInstances(ctx, targets, m.useCase,
 		func(ctx context.Context, service *rewrite.Service, name string) (RewriteSettingsResult, error) {
 			settings, settingsErr := service.GetSettings(ctx)
 			if settingsErr != nil {
@@ -186,16 +199,16 @@ func (a *RewriteManagement) GetSettings(
 // Returns:
 //   - []RewriteListResult: retrieved rules in configuration order.
 //   - error: a wrapped resolution, service, or execution error.
-func (a *RewriteManagement) List(
+func (m *RewriteManagement) List(
 	ctx context.Context,
 	selection Selection,
 ) ([]RewriteListResult, error) {
-	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	targets, err := selectOrderedTargets(ctx, selection, m.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rewrite read targets: %w", err)
 	}
 
-	results, err := runOnInstances(ctx, targets, a.useCase,
+	results, err := runOnInstances(ctx, targets, m.useCase,
 		func(ctx context.Context, service *rewrite.Service, name string) (RewriteListResult, error) {
 			rules, listErr := service.List(ctx)
 			if listErr != nil {
@@ -232,12 +245,12 @@ func (a *RewriteManagement) List(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) Update(
+func (m *RewriteManagement) Update(
 	ctx context.Context,
 	selection Selection,
 	request rewrite.RuleRequest,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		fmt.Sprintf("Updated rewrite rule %s -> %s", request.Domain, request.Answer),
@@ -262,12 +275,12 @@ func (a *RewriteManagement) Update(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) UpdateSettings(
+func (m *RewriteManagement) UpdateSettings(
 	ctx context.Context,
 	selection Selection,
 	enabled bool,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		fmt.Sprintf("Rewrite settings updated: enabled=%v", enabled),
@@ -292,12 +305,12 @@ func (a *RewriteManagement) UpdateSettings(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) WildcardAdd(
+func (m *RewriteManagement) WildcardAdd(
 	ctx context.Context,
 	selection Selection,
 	zone string,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		"Added wildcard rewrite rules for "+zone,
@@ -322,12 +335,12 @@ func (a *RewriteManagement) WildcardAdd(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *RewriteManagement) WildcardDelete(
+func (m *RewriteManagement) WildcardDelete(
 	ctx context.Context,
 	selection Selection,
 	zone string,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
 		"Removed wildcard rewrite rules for "+zone,
@@ -340,78 +353,4 @@ func (a *RewriteManagement) WildcardDelete(
 	}
 
 	return results, nil
-}
-
-// runMutation executes one mutation across targets in selection order.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - successMessage: per-instance success text reported on success.
-//   - operation: domain mutation applied to each resolved instance service.
-//
-// Returns:
-//   - []MutationResult: one success message per successful instance.
-//   - error: a wrapped resolution, service, or execution error.
-func (a *RewriteManagement) runMutation(
-	ctx context.Context,
-	selection Selection,
-	successMessage string,
-	operation rewriteMutationOperation,
-) ([]MutationResult, error) {
-	targets, err := selectTargets(ctx, selection, a.resolve)
-	if err != nil {
-		return nil, fmt.Errorf("resolve rewrite targets: %w", err)
-	}
-
-	results, err := mutateInstances(
-		ctx,
-		targets,
-		a.useCase,
-		operation,
-		func(name string) MutationResult {
-			return MutationResult{Instance: name, Message: successMessage}
-		},
-	)
-	if err != nil {
-		return results, fmt.Errorf("run rewrite mutation: %w", err)
-	}
-
-	return results, nil
-}
-
-// useCase creates the domain service for one instance configuration.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - *domainrewrite.Service: domain service wrapping the instance service.
-//   - error: a wrapped service-construction error.
-func (a *RewriteManagement) useCase(cfg instance.Config) (*rewrite.Service, error) {
-	service, err := a.newService(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("configure rewrite service: %w", err)
-	}
-
-	return rewrite.NewService(service), nil
-}
-
-// newAdguardRewriteService creates the production rewrite service factory.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - adguard.RewriteService: the configured public rewrite service.
-//   - error: a wrapped client-construction error.
-//
-//nolint:ireturn // The factory intentionally depends on the public service interface.
-func newAdguardRewriteService(cfg instance.Config) (adguard.RewriteService, error) {
-	service, err := connection.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("build rewrite service: %w", err)
-	}
-
-	return service, nil
 }
