@@ -55,3 +55,19 @@ func TestFormatRewriteValueCompatibility(t *testing.T) {
 	assert.Equal(t, "192.0.2.1 (enabled)", FormatRewriteValue(entry))
 	assert.Equal(t, "-", FormatRewriteValue((*legacyRewriteValue)(nil)))
 }
+
+// TestFormatRewriteStatus verifies the rewrite status labels.
+func TestFormatRewriteStatus(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "enabled", FormatRewriteStatus(true))
+	assert.Equal(t, "disabled", FormatRewriteStatus(false))
+}
+
+// TestFormatClientType verifies the client type labels.
+func TestFormatClientType(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "auto", FormatClientType(true))
+	assert.Equal(t, "static", FormatClientType(false))
+}
