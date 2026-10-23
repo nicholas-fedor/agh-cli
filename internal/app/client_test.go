@@ -88,9 +88,9 @@ func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
 
-	management := &ClientManagement{newService: func(cfg instance.Config) (adguard.ClientsService, error) {
+	management := wireClientManagement(func(cfg instance.Config) (adguard.ClientsService, error) {
 		return newService(cfg.Name), nil
-	}}
+	}, nil)
 	results, err := management.List(contextWithConfigFile(t.Context(), t, configPath), Selection{
 		All: true,
 	})
@@ -178,11 +178,11 @@ func TestClientManagementCancellationStopsRemainingTargets(t *testing.T) {
 	).Once()
 
 	factoryCalls := 0
-	management := &ClientManagement{newService: func(_ instance.Config) (adguard.ClientsService, error) {
+	management := wireClientManagement(func(_ instance.Config) (adguard.ClientsService, error) {
 		factoryCalls++
 
 		return service, nil
-	}}
+	}, nil)
 
 	results, err := management.List(ctx, Selection{
 		All: true,
@@ -200,7 +200,7 @@ func TestClientManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 	var mutex sync.Mutex
 
 	calls := make([]string, 0, 2)
-	management := &ClientManagement{newService: func(cfg instance.Config) (adguard.ClientsService, error) {
+	management := wireClientManagement(func(cfg instance.Config) (adguard.ClientsService, error) {
 		service := mockAdguard.NewMockClientsService(t)
 		service.EXPECT().ClientsAdd(mock.Anything, mock.Anything).RunAndReturn(
 			func(context.Context, adguard.ClientConfig) error {
@@ -214,7 +214,7 @@ func TestClientManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 		).Once()
 
 		return service, nil
-	}}
+	}, nil)
 
 	results, err := management.Add(testInstancesContext(t), Selection{
 		Names: []string{zuluInstance, alphaInstance, zuluInstance},
@@ -241,12 +241,12 @@ func testClientManagement(
 ) *ClientManagement {
 	t.Helper()
 
-	return &ClientManagement{newService: func(cfg instance.Config) (adguard.ClientsService, error) {
+	return wireClientManagement(func(cfg instance.Config) (adguard.ClientsService, error) {
 		service, ok := services[cfg.Name]
 		if !ok {
 			return nil, fmt.Errorf("unexpected instance %q", cfg.Name)
 		}
 
 		return service, nil
-	}}
+	}, nil)
 }

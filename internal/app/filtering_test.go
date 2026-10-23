@@ -93,7 +93,7 @@ func TestFilteringManagementStatusUsesConfigurationOrder(t *testing.T) {
 	var mutex sync.Mutex
 
 	calls := make([]string, 0, 2)
-	management := &FilteringManagement{newService: func(cfg instance.Config) (adguard.FilteringService, error) {
+	management := wireFilteringManagement(func(cfg instance.Config) (adguard.FilteringService, error) {
 		service := mockAdguard.NewMockFilteringService(t)
 		service.EXPECT().FilteringStatus(mock.Anything).RunAndReturn(
 			func(context.Context) (*adguard.FilteringStatus, error) {
@@ -107,7 +107,7 @@ func TestFilteringManagementStatusUsesConfigurationOrder(t *testing.T) {
 		).Once()
 
 		return service, nil
-	}}
+	}, nil)
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	configData := fmt.Appendf(
@@ -242,11 +242,11 @@ func TestFilteringManagementCancellationStopsRemainingTargets(t *testing.T) {
 	).Once()
 
 	factoryCalls := 0
-	management := &FilteringManagement{newService: func(_ instance.Config) (adguard.FilteringService, error) {
+	management := wireFilteringManagement(func(_ instance.Config) (adguard.FilteringService, error) {
 		factoryCalls++
 
 		return service, nil
-	}}
+	}, nil)
 
 	results, err := management.Status(ctx, Selection{
 		All: true,
@@ -264,7 +264,7 @@ func TestFilteringManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 	var mutex sync.Mutex
 
 	calls := make([]string, 0, 2)
-	management := &FilteringManagement{newService: func(cfg instance.Config) (adguard.FilteringService, error) {
+	management := wireFilteringManagement(func(cfg instance.Config) (adguard.FilteringService, error) {
 		service := mockAdguard.NewMockFilteringService(t)
 		service.EXPECT().AddFilteringURL(mock.Anything, mock.Anything).RunAndReturn(
 			func(context.Context, adguard.AddFilteringURLRequest) error {
@@ -278,7 +278,7 @@ func TestFilteringManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 		).Once()
 
 		return service, nil
-	}}
+	}, nil)
 
 	results, err := management.AddURL(filteringTestContext(t), Selection{
 		Names: []string{
@@ -309,14 +309,14 @@ func testFilteringManagement(
 ) *FilteringManagement {
 	t.Helper()
 
-	return &FilteringManagement{newService: func(cfg instance.Config) (adguard.FilteringService, error) {
+	return wireFilteringManagement(func(cfg instance.Config) (adguard.FilteringService, error) {
 		service, ok := services[cfg.Name]
 		if !ok {
 			return nil, fmt.Errorf("unexpected instance %q", cfg.Name)
 		}
 
 		return service, nil
-	}}
+	}, nil)
 }
 
 // filteringTestContext returns a context carrying the shared filtering

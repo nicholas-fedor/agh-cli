@@ -26,19 +26,9 @@ type ClientListResult struct {
 	InstanceCount int
 }
 
-// clientServiceFactory creates a client-management service for one instance.
-type clientServiceFactory func(instance.Config) (adguard.ClientsService, error)
-
-// clientMutationOperation executes one mutation against an instance service.
-type clientMutationOperation func(context.Context, *client.Service) error
-
 // ClientManagement coordinates client use cases across selected instances.
 type ClientManagement struct {
-	newService clientServiceFactory
-	// resolve serves the configured credential source of every catalog entry.
-	// A nil resolver leaves the configured password untouched, which keeps a
-	// legacy plaintext configuration working.
-	resolve instance.CredentialResolver
+	feature[adguard.ClientsService, client.Service]
 }
 
 // NewClientManagement creates production client-management wiring.
@@ -69,9 +59,32 @@ func NewClientManagement(ctx context.Context) *ClientManagement {
 func NewClientManagementWithResolver(
 	resolve instance.CredentialResolver,
 ) *ClientManagement {
+	return wireClientManagement(
+		func(cfg instance.Config) (adguard.ClientsService, error) {
+			return connection.New(cfg)
+		},
+		resolve,
+	)
+}
+
+// wireClientManagement creates client-management wiring around a service factory.
+//
+// Parameters:
+//   - newService: factory building the public service of one instance.
+//   - resolve: resolver applied to every catalog entry, or nil to leave
+//     credentials unresolved.
+//
+// Returns:
+//   - *ClientManagement: management bound to the factory and the resolver.
+func wireClientManagement(
+	newService func(instance.Config) (adguard.ClientsService, error),
+	resolve instance.CredentialResolver,
+) *ClientManagement {
 	return &ClientManagement{
-		newService: newAdguardClientsService,
+		newService: newService,
+		wrap:       client.NewService,
 		resolve:    resolve,
+		name:       "client",
 	}
 }
 
@@ -85,15 +98,14 @@ func NewClientManagementWithResolver(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *ClientManagement) Add(
+func (m *ClientManagement) Add(
 	ctx context.Context,
 	selection Selection,
 	settings client.Settings,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
-		"add client",
 		"Added client "+settings.Name,
 		func(ctx context.Context, service *client.Service) error {
 			err := service.Add(ctx, settings)
@@ -121,15 +133,14 @@ func (a *ClientManagement) Add(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *ClientManagement) Delete(
+func (m *ClientManagement) Delete(
 	ctx context.Context,
 	selection Selection,
 	name string,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
-		"delete client",
 		"Deleted client "+name,
 		func(ctx context.Context, service *client.Service) error {
 			err := service.Delete(ctx, client.DeleteRequest{Name: name})
@@ -157,16 +168,16 @@ func (a *ClientManagement) Delete(
 //   - []ClientListResult: retrieved rows in configuration order, even when some
 //     instances failed.
 //   - error: a wrapped service or execution error.
-func (a *ClientManagement) List(
+func (m *ClientManagement) List(
 	ctx context.Context,
 	selection Selection,
 ) ([]ClientListResult, error) {
-	targets, err := selectOrderedTargets(ctx, selection, a.resolve)
+	targets, err := selectOrderedTargets(ctx, selection, m.resolve)
 	if err != nil {
 		return nil, fmt.Errorf("resolve client targets: %w", err)
 	}
 
-	results, err := runOnInstances(ctx, targets, a.useCase,
+	results, err := runOnInstances(ctx, targets, m.useCase,
 		func(ctx context.Context, service *client.Service, name string) (ClientListResult, error) {
 			result, listErr := service.List(ctx)
 			if listErr != nil {
@@ -198,15 +209,14 @@ func (a *ClientManagement) List(
 // Returns:
 //   - []MutationResult: one success message per successful instance.
 //   - error: a wrapped service or execution error.
-func (a *ClientManagement) Update(
+func (m *ClientManagement) Update(
 	ctx context.Context,
 	selection Selection,
 	settings client.Settings,
 ) ([]MutationResult, error) {
-	results, err := a.runMutation(
+	results, err := m.mutate(
 		ctx,
 		selection,
-		"update client",
 		"Updated client "+settings.Name,
 		func(ctx context.Context, service *client.Service) error {
 			err := service.Update(ctx, settings)
@@ -222,76 +232,4 @@ func (a *ClientManagement) Update(
 	}
 
 	return results, nil
-}
-
-// runMutation executes one mutation across all selected instances.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - selection: instance-selection inputs for the operation.
-//   - operationName: operation label used in the aggregate error message.
-//   - successMessage: per-instance success text reported on success.
-//   - operation: domain mutation applied to each resolved instance service.
-//
-// Returns:
-//   - []MutationResult: one success message per successful instance.
-//   - error: a wrapped service or execution error.
-func (a *ClientManagement) runMutation(
-	ctx context.Context,
-	selection Selection,
-	operationName string,
-	successMessage string,
-	operation clientMutationOperation,
-) ([]MutationResult, error) {
-	targets, err := selectTargets(ctx, selection, a.resolve)
-	if err != nil {
-		return nil, fmt.Errorf("resolve client targets: %w", err)
-	}
-
-	results, err := mutateInstances(ctx, targets, a.useCase, operation,
-		func(name string) MutationResult {
-			return MutationResult{Instance: name, Message: successMessage}
-		},
-	)
-	if err != nil {
-		return results, fmt.Errorf("%s across instances: %w", operationName, err)
-	}
-
-	return results, nil
-}
-
-// useCase creates the domain service for one instance.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - *client.Service: domain service wrapping the instance service.
-//   - error: a wrapped service-construction error.
-func (a *ClientManagement) useCase(cfg instance.Config) (*client.Service, error) {
-	service, err := a.newService(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("configure clients service: %w", err)
-	}
-
-	return client.NewService(service), nil
-}
-
-// newAdguardClientsService creates the production service factory.
-//
-// Parameters:
-//   - cfg: instance connection settings.
-//
-// Returns:
-//   - adguard.ClientsService: the configured public client service.
-//   - error: a wrapped client-construction error.
-//
-//nolint:ireturn // The factory intentionally depends on the public service interface.
-func newAdguardClientsService(cfg instance.Config) (adguard.ClientsService, error) {
-	service, err := connection.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("build clients service: %w", err)
-	}
-
-	return service, nil
 }

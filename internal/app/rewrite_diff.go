@@ -82,18 +82,18 @@ var (
 // Returns:
 //   - RewriteDiffResult: display-ready differences for the comparison mode.
 //   - error: a wrapped resolution, selection, or service error.
-func (a *RewriteManagement) Diff(
+func (m *RewriteManagement) Diff(
 	ctx context.Context,
 	selection Selection,
 	filePath string,
 ) (RewriteDiffResult, error) {
-	targets, err := selectTargets(ctx, selection, a.resolve)
+	targets, err := selectTargets(ctx, selection, m.resolve)
 	if err != nil {
 		return RewriteDiffResult{}, fmt.Errorf("resolve rewrite diff targets: %w", err)
 	}
 
 	if filePath != "" {
-		result, diffErr := a.diffFile(ctx, targets, filePath)
+		result, diffErr := m.diffFile(ctx, targets, filePath)
 		if diffErr != nil {
 			return RewriteDiffResult{}, fmt.Errorf("compare rewrite file: %w", diffErr)
 		}
@@ -101,7 +101,7 @@ func (a *RewriteManagement) Diff(
 		return result, nil
 	}
 
-	result, diffErr := a.diffInstances(ctx, targets)
+	result, diffErr := m.diffInstances(ctx, targets)
 	if diffErr != nil {
 		return RewriteDiffResult{}, fmt.Errorf("compare rewrite instances: %w", diffErr)
 	}
@@ -119,7 +119,7 @@ func (a *RewriteManagement) Diff(
 // Returns:
 //   - RewriteDiffResult: file comparison differences.
 //   - error: a wrapped selection, parse, or service error.
-func (a *RewriteManagement) diffFile(
+func (m *RewriteManagement) diffFile(
 	ctx context.Context,
 	targets []execution.Target[instance.Config],
 	filePath string,
@@ -134,7 +134,7 @@ func (a *RewriteManagement) diffFile(
 	}
 
 	target := targets[0]
-	remoteRules, err := a.listTarget(ctx, target)
+	remoteRules, err := m.listTarget(ctx, target)
 	if err != nil {
 		return RewriteDiffResult{}, fmt.Errorf("list rewrite rules for %q: %w", target.Name, err)
 	}
@@ -155,7 +155,7 @@ func (a *RewriteManagement) diffFile(
 // Returns:
 //   - RewriteDiffResult: instance comparison differences.
 //   - error: a wrapped selection, cancellation, or service error.
-func (a *RewriteManagement) diffInstances(
+func (m *RewriteManagement) diffInstances(
 	ctx context.Context,
 	targets []execution.Target[instance.Config],
 ) (RewriteDiffResult, error) {
@@ -176,7 +176,7 @@ func (a *RewriteManagement) diffInstances(
 			return RewriteDiffResult{}, fmt.Errorf("compare rewrite instances: %w", err)
 		}
 
-		rules, err := a.listTarget(ctx, target)
+		rules, err := m.listTarget(ctx, target)
 		if err != nil {
 			return RewriteDiffResult{}, fmt.Errorf("list rewrite rules for %q: %w", target.Name, err)
 		}
@@ -200,13 +200,13 @@ func (a *RewriteManagement) diffInstances(
 //   - target: resolved diff target to read.
 //
 // Returns:
-//   - []domainrewrite.Rule: rules reported by the target instance.
+//   - []rewrite.Rule: rules reported by the target instance.
 //   - error: a wrapped service-construction or listing error.
-func (a *RewriteManagement) listTarget(
+func (m *RewriteManagement) listTarget(
 	ctx context.Context,
 	target execution.Target[instance.Config],
 ) ([]rewrite.Rule, error) {
-	service, err := a.useCase(target.Value)
+	service, err := m.useCase(target.Value)
 	if err != nil {
 		return nil, fmt.Errorf("create rewrite use case for %q: %w", target.Name, err)
 	}
