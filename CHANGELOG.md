@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update docker/login-action digest to 81c6f93 by @renovate[bot] in [#125](https://github.com/nicholas-fedor/agh-cli/pull/125)
 - Update alpine:3.24.3 docker digest to be26560 by @renovate[bot] in [#119](https://github.com/nicholas-fedor/agh-cli/pull/119)
 - Update alpine:3.24.3 docker digest to b341357 by @renovate[bot] in [#109](https://github.com/nicholas-fedor/agh-cli/pull/109)
 - Remove unused codacy configuration by @nicholas-fedor in [#105](https://github.com/nicholas-fedor/agh-cli/pull/105)
