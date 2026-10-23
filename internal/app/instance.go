@@ -57,19 +57,12 @@ type InstanceRemoveRequest struct {
 // The result describes configuration state only. It never carries a secret or a
 // value derived from one.
 type InstanceRemoveResult struct {
+	// InstancePasswordRemoval reports what happened to the password the instance
+	// kept in the credential store.
+	credentials.InstancePasswordRemoval
+
 	// Instance is the removed instance name.
 	Instance string
-	// Service is the credential store namespace the instance password belonged to.
-	Service string
-	// Key is the credential key the instance password was stored under. It is
-	// empty when the instance kept no credential in the store.
-	Key string
-	// Removed reports whether a stored credential was deleted. A credential that
-	// was already absent is not an error, so a repeated removal reports false.
-	Removed bool
-	// Shared reports that the stored credential was kept, because another
-	// configured instance still reads its password through the same key.
-	Shared bool
 }
 
 // ListInstances validates the configured instances and resolves instance names in
@@ -270,13 +263,7 @@ func RemoveInstance(
 	}
 
 	removal, err := credentials.NewManager(store, manager).RemoveInstancePassword(ctx, request.Name)
-	result := InstanceRemoveResult{
-		Instance: request.Name,
-		Service:  removal.Service,
-		Key:      removal.Key,
-		Removed:  removal.Removed,
-		Shared:   removal.Shared,
-	}
+	result := InstanceRemoveResult{InstancePasswordRemoval: removal, Instance: request.Name}
 
 	if err != nil {
 		return result, fmt.Errorf(
