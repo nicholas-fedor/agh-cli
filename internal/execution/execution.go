@@ -136,6 +136,49 @@ func (err AggregateError[T]) Unwrap() []error {
 	return unwrapped
 }
 
+// Collect runs operation against every target in order and gathers the result
+// of each target that succeeded.
+//
+// The run follows [Run], so a failure is recorded and the next target still
+// runs, and cancellation stops the run before the next target begins. The
+// results follow execution order, and a failed target contributes none.
+//
+// Parameters:
+//   - ctx: context governing the complete run.
+//   - targets: targets to process in order.
+//   - operation: operation producing one result for a target.
+//
+// Returns:
+//   - []R: the results of the targets that succeeded, in execution order. They
+//     are returned even when some targets failed.
+//   - error: a wrapped [AggregateError] naming every failed target, or nil when
+//     every target succeeded.
+func Collect[T, R any](
+	ctx context.Context,
+	targets []Target[T],
+	operation func(ctx context.Context, target Target[T]) (R, error),
+) ([]R, error) {
+	results := make([]R, 0, len(targets))
+
+	report := Run(ctx, targets, AdaptOperation(func(ctx context.Context, target Target[T]) error {
+		result, err := operation(ctx, target)
+		if err != nil {
+			return fmt.Errorf("produce result: %w", err)
+		}
+
+		results = append(results, result)
+
+		return nil
+	}))
+
+	err := report.Err()
+	if err != nil {
+		return results, fmt.Errorf("collect results: %w", err)
+	}
+
+	return results, nil
+}
+
 // Run invokes operation sequentially in target order.
 //
 // An operation failure is recorded and execution continues with the next

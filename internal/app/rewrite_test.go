@@ -28,7 +28,8 @@ const (
 	rewriteTestAnswer = "192.0.2.1"
 )
 
-// TestRewriteManagementListContinuesAfterFailure verifies partial list results survive failures.
+// TestRewriteManagementListContinuesAfterFailure verifies partial list results
+// survive failures and are numbered by their position among the results.
 func TestRewriteManagementListContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -58,7 +59,7 @@ func TestRewriteManagementListContinuesAfterFailure(t *testing.T) {
 			Answer:  rewriteTestAnswer,
 			Enabled: false,
 		}},
-		Index:         1,
+		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
@@ -171,7 +172,9 @@ func TestRewriteManagementUpdatePreservesFalseAndZeroTarget(t *testing.T) {
 	}}, results)
 }
 
-// TestRewriteManagementSettingsPreserveFalseAndPartialResults verifies settings behavior.
+// TestRewriteManagementSettingsPreserveFalseAndPartialResults verifies settings
+// behavior, including that a partial result is numbered by its position among
+// the results.
 func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 	t.Parallel()
 
@@ -201,7 +204,7 @@ func TestRewriteManagementSettingsPreserveFalseAndPartialResults(t *testing.T) {
 	assert.Equal(t, []RewriteSettingsResult{{
 		Instance:      goodInstance,
 		Enabled:       false,
-		Index:         1,
+		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 

@@ -21,7 +21,8 @@ type RewriteListResult struct {
 	Instance string
 	// Rules contains the retrieved rules in service order.
 	Rules []RewriteRule
-	// Index is the zero-based target position.
+	// Index is the zero-based position of the result among the results of the
+	// run.
 	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int
@@ -33,7 +34,8 @@ type RewriteSettingsResult struct {
 	Instance string
 	// Enabled reports whether DNS rewrites are active.
 	Enabled bool
-	// Index is the zero-based target position.
+	// Index is the zero-based position of the result among the results of the
+	// run.
 	Index int
 	// InstanceCount is the number of selected targets.
 	InstanceCount int

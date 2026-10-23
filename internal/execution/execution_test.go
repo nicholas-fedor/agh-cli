@@ -5,6 +5,7 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -149,6 +150,68 @@ func TestRunWithNoTargetsSucceeds(t *testing.T) {
 
 	assert.Empty(t, report)
 	require.NoError(t, report.Err())
+}
+
+// TestCollectGathersSuccessfulResultsInOrder verifies a failed target is
+// reported and skipped while the remaining targets still contribute results in
+// execution order.
+func TestCollectGathersSuccessfulResultsInOrder(t *testing.T) {
+	t.Parallel()
+
+	errMiddle := errors.New("middle failed")
+
+	results, err := Collect(t.Context(), orderedStringTargets(),
+		func(_ context.Context, target Target[string]) (string, error) {
+			if target.Name == middleTarget {
+				return "", errMiddle
+			}
+
+			return target.Value, nil
+		},
+	)
+
+	assert.Equal(t, []string{"one", "three"}, results)
+	require.ErrorIs(t, err, errMiddle)
+
+	aggregate, ok := errors.AsType[AggregateError[string]](err)
+	require.True(t, ok)
+	require.Len(t, aggregate, 1)
+	assert.Equal(t, middleTarget, aggregate[0].Target.Name)
+}
+
+// TestCollectSucceedsWithEveryTarget verifies a run without failures returns
+// every result and no error.
+func TestCollectSucceedsWithEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	results, err := Collect(t.Context(), orderedStringTargets(),
+		func(_ context.Context, target Target[string]) (string, error) {
+			return target.Name, nil
+		},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{firstTarget, middleTarget, lastTarget}, results)
+}
+
+// TestCollectStopsAtCancellation verifies a canceled run keeps the results
+// gathered before cancellation and reports the target it did not reach.
+func TestCollectStopsAtCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	results, err := Collect(ctx, orderedStringTargets(),
+		func(_ context.Context, target Target[string]) (string, error) {
+			cancel()
+
+			return target.Value, nil
+		},
+	)
+
+	assert.Equal(t, []string{"one"}, results)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // orderedStringTargets returns three fully populated ordered targets.

@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,7 +22,9 @@ import (
 	mockAdguard "github.com/nicholas-fedor/agh-cli/pkg/adguard/mocks"
 )
 
-// TestClientManagementListContinuesAfterFailure verifies all target failures are retained.
+// TestClientManagementListContinuesAfterFailure verifies all target failures are
+// retained and the surviving result is numbered by its position among the
+// results, so a failed first instance leaves no gap.
 func TestClientManagementListContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -48,12 +48,13 @@ func TestClientManagementListContinuesAfterFailure(t *testing.T) {
 	assert.Equal(t, []ClientListResult{{
 		Instance:      goodInstance,
 		Rows:          []client.Row{{Name: testClientName, Automatic: false}},
-		Index:         1,
+		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
 
-// TestClientManagementListUsesConfigurationOrder verifies output order independently of request order.
+// TestClientManagementListUsesConfigurationOrder verifies instances are listed
+// in configuration order and numbered in that order.
 func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 	t.Parallel()
 
@@ -96,10 +97,10 @@ func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []ClientListResult{
-		{Instance: zuluInstance, Index: 1, InstanceCount: 2},
-		{Instance: alphaInstance, Index: 0, InstanceCount: 2},
+		{Instance: zuluInstance, Index: 0, InstanceCount: 2},
+		{Instance: alphaInstance, Index: 1, InstanceCount: 2},
 	}, results)
-	assert.Equal(t, []string{alphaInstance, zuluInstance}, calls)
+	assert.Equal(t, []string{zuluInstance, alphaInstance}, calls)
 }
 
 // TestClientManagementAddContinuesAfterFailure verifies partial success output data is retained.
@@ -225,42 +226,6 @@ func TestClientManagementUsesExplicitFirstOccurrenceOrder(t *testing.T) {
 		{Instance: alphaInstance, Message: addedClientMessage},
 	}, results)
 	assert.Equal(t, []string{zuluInstance, alphaInstance}, calls)
-}
-
-// TestNewAdguardClientsServiceUsesInstanceSettings verifies production service wiring.
-func TestNewAdguardClientsServiceUsesInstanceSettings(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/control/clients", r.URL.Path)
-
-		username, password, authenticated := r.BasicAuth()
-		assert.True(t, authenticated)
-		assert.Equal(t, "user", username)
-		assert.Equal(t, "pass", password)
-		w.Header().Set("Content-Type", "application/json")
-
-		_, err := w.Write([]byte(`{"clients":[]}`))
-		assert.NoError(t, err)
-	}))
-
-	httpClient := server.Client()
-
-	service, err := newAdguardClientsServiceWithHTTPClient(instance.Config{
-		Name:       goodInstance,
-		Host:       "127.0.0.1",
-		Scheme:     "http",
-		Username:   "user",
-		Password:   "pass",
-		Credential: nil,
-	}, httpClient)
-	require.NoError(t, err)
-
-	status, err := service.ClientsStatus(t.Context())
-
-	require.NoError(t, err)
-	assert.Empty(t, status.Clients)
 }
 
 // testClientManagement creates management wired to generated service mocks.

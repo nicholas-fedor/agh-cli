@@ -92,96 +92,85 @@ func instanceTargets(configs []instance.Config) []execution.Target[instance.Conf
 	return targets
 }
 
-// runAcrossTargets executes one operation across resolved targets and collects results.
+// runOnInstances runs operation against the domain service of every target, in
+// target order, and gathers the result of each target that succeeded.
+//
+// A target whose service cannot be configured fails like any other, so the
+// remaining targets still run.
 //
 // Parameters:
 //   - ctx: request-scoped cancellation signal.
 //   - targets: resolved instance targets in execution order.
-//   - operationName: operation label used in the aggregate error messages.
-//   - operation: per-target operation producing one result value.
+//   - useCase: factory creating the domain service for one instance
+//     configuration.
+//   - operation: per-target operation producing one result from the target's
+//     service and name.
 //
 // Returns:
-//   - []T: one result per successful target in completion order.
-//   - int: the number of targets.
-//   - error: a wrapped execution or reporting error.
-func runAcrossTargets[T any](
+//   - []Result: the results of the targets that succeeded, in execution order, even
+//     when some targets failed.
+//   - error: a wrapped [execution.AggregateError] naming every failed target.
+func runOnInstances[Service, Result any](
 	ctx context.Context,
 	targets []execution.Target[instance.Config],
-	operationName string,
-	operation func(context.Context, execution.Target[instance.Config]) (T, error),
-) ([]T, int, error) {
-	results := make([]T, 0, len(targets))
-	report := execution.Run(
-		ctx,
-		targets,
-		execution.AdaptOperation(
-			func(ctx context.Context, target execution.Target[instance.Config]) error {
-				result, operationErr := operation(ctx, target)
-				if operationErr != nil {
-					return fmt.Errorf("execute %s for %q: %w", operationName, target.Name, operationErr)
-				}
-
-				results = append(results, result)
-
-				return nil
-			},
-		),
-	)
-
-	reportErr := report.Err()
-	if reportErr != nil {
-		return results, len(targets), fmt.Errorf("report %s outcomes: %w", operationName, reportErr)
-	}
-
-	return results, len(targets), nil
-}
-
-// runServiceMutation applies one domain mutation to every resolved target.
-//
-// Parameters:
-//   - ctx: request-scoped cancellation signal.
-//   - targets: resolved instance targets in execution order.
-//   - operationName: operation label used in the aggregate error messages.
-//   - useCase: factory creating the domain service for one instance configuration.
-//   - operation: domain mutation applied to each resolved instance service.
-//   - success: builds the per-instance result value from the target name.
-//
-// Returns:
-//   - []T: one result per successful target in completion order.
-//   - error: a wrapped service or execution error.
-func runServiceMutation[S, T any](
-	ctx context.Context,
-	targets []execution.Target[instance.Config],
-	operationName string,
-	useCase func(instance.Config) (S, error),
-	operation func(context.Context, S) error,
-	success func(string) T,
-) ([]T, error) {
-	results, _, err := runAcrossTargets(
-		ctx,
-		targets,
-		operationName,
-		func(ctx context.Context, target execution.Target[instance.Config]) (T, error) {
+	useCase func(instance.Config) (Service, error),
+	operation func(ctx context.Context, service Service, name string) (Result, error),
+) ([]Result, error) {
+	results, err := execution.Collect(ctx, targets,
+		func(ctx context.Context, target execution.Target[instance.Config]) (Result, error) {
 			service, useCaseErr := useCase(target.Value)
 			if useCaseErr != nil {
-				return success(target.Name), fmt.Errorf(
-					"create %s use case for %q: %w",
-					operationName,
-					target.Name,
-					useCaseErr,
-				)
+				var zero Result
+
+				return zero, fmt.Errorf("configure service: %w", useCaseErr)
 			}
 
-			operationErr := operation(ctx, service)
-			if operationErr != nil {
-				return success(target.Name), fmt.Errorf("apply %s: %w", operationName, operationErr)
-			}
-
-			return success(target.Name), nil
+			return operation(ctx, service, target.Name)
 		},
 	)
 	if err != nil {
-		return results, fmt.Errorf("run %s: %w", operationName, err)
+		return results, fmt.Errorf("run on instances: %w", err)
+	}
+
+	return results, nil
+}
+
+// mutateInstances applies one domain mutation to every target and reports the
+// targets it changed.
+//
+// Parameters:
+//   - ctx: request-scoped cancellation signal.
+//   - targets: resolved instance targets in execution order.
+//   - useCase: factory creating the domain service for one instance
+//     configuration.
+//   - mutation: domain mutation applied to each target's service.
+//   - success: builds the result of one changed target from its name.
+//
+// Returns:
+//   - []Result: one result per changed target, in execution order, even when some
+//     targets failed.
+//   - error: a wrapped [execution.AggregateError] naming every failed target.
+func mutateInstances[Service, Result any](
+	ctx context.Context,
+	targets []execution.Target[instance.Config],
+	useCase func(instance.Config) (Service, error),
+	mutation func(ctx context.Context, service Service) error,
+	success func(name string) Result,
+) ([]Result, error) {
+	results, err := runOnInstances(ctx, targets, useCase,
+		func(ctx context.Context, service Service, name string) (Result, error) {
+			mutationErr := mutation(ctx, service)
+			if mutationErr != nil {
+				var zero Result
+
+				return zero, fmt.Errorf("apply mutation: %w", mutationErr)
+			}
+
+			return success(name), nil
+		},
+	)
+	if err != nil {
+		return results, fmt.Errorf("mutate instances: %w", err)
 	}
 
 	return results, nil

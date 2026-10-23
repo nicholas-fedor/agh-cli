@@ -45,6 +45,8 @@ main.go
     -> internal/app
       -> internal/client | internal/filtering | internal/rewrite
         -> pkg/adguard
+      -> internal/connection
+        -> pkg/adguard
       -> internal/config | internal/credentials | internal/instance | internal/execution
 ```
 
@@ -53,6 +55,7 @@ main.go
 - `internal/app` coordinates application use cases and multi-instance execution.
 - `internal/client`, `internal/filtering`, and `internal/rewrite` contain domain behavior.
 - `internal/config`, `internal/instance`, and `internal/execution` own configuration, catalog selection, and ordered execution.
+- `internal/connection` builds the `pkg/adguard` client for a configured instance, with one request timeout for every feature.
 - `internal/credentials` owns the credential store adapter, the mounted-file and environment readers, and credential resolution.
 - `pkg/adguard` is the public, generated-code-independent AdGuard Home client.
 - `tools/docgen` generates the Hugo CLI reference from the Cobra tree.

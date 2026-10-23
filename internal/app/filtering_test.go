@@ -34,7 +34,9 @@ const (
 	filteringTestAddedMessage = "Added filter URL filters"
 )
 
-// TestFilteringManagementStatusContinuesAfterFailure verifies partial status results survive failures.
+// TestFilteringManagementStatusContinuesAfterFailure verifies partial status
+// results survive failures and are numbered by their position among the
+// results.
 func TestFilteringManagementStatusContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -55,7 +57,7 @@ func TestFilteringManagementStatusContinuesAfterFailure(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	assert.Equal(t, []FilteringStatusResult{{
 		Instance:      filteringTestGoodInstance,
-		Index:         1,
+		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
