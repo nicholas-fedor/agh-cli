@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update anchore/sbom-action action to v0.24.3 by @renovate[bot] in [#45](https://github.com/nicholas-fedor/agh-cli/pull/45)
 - Update module github.com/imfing/hextra to v0.13.0 by @renovate[bot] in [#41](https://github.com/nicholas-fedor/agh-cli/pull/41)
 
+### Fixed
+
+- Sort rewrite answers in one consistent order by @nicholas-fedor in [#132](https://github.com/nicholas-fedor/agh-cli/pull/132)
+
 ### Removed
 
 - Remove unused circleci configuration by @nicholas-fedor in [#107](https://github.com/nicholas-fedor/agh-cli/pull/107)
