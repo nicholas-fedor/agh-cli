@@ -97,6 +97,20 @@ type undecodedInstance struct {
 	err error
 }
 
+// aliasResolver copies retained nodes with every alias expanded.
+//
+// A retained entry is written on its own, apart from the document it was read
+// from. An alias in it can name an anchor in a section the save regenerates, so
+// the written alias would refer to nothing. Expanding each alias into a copy of
+// its target keeps the written document self-contained.
+type aliasResolver struct {
+	// active holds the alias targets being expanded, which detects an alias that
+	// refers to a node containing it.
+	active map[*yaml.Node]bool
+	// remaining is the number of nodes the copy may still create.
+	remaining int
+}
+
 // fileStamp is the observable state of a configuration file at a point in time.
 //
 // Size and modification time are compared first because either alone is
@@ -137,6 +151,10 @@ const (
 	credentialFieldIndent = "      "
 )
 
+// maxResolvedNodes bounds the nodes one retained entry may expand to, so a value
+// built from nested aliases cannot exhaust memory when its aliases are expanded.
+const maxResolvedNodes = 1 << 16
+
 // Configuration persistence errors.
 var (
 	// ErrDuplicateInstance indicates that YAML contains a duplicate instance name.
@@ -155,6 +173,9 @@ var (
 	// ErrUnsupportedFormat indicates that a configuration path names a format
 	// other than YAML.
 	ErrUnsupportedFormat = errors.New("config file must be YAML")
+	// ErrUnresolvableAlias indicates that a retained value holds an alias that
+	// cannot be expanded for a write.
+	ErrUnresolvableAlias = errors.New("retained value has an alias that cannot be expanded")
 )
 
 // yamlExtensions are the configuration file extensions agh-cli reads, compared
@@ -1203,6 +1224,10 @@ func writeIndentedFields(builder *strings.Builder, fields []configField, indent 
 // including that of block scalars, and the parsed nodes keep their quoting,
 // tags, and style.
 //
+// The entry is written from a copy whose aliases are expanded and whose anchors
+// are dropped, because an alias can name an anchor in a section the save
+// regenerates. The retained nodes themselves are left unchanged.
+//
 // Parameters:
 //   - builder: destination for the entry.
 //   - key: parsed key node.
@@ -1210,12 +1235,25 @@ func writeIndentedFields(builder *strings.Builder, fields []configField, indent 
 //   - indent: indentation of the entry.
 //
 // Returns:
-//   - error: a wrapped error when the entry cannot be encoded.
+//   - error: a wrapped ErrUnresolvableAlias when an alias cannot be expanded,
+//     or a wrapped error when the entry cannot be encoded.
 func writeIndentedField(builder *strings.Builder, key, value *yaml.Node, indent string) error {
+	resolver := aliasResolver{active: make(map[*yaml.Node]bool), remaining: maxResolvedNodes}
+
+	resolvedKey, err := resolver.resolve(key)
+	if err != nil {
+		return fmt.Errorf("expand key aliases: %w", err)
+	}
+
+	resolvedValue, err := resolver.resolve(value)
+	if err != nil {
+		return fmt.Errorf("expand value aliases: %w", err)
+	}
+
 	raw, err := yaml.Marshal(&yaml.Node{
 		Kind:    yaml.MappingNode,
 		Tag:     "!!map",
-		Content: []*yaml.Node{key, value},
+		Content: []*yaml.Node{resolvedKey, resolvedValue},
 	})
 	if err != nil {
 		return fmt.Errorf("encode entry: %w", err)
@@ -1230,6 +1268,78 @@ func writeIndentedField(builder *strings.Builder, key, value *yaml.Node, indent 
 	}
 
 	return nil
+}
+
+// resolve returns a deep copy of node with every alias replaced by a copy of its
+// target and every anchor cleared.
+//
+// Parameters:
+//   - node: retained node to copy. It is not modified.
+//
+// Returns:
+//   - *yaml.Node: the expanded copy.
+//   - error: a wrapped ErrUnresolvableAlias when an alias refers to a node that
+//     contains it, has no target, or expands beyond [maxResolvedNodes].
+func (r *aliasResolver) resolve(node *yaml.Node) (*yaml.Node, error) {
+	r.remaining--
+	if r.remaining < 0 {
+		return nil, fmt.Errorf("%w: it expands beyond %d nodes", ErrUnresolvableAlias, maxResolvedNodes)
+	}
+
+	if node.Kind == yaml.AliasNode {
+		resolved, err := r.resolveAlias(node)
+		if err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+
+		return resolved, nil
+	}
+
+	copied := *node
+
+	copied.Anchor = ""
+	copied.Content = make([]*yaml.Node, 0, len(node.Content))
+
+	for _, child := range node.Content {
+		resolved, err := r.resolve(child)
+		if err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+
+		copied.Content = append(copied.Content, resolved)
+	}
+
+	return &copied, nil
+}
+
+// resolveAlias returns an expanded copy of the target of one alias node.
+//
+// Parameters:
+//   - alias: alias node to expand.
+//
+// Returns:
+//   - *yaml.Node: the expanded copy of the alias target.
+//   - error: a wrapped ErrUnresolvableAlias when the alias has no target or
+//     refers to a node that contains it.
+func (r *aliasResolver) resolveAlias(alias *yaml.Node) (*yaml.Node, error) {
+	target := alias.Alias
+	if target == nil {
+		return nil, fmt.Errorf("%w: alias %q has no target", ErrUnresolvableAlias, alias.Value)
+	}
+
+	if r.active[target] {
+		return nil, fmt.Errorf("%w: alias %q refers to a value containing it", ErrUnresolvableAlias, alias.Value)
+	}
+
+	r.active[target] = true
+	defer delete(r.active, target)
+
+	resolved, err := r.resolve(target)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return resolved, nil
 }
 
 // validateInstanceMap verifies that a YAML node is a complete mapping.

@@ -186,7 +186,6 @@ go test -race -coverprofile=coverage.out -covermode=atomic ./...
 - Use `t.Context()` rather than `context.Background()` in tests.
 - Use `t.Parallel()` unless the test mutates process-global state, such as with `t.Setenv` or `t.Chdir`.
 - Execute a command under test with a context from `internal/app/apptest`, which carries a loaded configuration.
-- Reset global configuration with `t.Cleanup`.
 
 ### `pkg/adguard` test tiers
 

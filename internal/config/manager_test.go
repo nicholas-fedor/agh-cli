@@ -889,6 +889,75 @@ func TestSaveOmitsEmptyHost(t *testing.T) {
 	assert.Equal(t, "instances:\n  home:\n    Host: home.example.com\n", readConfigFile(t, path))
 }
 
+// TestSaveExpandsAliasesInRetainedFields verifies a retained key whose alias
+// names an anchor in a regenerated section is written expanded, so the saved
+// document still loads, while the retained nodes stay unchanged.
+func TestSaveExpandsAliasesInRetainedFields(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultConfigFileName)
+	writeConfigFile(t, path, "instances:\n"+
+		"  home: &h\n    host: home.example.com\n    tags: &t [lab]\n"+
+		"  away:\n    host: away.example.com\n    tags: *t\n"+
+		"backup: *h\n")
+
+	manager, err := Load(path)
+	require.NoError(t, err)
+	require.NoError(t, manager.Add("beta", "beta.example.com", ""))
+	require.NoError(t, manager.Save())
+
+	require.Len(t, manager.foreign, 1)
+	assert.Equal(t, yaml.AliasNode, manager.foreign[0].Value.Kind)
+
+	written := readConfigFile(t, path)
+	assert.NotContains(t, written, "*")
+	assert.NotContains(t, written, "&")
+
+	reloaded, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"home", "away", "beta"}, reloaded.OrderedNames())
+	assert.Equal(t, map[string]any{"host": "home.example.com", "tags": []any{"lab"}},
+		decodeForeignValue(t, written, "backup"))
+}
+
+// TestAliasResolverRefusesAliasInsideItsTarget verifies an alias that refers to
+// a value containing it is refused instead of expanded without end.
+func TestAliasResolverRefusesAliasInsideItsTarget(t *testing.T) {
+	t.Parallel()
+
+	loop := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Anchor: "loop"}
+
+	loop.Content = []*yaml.Node{{Kind: yaml.AliasNode, Value: "loop", Alias: loop}}
+
+	resolver := aliasResolver{active: make(map[*yaml.Node]bool), remaining: maxResolvedNodes}
+
+	_, err := resolver.resolve(loop)
+
+	require.ErrorIs(t, err, ErrUnresolvableAlias)
+}
+
+// TestAliasResolverBoundsExpansion verifies nested aliases cannot expand a
+// retained value beyond the node budget.
+func TestAliasResolverBoundsExpansion(t *testing.T) {
+	t.Parallel()
+
+	level := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x"}
+	for range 6 {
+		next := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for range 10 {
+			next.Content = append(next.Content, &yaml.Node{Kind: yaml.AliasNode, Alias: level})
+		}
+
+		level = next
+	}
+
+	resolver := aliasResolver{active: make(map[*yaml.Node]bool), remaining: maxResolvedNodes}
+
+	_, err := resolver.resolve(level)
+
+	require.ErrorIs(t, err, ErrUnresolvableAlias)
+}
+
 // TestValidationProblemsReportsCaseConflict verifies that a name differing from
 // an earlier one only by letter case is reported on the later name.
 func TestValidationProblemsReportsCaseConflict(t *testing.T) {
