@@ -227,3 +227,26 @@ func TestCredentialsMigrateRefusesKeyInUse(t *testing.T) {
 	assert.Equal(t, "alpha-secret", local.Instances()[alphaInstance].Password)
 	assert.Nil(t, local.Instances()[alphaInstance].Credential)
 }
+
+// TestCredentialsMigrateDryRunReportsKeyInUse verifies a dry run reports the
+// same key collision the real run refuses, without touching the store.
+func TestCredentialsMigrateDryRunReportsKeyInUse(t *testing.T) {
+	t.Parallel()
+
+	local := newConfig(t, "credentials:\n  service: agh-cli\n"+
+		"instances:\n"+
+		"  "+alphaInstance+":\n    host: alpha.example.com\n    password: alpha-secret\n"+
+		"  "+zuluInstance+":\n    host: zulu.example.com\n"+
+		"    credential:\n      source: keyring\n      key: "+alphaInstance+"\n")
+
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(KeyringBackend).Once()
+
+	report, err := NewManager(store, local).Migrate(t.Context(), MigrationRequest{DryRun: true})
+
+	require.NoError(t, err)
+	require.Len(t, report.Results, 1)
+	assert.True(t, report.Results[0].DryRun)
+	require.ErrorIs(t, report.Results[0].Err, ErrCredentialKeyInUse)
+	assert.Zero(t, local.saves)
+}

@@ -59,6 +59,44 @@ func TestRunMigratePreviewsWithoutWriting(t *testing.T) {
 	)
 }
 
+// TestRunMigratePreviewsRefusedInstance verifies a dry run renders an instance
+// the real run would refuse as not migratable and leaves it out of the count.
+func TestRunMigratePreviewsRefusedInstance(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeCoordinator{
+		report: app.MigrationReport{
+			Backend: testBackend,
+			Service: testService,
+			DryRun:  true,
+			Results: []app.MigrationResult{
+				{
+					Instance: testInstanceName,
+					Key:      testKeyringKey,
+					DryRun:   true,
+					Migrated: false,
+					Err:      errors.New("credential key is used by another instance"),
+				},
+			},
+			Saved: false,
+			Err:   nil,
+		},
+	}
+
+	run := runCredentials(t, testStreams(store), "", migrateCommandName, "--"+dryRunFlagName)
+
+	require.NoError(t, run.err)
+	assert.Equal(
+		t,
+		"would not migrate \"default\" to keyring key \"default\": "+
+			"credential key is used by another instance\n"+
+			"backend: keyring\n"+
+			"service: agh-cli\n"+
+			"nothing was written: 0 credential(s) would be migrated\n",
+		run.out,
+	)
+}
+
 // TestRunMigrateReportsAppliedMigration verifies the applied migration report.
 func TestRunMigrateReportsAppliedMigration(t *testing.T) {
 	t.Parallel()

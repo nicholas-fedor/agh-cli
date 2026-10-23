@@ -172,7 +172,7 @@ func TestSetUsernameRejectsUnknownInstance(t *testing.T) {
 
 	err = manager.SetUsername("absent", "admin")
 
-	require.ErrorIs(t, err, ErrInstanceNotFound)
+	require.ErrorIs(t, err, instance.ErrUnknownInstance)
 }
 
 // TestClearUsernameRemovesOnlyUsername verifies clearing a username leaves a
@@ -224,7 +224,7 @@ func TestClearUsernameRejectsUnknownInstance(t *testing.T) {
 
 	err = manager.ClearUsername("absent")
 
-	require.ErrorIs(t, err, ErrInstanceNotFound)
+	require.ErrorIs(t, err, instance.ErrUnknownInstance)
 }
 
 // TestSavePersistsUsernameWithoutCredential verifies a username survives a save

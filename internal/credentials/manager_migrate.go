@@ -85,7 +85,8 @@ var ErrCredentialKeyInUse = errors.New("credential key is used by another instan
 // is processed.
 //
 // A dry run performs no write, so it touches neither the credential store nor the
-// configuration file.
+// configuration file. It still reports a candidate whose key another instance
+// reads, because the real run refuses that candidate.
 //
 // Parameters:
 //   - ctx: context checked before the credential store calls.
@@ -113,7 +114,7 @@ func (m *Manager) Migrate(
 	}
 
 	if request.DryRun {
-		report.Results = previewMigrations(candidates)
+		report.Results = m.previewMigrations(service, candidates)
 
 		return report, nil
 	}
@@ -227,9 +228,8 @@ func (m *Manager) migrateOne(
 ) MigrationResult {
 	result := MigrationResult{Instance: candidate.name, Key: candidate.key}
 
-	if otherInstanceReferencesKey(m.local.Instances(), candidate.name, candidate.key) {
-		result.Err = fmt.Errorf("%w: key %q in service %q", ErrCredentialKeyInUse, candidate.key, service)
-
+	result.Err = m.keyInUse(service, candidate)
+	if result.Err != nil {
 		return result
 	}
 
@@ -289,12 +289,16 @@ func failedMigrations(results []MigrationResult) int {
 
 // previewMigrations describes a migration without writing anything.
 //
+// A candidate the real run would refuse carries the same error, so a dry run
+// never promises a migration the real run will not perform.
+//
 // Parameters:
+//   - service: credential store namespace.
 //   - candidates: legacy instances in configuration order.
 //
 // Returns:
 //   - []MigrationResult: one preview per candidate in the same order.
-func previewMigrations(candidates []migrationCandidate) []MigrationResult {
+func (m *Manager) previewMigrations(service string, candidates []migrationCandidate) []MigrationResult {
 	results := make([]MigrationResult, 0, len(candidates))
 
 	for _, candidate := range candidates {
@@ -302,8 +306,28 @@ func previewMigrations(candidates []migrationCandidate) []MigrationResult {
 			Instance: candidate.name,
 			Key:      candidate.key,
 			DryRun:   true,
+			Migrated: false,
+			Err:      m.keyInUse(service, candidate),
 		})
 	}
 
 	return results
+}
+
+// keyInUse reports whether another configured instance already reads the key a
+// candidate would be migrated to.
+//
+// Parameters:
+//   - service: credential store namespace.
+//   - candidate: legacy instance to migrate.
+//
+// Returns:
+//   - error: a wrapped ErrCredentialKeyInUse when another instance reads the
+//     key, or nil when the key is free.
+func (m *Manager) keyInUse(service string, candidate migrationCandidate) error {
+	if !otherInstanceReferencesKey(m.local.Instances(), candidate.name, candidate.key) {
+		return nil
+	}
+
+	return fmt.Errorf("%w: key %q in service %q", ErrCredentialKeyInUse, candidate.key, service)
 }

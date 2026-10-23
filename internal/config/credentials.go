@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -148,10 +149,11 @@ func (m *Manager) ClearLegacyPassword(name string) error {
 //   - name: instance identifier to update.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when name is not configured, or a wrapped
-//     [instance.ErrInvalidConfig] when its stanza could not be decoded.
+//   - error: a wrapped [instance.ErrUnknownInstance] when name is not
+//     configured, or a wrapped [instance.ErrInvalidConfig] when its stanza could
+//     not be decoded.
 func (m *Manager) ClearUsername(name string) error {
-	cfg, err := m.editableInstance(name)
+	cfg, err := m.usernameInstance(name)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -175,9 +177,11 @@ func (m *Manager) ClearUsername(name string) error {
 //   - username: AdGuard Home administrator username.
 //
 // Returns:
-//   - error: ErrInstanceNotFound when the instance is unknown.
+//   - error: a wrapped [instance.ErrUnknownInstance] when name is not
+//     configured, or a wrapped [instance.ErrInvalidConfig] when its stanza could
+//     not be decoded.
 func (m *Manager) SetUsername(name, username string) error {
-	cfg, err := m.editableInstance(name)
+	cfg, err := m.usernameInstance(name)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -186,6 +190,34 @@ func (m *Manager) SetUsername(name, username string) error {
 	m.data.Instances[name] = cfg
 
 	return nil
+}
+
+// usernameInstance returns the configuration of one instance whose username
+// changes.
+//
+// The username commands report an unknown instance with the instance domain's
+// sentinel, as every other credential command does. A stanza that could not be
+// decoded still reports its decoding failure.
+//
+// Parameters:
+//   - name: instance identifier to look up.
+//
+// Returns:
+//   - instance.Config: the decoded configuration.
+//   - error: a wrapped [instance.ErrUnknownInstance] when name is not
+//     configured, or a wrapped [instance.ErrInvalidConfig] when its stanza could
+//     not be decoded.
+func (m *Manager) usernameInstance(name string) (instance.Config, error) {
+	cfg, err := m.editableInstance(name)
+	if errors.Is(err, ErrInstanceNotFound) {
+		return instance.Config{}, fmt.Errorf("%w: %q", instance.ErrUnknownInstance, name)
+	}
+
+	if err != nil {
+		return instance.Config{}, fmt.Errorf("%w", err)
+	}
+
+	return cfg, nil
 }
 
 // Credentials returns a snapshot of the top-level credential settings.

@@ -384,7 +384,7 @@ Then apply it:
 agh-cli instance credentials migrate
 ```
 
-Migration is explicit, because a normal read never migrates implicitly. It selects every instance that has no `credential` block and a non-empty `password`, and skips any instance that already declares a source, so a configured source is never changed silently. For each instance the password reaches the credential store before it is removed from the configuration, so a failed write leaves that instance unchanged and its plaintext password keeps working. An instance whose name is a keyring key another instance already reads is reported and keeps its plaintext password, because migrating it would replace that instance's password. The file is written once at the end, and no password is ever printed.
+Migration is explicit, because a normal read never migrates implicitly. It selects every instance that has no `credential` block and a non-empty `password`, and skips any instance that already declares a source, so a configured source is never changed silently. For each instance the password reaches the credential store before it is removed from the configuration, so a failed write leaves that instance unchanged and its plaintext password keeps working. An instance whose name is a keyring key another instance already reads keeps its plaintext password, because migrating it would replace that instance's password. Both a dry run and the real run report it. The file is written once at the end, and no password is ever printed.
 
 Until you migrate, a legacy plaintext password is stored in `config.yaml` in the clear. Keep the file readable only by its owner, and keep the template, `example/config.yaml`, free of real values:
 

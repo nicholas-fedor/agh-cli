@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	mockCredentials "github.com/nicholas-fedor/agh-cli/internal/credentials/mocks"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
@@ -64,7 +63,7 @@ func TestCredentialsSetUsernameRejectsUnknownInstance(t *testing.T) {
 
 	result, err := NewManager(store, local).SetUsername("missing", "new-admin")
 
-	require.ErrorIs(t, err, config.ErrInstanceNotFound)
+	require.ErrorIs(t, err, instance.ErrUnknownInstance)
 	assert.Empty(t, result)
 	assert.Equal(t, 0, local.saves)
 }
@@ -137,7 +136,7 @@ func TestCredentialsClearUsernameRejectsUnknownInstance(t *testing.T) {
 
 	result, err := NewManager(store, local).ClearUsername("missing")
 
-	require.ErrorIs(t, err, config.ErrInstanceNotFound)
+	require.ErrorIs(t, err, instance.ErrUnknownInstance)
 	assert.Empty(t, result)
 	assert.Equal(t, 0, local.saves)
 }
