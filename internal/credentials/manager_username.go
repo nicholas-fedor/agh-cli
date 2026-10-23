@@ -1,7 +1,7 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package app
+package credentials
 
 import (
 	"fmt"
@@ -63,13 +63,13 @@ type UsernameReport struct {
 //     configuration was rewritten.
 //   - error: a wrapped error when the instance is unknown or the configuration
 //     cannot be written.
-func (a *Credentials) SetUsername(name, username string) (UsernameResult, error) {
-	err := a.local.SetUsername(name, username)
+func (m *Manager) SetUsername(name, username string) (UsernameResult, error) {
+	err := m.local.SetUsername(name, username)
 	if err != nil {
 		return UsernameResult{}, fmt.Errorf("set username for instance %q: %w", name, err)
 	}
 
-	saved, err := a.save()
+	saved, err := m.save()
 	if err != nil {
 		return UsernameResult{Instance: name, Username: username}, fmt.Errorf(
 			"set username for instance %q: %w",
@@ -99,13 +99,13 @@ func (a *Credentials) SetUsername(name, username string) (UsernameResult, error)
 //     configuration was rewritten.
 //   - error: a wrapped error when the instance is unknown or the configuration
 //     cannot be written.
-func (a *Credentials) ClearUsername(name string) (UsernameResult, error) {
-	err := a.local.ClearUsername(name)
+func (m *Manager) ClearUsername(name string) (UsernameResult, error) {
+	err := m.local.ClearUsername(name)
 	if err != nil {
 		return UsernameResult{}, fmt.Errorf("clear username for instance %q: %w", name, err)
 	}
 
-	saved, err := a.save()
+	saved, err := m.save()
 	if err != nil {
 		return UsernameResult{Instance: name}, fmt.Errorf(
 			"clear username for instance %q: %w",
@@ -121,7 +121,7 @@ func (a *Credentials) ClearUsername(name string) (UsernameResult, error) {
 //
 // The report never consults the credential store, because a username is
 // configuration and a presence question about a password is answered by
-// [Credentials.StatusPassword].
+// [Manager.StatusPassword].
 //
 // Parameters:
 //   - names: instance names to inspect, or an empty slice to inspect every
@@ -130,8 +130,8 @@ func (a *Credentials) ClearUsername(name string) (UsernameResult, error) {
 // Returns:
 //   - UsernameReport: one entry per inspected instance.
 //   - error: a wrapped error when a requested name is unknown.
-func (a *Credentials) StatusUsername(names []string) (UsernameReport, error) {
-	selected, err := a.statusConfigs(names)
+func (m *Manager) StatusUsername(names []string) (UsernameReport, error) {
+	selected, err := m.statusConfigs(names)
 	if err != nil {
 		return UsernameReport{}, fmt.Errorf("select instances for username status: %w", err)
 	}

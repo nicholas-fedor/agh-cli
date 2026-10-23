@@ -122,6 +122,10 @@ func reportMigration(cmd *cobra.Command, report app.MigrationReport) {
 func migrationLine(result app.MigrationResult) string {
 	subject := strconv.Quote(result.Instance) + " to keyring key " + strconv.Quote(result.Key)
 
+	if result.DryRun && result.Err != nil {
+		return "would not migrate " + subject + ": " + result.Err.Error()
+	}
+
 	if result.DryRun {
 		return "would migrate " + subject
 	}
@@ -148,7 +152,7 @@ func migrationSummary(report app.MigrationReport) string {
 	if report.DryRun {
 		return fmt.Sprintf(
 			"nothing was written: %d credential(s) would be migrated",
-			len(report.Results),
+			migratable(report.Results),
 		)
 	}
 
@@ -164,5 +168,24 @@ func migrationSummary(report app.MigrationReport) string {
 		return "configuration not updated: the file still holds every plaintext password"
 	}
 
-	return fmt.Sprintf("configuration updated: %d credential(s) migrated", len(report.Results))
+	return fmt.Sprintf("configuration updated: %d credential(s) migrated", migratable(report.Results))
+}
+
+// migratable counts the instances a migration run moved or would move.
+//
+// Parameters:
+//   - results: outcomes of the migration run.
+//
+// Returns:
+//   - int: the number of outcomes without an error.
+func migratable(results []app.MigrationResult) int {
+	count := 0
+
+	for _, result := range results {
+		if result.Err == nil {
+			count++
+		}
+	}
+
+	return count
 }

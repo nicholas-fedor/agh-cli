@@ -181,6 +181,19 @@ func TestLoadReadsInstanceCredentialReferences(t *testing.T) {
 	}
 }
 
+// TestCredentialServiceDefaultsWhenEmpty verifies the namespace is never empty,
+// even for a manager whose settings carry none.
+func TestCredentialServiceDefaultsWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	manager, err := Load(filepath.Join(t.TempDir(), "config.yaml"))
+	require.NoError(t, err)
+
+	manager.data.Credentials.Service = ""
+
+	assert.Equal(t, DefaultCredentialService, manager.CredentialService())
+}
+
 // TestLoadReportsNonMappingCredentialStanza verifies a mistyped credential
 // stanza leaves the instance without a configuration instead of falling back to
 // the plaintext password.

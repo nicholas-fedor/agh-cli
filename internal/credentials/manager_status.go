@@ -1,14 +1,13 @@
 // Copyright (c) 2026 - Nicholas Fedor <nick@nickfedor.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package app
+package credentials
 
 import (
 	"context"
 	"fmt"
 	"slices"
 
-	"github.com/nicholas-fedor/agh-cli/internal/config"
 	"github.com/nicholas-fedor/agh-cli/internal/instance"
 )
 
@@ -62,6 +61,35 @@ const (
 	PresencePresent
 )
 
+// TargetKind names the kind of configured credential identity of one instance.
+//
+// The kind names the field the configured source reads, so a keyring key, a
+// mounted-secret path, and an environment variable name are never confused in
+// command output. A source that owns no identity, such as the legacy plaintext
+// password and the unauthenticated source, has no kind.
+//
+// This method exists so the command layer never names a credential source
+// itself and therefore never depends on the instance domain package.
+//
+// Returns:
+//   - string: "key", "path", or "variable", or an empty string when the
+//     configured source owns no identity.
+func (s PasswordStatus) TargetKind() string {
+	switch s.Source {
+	case instance.KeyringSource:
+		return "key"
+	case instance.FileSource:
+		return "path"
+	case instance.EnvSource:
+		return "variable"
+	default:
+		// The legacy plaintext password and the unauthenticated source own no
+		// credential identity, and an unsupported source is reported by its
+		// configuration alone.
+		return ""
+	}
+}
+
 // StatusPassword reports credential store state without ever returning a secret.
 //
 // The operating system credential store cannot enumerate its entries, so presence
@@ -69,7 +97,7 @@ const (
 // source is not the keyring, because a configuration reference is the only
 // description of the credential agh-cli will use for it. The report carries no
 // username, because the configured identity is answered by
-// [Credentials.StatusUsername].
+// [Manager.StatusUsername].
 //
 // Parameters:
 //   - ctx: context checked before the credential store calls.
@@ -79,26 +107,26 @@ const (
 // Returns:
 //   - PasswordReport: the backend, the service, and one entry per instance.
 //   - error: a wrapped error when a requested name is unknown.
-func (a *Credentials) StatusPassword(
+func (m *Manager) StatusPassword(
 	ctx context.Context,
 	names []string,
 ) (PasswordReport, error) {
-	service := a.service()
+	service := m.service()
 
-	selected, err := a.statusConfigs(names)
+	selected, err := m.statusConfigs(names)
 	if err != nil {
 		return PasswordReport{}, fmt.Errorf("select instances for password status: %w", err)
 	}
 
 	result := PasswordReport{
-		Backend:   a.store.Backend(),
+		Backend:   m.store.Backend(),
 		Service:   service,
 		Available: true,
 		Instances: make([]PasswordStatus, 0, len(selected)),
 	}
 
 	for _, cfg := range selected {
-		result.Instances = append(result.Instances, a.passwordStatus(ctx, service, cfg))
+		result.Instances = append(result.Instances, m.passwordStatus(ctx, service, cfg))
 	}
 
 	result.Available = !slices.ContainsFunc(
@@ -118,7 +146,7 @@ func (a *Credentials) StatusPassword(
 //
 // Returns:
 //   - PasswordStatus: the configured source, its identity, and its presence.
-func (a *Credentials) passwordStatus(
+func (m *Manager) passwordStatus(
 	ctx context.Context,
 	service string,
 	cfg instance.Config,
@@ -132,7 +160,7 @@ func (a *Credentials) passwordStatus(
 		return entry
 	}
 
-	present, err := a.stored(ctx, service, target)
+	present, err := m.stored(ctx, service, target)
 	if err != nil {
 		entry.Presence = PresenceUnknown
 		entry.Err = err
@@ -157,14 +185,14 @@ func (a *Credentials) passwordStatus(
 //
 // Returns:
 //   - []instance.Config: the inspected configurations in report order.
-//   - error: a wrapped config.ErrInstanceNotFound for an unknown name.
-func (a *Credentials) statusConfigs(names []string) ([]instance.Config, error) {
-	instances := a.local.Instances()
+//   - error: a wrapped [instance.ErrUnknownInstance] for an unknown name.
+func (m *Manager) statusConfigs(names []string) ([]instance.Config, error) {
+	instances := m.local.Instances()
 
 	if len(names) == 0 {
 		configs := make([]instance.Config, 0, len(instances))
 
-		for _, name := range a.local.OrderedNames() {
+		for _, name := range m.local.OrderedNames() {
 			configs = append(configs, instances[name])
 		}
 
@@ -176,7 +204,7 @@ func (a *Credentials) statusConfigs(names []string) ([]instance.Config, error) {
 	for _, name := range names {
 		cfg, exists := instances[name]
 		if !exists {
-			return nil, fmt.Errorf("instance %q %w", name, config.ErrInstanceNotFound)
+			return nil, fmt.Errorf("%w: %q", instance.ErrUnknownInstance, name)
 		}
 
 		configs = append(configs, cfg)
@@ -188,7 +216,8 @@ func (a *Credentials) statusConfigs(names []string) ([]instance.Config, error) {
 // credentialIdentity reports the configured source and its credential identity.
 //
 // A legacy instance without a credential reference reports the plaintext source and
-// no identity. A keyring key, a mounted-secret path, and an environment variable
+// no identity. A keyring reference without a key reports the instance name, the
+// key every other keyring operation uses for it. A keyring key, a mounted-secret path, and an environment variable
 // name are configuration rather than secrets, so status may report them.
 //
 // Parameters:
@@ -205,7 +234,7 @@ func credentialIdentity(cfg instance.Config) (instance.CredentialSource, string)
 
 	switch cfg.Credential.Source {
 	case instance.KeyringSource:
-		return instance.KeyringSource, cfg.Credential.Key
+		return instance.KeyringSource, credentialKeyFor(cfg, "")
 	case instance.FileSource:
 		return instance.FileSource, cfg.Credential.Path
 	case instance.EnvSource:
