@@ -67,8 +67,8 @@ func runClientList(cmd *cobra.Command, _ []string, values *selectionValues) erro
 //   - error: Joined errors from every failed instance table.
 func writeClientList(cmd *cobra.Command, results []app.ClientListResult) error {
 	errs := make([]error, 0, len(results))
-	for _, result := range results {
-		err := writeClientListResult(cmd, result)
+	for position, result := range results {
+		err := writeClientListResult(cmd, position, result)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -81,15 +81,17 @@ func writeClientList(cmd *cobra.Command, results []app.ClientListResult) error {
 //
 // Parameters:
 //   - cmd: Cobra command receiving the rendered table.
+//   - position: zero-based position of the result among the rendered results.
 //   - result: One per-instance list result.
 //
 // Returns:
 //   - error: An error when the instance table cannot be written.
 func writeClientListResult(
 	cmd *cobra.Command,
+	position int,
 	result app.ClientListResult,
 ) error {
-	if result.Index > 0 {
+	if position > 0 {
 		cmd.Println()
 	}
 

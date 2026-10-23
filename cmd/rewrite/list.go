@@ -76,8 +76,8 @@ func writeRewriteLists(
 ) error {
 	errs := make([]error, 0, len(results))
 
-	for _, result := range results {
-		err := writeRewriteList(cmd, result, sortColumn)
+	for position, result := range results {
+		err := writeRewriteList(cmd, position, result, sortColumn)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -90,6 +90,7 @@ func writeRewriteLists(
 //
 // Parameters:
 //   - cmd: Cobra command receiving the rendered table.
+//   - position: zero-based position of the result among the rendered results.
 //   - result: One per-instance rewrite list result.
 //   - sortColumn: Selected sort column, or an empty value for the default.
 //
@@ -97,11 +98,12 @@ func writeRewriteLists(
 //   - error: An error when the instance table cannot be written.
 func writeRewriteList(
 	cmd *cobra.Command,
+	position int,
 	result app.RewriteListResult,
 	sortColumn string,
 ) error {
 	writer := cmd.OutOrStdout()
-	err := writeRewriteListHeader(writer, result)
+	err := writeRewriteListHeader(writer, position, result)
 	if err != nil {
 		return fmt.Errorf("write instance %q rewrite list header: %w", result.Instance, err)
 	}
@@ -130,14 +132,15 @@ func writeRewriteList(
 //
 // Parameters:
 //   - writer: Destination for the separator and instance header.
+//   - position: zero-based position of the result among the rendered results.
 //   - result: One per-instance rewrite list result.
 //
 // Returns:
 //   - error: An error when the separator or header cannot be written.
-func writeRewriteListHeader(writer io.Writer, result app.RewriteListResult) error {
+func writeRewriteListHeader(writer io.Writer, position int, result app.RewriteListResult) error {
 	var err error
 
-	if result.Index > 0 && result.InstanceCount > 1 {
+	if position > 0 && result.InstanceCount > 1 {
 		_, err = fmt.Fprintln(writer)
 		if err != nil {
 			return fmt.Errorf("write instance separator: %w", err)

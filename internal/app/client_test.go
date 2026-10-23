@@ -23,8 +23,7 @@ import (
 )
 
 // TestClientManagementListContinuesAfterFailure verifies all target failures are
-// retained and the surviving result is numbered by its position among the
-// results, so a failed first instance leaves no gap.
+// retained and the surviving result is still returned.
 func TestClientManagementListContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -48,13 +47,12 @@ func TestClientManagementListContinuesAfterFailure(t *testing.T) {
 	assert.Equal(t, []ClientListResult{{
 		Instance:      goodInstance,
 		Rows:          []client.Row{{Name: testClientName, Automatic: false}},
-		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
 
 // TestClientManagementListUsesConfigurationOrder verifies instances are listed
-// in configuration order and numbered in that order.
+// in configuration order.
 func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 	t.Parallel()
 
@@ -97,8 +95,8 @@ func TestClientManagementListUsesConfigurationOrder(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []ClientListResult{
-		{Instance: zuluInstance, Index: 0, InstanceCount: 2},
-		{Instance: alphaInstance, Index: 1, InstanceCount: 2},
+		{Instance: zuluInstance, InstanceCount: 2},
+		{Instance: alphaInstance, InstanceCount: 2},
 	}, results)
 	assert.Equal(t, []string{zuluInstance, alphaInstance}, calls)
 }

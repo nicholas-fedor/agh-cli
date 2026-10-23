@@ -72,8 +72,8 @@ func runFilteringStatus(cmd *cobra.Command, _ []string) error {
 func writeFilteringStatuses(cmd *cobra.Command, results []app.FilteringStatusResult) error {
 	errs := make([]error, 0, len(results))
 
-	for _, result := range results {
-		err := writeFilteringStatus(cmd, result)
+	for position, result := range results {
+		err := writeFilteringStatus(cmd, position, result)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -86,13 +86,14 @@ func writeFilteringStatuses(cmd *cobra.Command, results []app.FilteringStatusRes
 //
 // Parameters:
 //   - cmd: Cobra command receiving the rendered status table.
+//   - position: zero-based position of the result among the rendered results.
 //   - result: One per-instance filtering status result.
 //
 // Returns:
 //   - error: An error when the status table cannot be written.
-func writeFilteringStatus(cmd *cobra.Command, result app.FilteringStatusResult) error {
+func writeFilteringStatus(cmd *cobra.Command, position int, result app.FilteringStatusResult) error {
 	writer := cmd.OutOrStdout()
-	err := writeFilteringStatusHeader(writer, result)
+	err := writeFilteringStatusHeader(writer, position, result)
 	if err != nil {
 		return fmt.Errorf("write instance %q filtering status header: %w", result.Instance, err)
 	}
@@ -113,17 +114,19 @@ func writeFilteringStatus(cmd *cobra.Command, result app.FilteringStatusResult) 
 //
 // Parameters:
 //   - writer: Destination for the separator and instance header.
+//   - position: zero-based position of the result among the rendered results.
 //   - result: One per-instance filtering status result.
 //
 // Returns:
 //   - error: An error when the separator or header cannot be written.
 func writeFilteringStatusHeader(
 	writer io.Writer,
+	position int,
 	result app.FilteringStatusResult,
 ) error {
 	var err error
 
-	if result.Index > 0 && result.InstanceCount > 1 {
+	if position > 0 && result.InstanceCount > 1 {
 		_, err = fmt.Fprintln(writer)
 		if err != nil {
 			return fmt.Errorf("write instance separator: %w", err)

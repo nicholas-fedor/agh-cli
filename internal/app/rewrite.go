@@ -171,18 +171,11 @@ func (m *RewriteManagement) GetSettings(
 			}
 
 			return RewriteSettingsResult{
-				Instance:      name,
-				Enabled:       settings.Enabled,
-				Index:         0,
-				InstanceCount: len(targets),
+				Instance: name,
+				Enabled:  settings.Enabled,
 			}, nil
 		},
 	)
-
-	for index := range results {
-		results[index].Index = index
-	}
-
 	if err != nil {
 		return results, fmt.Errorf("get rewrite settings across instances: %w", err)
 	}
@@ -218,16 +211,10 @@ func (m *RewriteManagement) List(
 			return RewriteListResult{
 				Instance:      name,
 				Rules:         shapeRewriteRules(rules),
-				Index:         0,
 				InstanceCount: len(targets),
 			}, nil
 		},
 	)
-
-	for index := range results {
-		results[index].Index = index
-	}
-
 	if err != nil {
 		return results, fmt.Errorf("list rewrite rules across instances: %w", err)
 	}

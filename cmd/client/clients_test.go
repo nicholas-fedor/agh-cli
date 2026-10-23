@@ -6,6 +6,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -264,7 +265,9 @@ func TestNewCommandRepeatedConstructionKeepsSelectionDefaults(t *testing.T) {
 	}
 }
 
-// TestWriteClientList verifies command-owned rendering receives app-shaped results.
+// TestWriteClientList verifies command-owned rendering receives app-shaped results
+// and separates the instance tables by exactly one blank line, with none before
+// the first table.
 func TestWriteClientList(t *testing.T) {
 	t.Parallel()
 
@@ -277,16 +280,16 @@ func TestWriteClientList(t *testing.T) {
 	err := writeClientList(command, []app.ClientListResult{
 		{
 			Instance:      clientCommandAlphaInstance,
-			Index:         0,
 			InstanceCount: 2,
 		},
-		{Instance: clientCommandZuluInstance, Index: 1, InstanceCount: 2},
+		{Instance: clientCommandZuluInstance, InstanceCount: 2},
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output.String(), "Instance: alpha")
+	assert.True(t, strings.HasPrefix(output.String(), "Instance: alpha\n"))
 	assert.Contains(t, output.String(), "NAME")
-	assert.Contains(t, output.String(), "Instance: zulu")
+	assert.Contains(t, output.String(), "\n\nInstance: zulu\n")
+	assert.NotContains(t, output.String(), "\n\n\n")
 }
 
 // TestWriteClientMutationResults verifies success-message wiring.

@@ -35,8 +35,7 @@ const (
 )
 
 // TestFilteringManagementStatusContinuesAfterFailure verifies partial status
-// results survive failures and are numbered by their position among the
-// results.
+// results survive failures.
 func TestFilteringManagementStatusContinuesAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -57,7 +56,6 @@ func TestFilteringManagementStatusContinuesAfterFailure(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	assert.Equal(t, []FilteringStatusResult{{
 		Instance:      filteringTestGoodInstance,
-		Index:         0,
 		InstanceCount: 2,
 	}}, results)
 }
@@ -126,8 +124,8 @@ func TestFilteringManagementStatusUsesConfigurationOrder(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []FilteringStatusResult{
-		{Instance: filteringTestZuluInstance, Index: 0, InstanceCount: 2},
-		{Instance: filteringTestAlphaInstance, Index: 1, InstanceCount: 2},
+		{Instance: filteringTestZuluInstance, InstanceCount: 2},
+		{Instance: filteringTestAlphaInstance, InstanceCount: 2},
 	}, results)
 	assert.Equal(t, []string{filteringTestZuluInstance, filteringTestAlphaInstance}, calls)
 }
