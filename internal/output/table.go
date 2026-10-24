@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"os"
 	"slices"
 	"strings"
 )
@@ -59,14 +58,6 @@ func NewTableWriter(headers ...string) *TableWriter {
 	}
 
 	return writer
-}
-
-// Print sorts and writes the table to standard output, ignoring write errors.
-func (t *TableWriter) Print() {
-	_, err := t.WriteTo(os.Stdout)
-	if err != nil {
-		return
-	}
 }
 
 // Row appends a data row. Extra columns are ignored; missing columns are padded.
