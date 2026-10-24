@@ -5,7 +5,6 @@ package output
 
 import (
 	"fmt"
-	"reflect"
 )
 
 // RewriteValue is the output representation of a rewrite rule's answer and
@@ -67,66 +66,4 @@ func FormatClientType[T ~bool](state T) string {
 	}
 
 	return "static"
-}
-
-// FormatRewriteValue formats rewrite values used by existing command output.
-//
-// New rendering code should construct a RewriteValue and call FormatRewrite.
-// The legacy shape is adapted without coupling this package to its owner.
-//
-// Parameters:
-//   - value: neutral rewrite value or legacy rewrite entry.
-//
-// Returns:
-//   - string: formatted display string, or "-" when value is nil.
-func FormatRewriteValue(value any) string {
-	switch rewriteValue := value.(type) {
-	case nil:
-		return "-"
-	case RewriteValue:
-		return FormatRewrite(rewriteValue)
-	case *RewriteValue:
-		if rewriteValue == nil {
-			return "-"
-		}
-
-		return FormatRewrite(*rewriteValue)
-	default:
-		legacyValue, ok := rewriteValueFromLegacy(value)
-		if !ok {
-			return "-"
-		}
-
-		return FormatRewrite(legacyValue)
-	}
-}
-
-// rewriteValueFromLegacy adapts a legacy rewrite entry through its neutral
-// field representation.
-//
-// Parameters:
-//   - value: legacy rewrite entry.
-//
-// Returns:
-//   - RewriteValue: neutral rewrite value.
-//   - bool: false when value is nil.
-func rewriteValueFromLegacy(value any) (RewriteValue, bool) {
-	reflected := reflect.Indirect(reflect.ValueOf(value))
-	if !reflected.IsValid() {
-		return RewriteValue{Answer: "", Enabled: false}, false
-	}
-
-	if reflected.Kind() != reflect.Struct {
-		panic("rewrite value must be a struct or struct pointer")
-	}
-
-	answer := reflected.FieldByName("Answer")
-	enabled := reflected.FieldByName("Enabled")
-	if !answer.IsValid() || answer.Kind() != reflect.String ||
-		!enabled.IsValid() || enabled.Kind() != reflect.Bool {
-
-		panic("rewrite value must expose string Answer and bool Enabled fields")
-	}
-
-	return RewriteValue{Answer: answer.String(), Enabled: enabled.Bool()}, true
 }
