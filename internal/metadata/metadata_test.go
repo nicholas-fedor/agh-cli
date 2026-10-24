@@ -134,3 +134,40 @@ func TestGetInfo(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildMetadataReachesVersionInfo verifies that an injected commit and build
+// time are appended to the version string and formatted into the version info,
+// while the version info keeps the bare version.
+//
+//nolint:paralleltest // The test sets the package-level build metadata.
+func TestBuildMetadataReachesVersionInfo(t *testing.T) {
+	setBuildMetadata(t, "abc1234", "2026-01-02T03:04:05Z")
+
+	assert.Equal(t, Version+" (abc1234)", String())
+
+	info := GetInfo()
+	assert.Equal(t, Version, info.Version)
+	assert.Equal(t, "abc1234", info.CommitSHA)
+	assert.Equal(t, "2026-01-02 03:04:05 UTC", info.BuildTime)
+}
+
+// setBuildMetadata sets the injected build metadata for one test and restores
+// the previous values when it ends.
+//
+// Parameters:
+//   - commitSHA: source revision to inject.
+//   - buildTime: RFC3339 build timestamp to inject.
+func setBuildMetadata(t *testing.T, commitSHA, buildTime string) {
+	t.Helper()
+
+	previousCommitSHA := CommitSHA
+	previousBuildTime := BuildTime
+
+	t.Cleanup(func() {
+		CommitSHA = previousCommitSHA
+		BuildTime = previousBuildTime
+	})
+
+	CommitSHA = commitSHA
+	BuildTime = buildTime
+}
