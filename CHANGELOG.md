@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Write instance and credential results to stdout by @nicholas-fedor in [#136](https://github.com/nicholas-fedor/agh-cli/pull/136)
 - Sort rewrite answers in one consistent order by @nicholas-fedor in [#132](https://github.com/nicholas-fedor/agh-cli/pull/132)
 
 ### Removed
