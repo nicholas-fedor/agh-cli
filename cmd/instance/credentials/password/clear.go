@@ -104,7 +104,7 @@ func clearInstance(
 		return fmt.Errorf("clear credential of %q: %w", name, err)
 	}
 
-	err = output.WritePasswordClear(cmd.OutOrStderr(), cmd.ErrOrStderr(), result)
+	err = output.WritePasswordClear(cmd.OutOrStdout(), cmd.ErrOrStderr(), result)
 	if err != nil {
 		return fmt.Errorf("report cleared credential of %q: %w", name, err)
 	}
@@ -143,7 +143,7 @@ func clearService(cmd *cobra.Command, values *flags.PasswordClearFlags) error {
 		return fmt.Errorf("clear credential service: %w", err)
 	}
 
-	err = output.WritePasswordClearAll(cmd.OutOrStderr(), result)
+	err = output.WritePasswordClearAll(cmd.OutOrStdout(), result)
 	if err != nil {
 		return fmt.Errorf("report cleared credential service: %w", err)
 	}

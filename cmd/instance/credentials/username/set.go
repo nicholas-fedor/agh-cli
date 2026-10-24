@@ -52,7 +52,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("set username for %q: %w", name, err)
 	}
 
-	err = output.WriteUsernameSet(cmd.OutOrStderr(), name, username)
+	err = output.WriteUsernameSet(cmd.OutOrStdout(), name, username)
 	if err != nil {
 		return fmt.Errorf("report username for %q: %w", name, err)
 	}

@@ -70,7 +70,7 @@ func runInstanceAdd(cmd *cobra.Command, args []string, values *flags.InstanceAdd
 		return fmt.Errorf("add instance: %w", addErr)
 	}
 
-	err := output.WriteInstanceAdded(cmd.OutOrStderr(), args[0])
+	err := output.WriteInstanceAdded(cmd.OutOrStdout(), args[0])
 	if err != nil {
 		return fmt.Errorf("add instance: %w", err)
 	}

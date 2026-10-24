@@ -50,7 +50,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("clear username for %q: %w", name, err)
 	}
 
-	err = output.WriteUsernameCleared(cmd.OutOrStderr(), name)
+	err = output.WriteUsernameCleared(cmd.OutOrStdout(), name)
 	if err != nil {
 		return fmt.Errorf("report cleared username for %q: %w", name, err)
 	}

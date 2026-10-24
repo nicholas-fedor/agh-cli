@@ -85,7 +85,7 @@ func runSet(cmd *cobra.Command, args []string, values *flags.PasswordSetFlags) e
 		return fmt.Errorf("set credential for %q: %w", name, err)
 	}
 
-	err = output.WritePasswordSet(cmd.OutOrStderr(), cmd.ErrOrStderr(), result)
+	err = output.WritePasswordSet(cmd.OutOrStdout(), cmd.ErrOrStderr(), result)
 	if err != nil {
 		return fmt.Errorf("report credential for %q: %w", name, err)
 	}

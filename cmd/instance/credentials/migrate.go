@@ -62,7 +62,7 @@ func runMigrate(cmd *cobra.Command, values *flags.MigrateFlags) error {
 		DryRun: values.DryRun,
 	})
 
-	outputErr := output.WriteMigration(cmd.OutOrStderr(), report)
+	outputErr := output.WriteMigration(cmd.OutOrStdout(), report)
 
 	migrateErr = errors.Join(migrateErr, outputErr)
 	if migrateErr != nil {
