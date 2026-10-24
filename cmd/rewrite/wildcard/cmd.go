@@ -4,28 +4,10 @@
 package wildcard
 
 import (
-	"errors"
-	"fmt"
-	"slices"
-
 	"github.com/spf13/cobra"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 )
-
-// flagValues stores the flag values bound to one wildcard command.
-//
-// Every command constructor creates its own values so that repeated
-// construction never shares flag state between executions.
-type flagValues struct {
-	// names holds the --instance flag values.
-	names []string
-	// all holds the --all flag value.
-	all bool
-}
-
-// wildcardZoneRunner executes one wildcard zone command body.
-type wildcardZoneRunner func(*cobra.Command, []string, *flagValues) error
 
 // NewCommand creates the rewrite wildcard command and registers its subcommands.
 //
@@ -45,23 +27,22 @@ AdGuard Home instances.`,
 	return wildcardCmd
 }
 
-// newWildcardZoneCommand creates a wildcard zone command and returns it with
-// the fresh flag values its own file binds the command flags to.
+// newWildcardZoneCommand creates a wildcard zone command, which takes one zone
+// and the instance-selection flags.
 //
 // Parameters:
-//   - use: Command usage line.
-//   - short: Command short description.
-//   - run: Command body receiving the command, arguments, and bound values.
+//   - use: Published invocation syntax of the subcommand.
+//   - short: Published one-line description of the subcommand.
+//   - run: Run function bound to the flag values of this command.
 //
 // Returns:
-//   - *cobra.Command: The created command awaiting flag registration.
-//   - *flagValues: The fresh values the command flags bind to.
+//   - *cobra.Command: The command with its own flag values.
 func newWildcardZoneCommand(
 	use string,
 	short string,
-	run wildcardZoneRunner,
-) (*cobra.Command, *flagValues) {
-	values := &flagValues{}
+	run func(*cobra.Command, []string, *flags.InstanceSelection) error,
+) *cobra.Command {
+	values := new(flags.InstanceSelection)
 
 	command := &cobra.Command{
 		Use:   use,
@@ -72,41 +53,7 @@ func newWildcardZoneCommand(
 		},
 	}
 
-	return command, values
-}
+	values.Bind(command.Flags())
 
-// selection captures the instance selection taken from the flags.
-//
-// Returns:
-//   - app.Selection: The instance selection taken from the flags.
-func (values *flagValues) selection() app.Selection {
-	return app.Selection{
-		Names: slices.Clone(values.names),
-		All:   values.all,
-	}
-}
-
-// writeWildcardMutationResults renders every successful mutation result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered messages.
-//   - results: Per-instance mutation results to render.
-//
-// Returns:
-//   - error: Joined errors from every failed message write.
-func writeWildcardMutationResults(
-	cmd *cobra.Command,
-	results []app.MutationResult,
-) error {
-	writer := cmd.OutOrStdout()
-	errs := make([]error, 0, len(results))
-
-	for _, result := range results {
-		_, err := fmt.Fprintf(writer, "[%s] %s\n", result.Instance, result.Message)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("write instance %q result: %w", result.Instance, err))
-		}
-	}
-
-	return errors.Join(errs...)
+	return command
 }

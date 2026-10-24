@@ -6,7 +6,6 @@ coverage/
 coverage.out
 **/testdata/*
 !pkg/**/testdata/fuzz/
-!cmd/testdata/layering/
 *.lcov
 
 # Built binaries

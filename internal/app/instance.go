@@ -222,7 +222,31 @@ func AddInstance(ctx context.Context, request InstanceAddRequest) error {
 	return nil
 }
 
-// RemoveInstance deletes one instance from the configuration file, deletes the
+// RemoveInstance deletes one instance from the configuration file and deletes
+// the password it kept in the operating system credential store.
+//
+// The removal uses the credential store of the run, which is the operating
+// system credential store unless the run attached another with
+// [WithCredentialStore]. The command layer never constructs a store. The removal
+// itself, and the order that makes it converge, is described on removeWithStore.
+//
+// Parameters:
+//   - ctx: context carrying the configuration of the run.
+//   - request: the instance identifier.
+//
+// Returns:
+//   - InstanceRemoveResult: the removed instance and the credential outcome.
+//   - error: a wrapped error naming the instance when it cannot be removed.
+func RemoveInstance(ctx context.Context, request InstanceRemoveRequest) (InstanceRemoveResult, error) {
+	result, err := removeWithStore(ctx, credentialStore(ctx), request)
+	if err != nil {
+		return result, fmt.Errorf("remove %q: %w", request.Name, err)
+	}
+
+	return result, nil
+}
+
+// removeWithStore deletes one instance from the configuration file, deletes the
 // password it kept in the operating system credential store, and saves the file.
 //
 // The order is the guarantee. The stored credential is deleted first, and the
@@ -252,7 +276,7 @@ func AddInstance(ctx context.Context, request InstanceAddRequest) error {
 //   - error: a wrapped error when no configuration is loaded, the
 //     credential cannot be deleted, the instance is not configured, or the file
 //     cannot be written.
-func RemoveInstance(
+func removeWithStore(
 	ctx context.Context,
 	store credentials.Store,
 	request InstanceRemoveRequest,

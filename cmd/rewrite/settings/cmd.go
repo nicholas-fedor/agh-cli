@@ -4,25 +4,8 @@
 package settings
 
 import (
-	"slices"
-
 	"github.com/spf13/cobra"
-
-	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
-
-// flagValues stores the flag values bound to one settings command.
-//
-// Every command constructor creates its own values so that repeated
-// construction never shares flag state between executions.
-type flagValues struct {
-	// names holds the --instance flag values.
-	names []string
-	// all holds the --all flag value.
-	all bool
-	// enabled holds the --enabled flag value.
-	enabled bool
-}
 
 // NewCommand creates the rewrite settings command and registers its subcommands.
 //
@@ -42,15 +25,4 @@ func NewCommand() *cobra.Command {
 	)
 
 	return settingsCmd
-}
-
-// selection captures the instance selection taken from the flags.
-//
-// Returns:
-//   - app.Selection: The instance selection taken from the flags.
-func (values *flagValues) selection() app.Selection {
-	return app.Selection{
-		Names: slices.Clone(values.names),
-		All:   values.all,
-	}
 }

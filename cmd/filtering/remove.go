@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newFilteringRemoveURLCommand creates the remove-url command.
@@ -17,14 +19,18 @@ import (
 // Returns:
 //   - *cobra.Command: A fresh remove-url command owning its selection flags.
 func newFilteringRemoveURLCommand() *cobra.Command {
+	values := new(flags.InstanceSelection)
+
 	command := &cobra.Command{
 		Use:   "remove-url <url>",
 		Short: "Remove a filter URL",
 		Args:  cobra.ExactArgs(1),
-		RunE:  runFilteringRemoveURL,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFilteringRemoveURL(cmd, args, values)
+		},
 	}
 
-	registerFilteringSelectionFlags(command)
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -34,23 +40,19 @@ func newFilteringRemoveURLCommand() *cobra.Command {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - args: Filter URL argument.
+//   - values: Bound flag values selecting the target instances.
 //
 // Returns:
-//   - error: An error when flag parsing or a per-instance request fails.
-func runFilteringRemoveURL(cmd *cobra.Command, args []string) error {
-	selection, err := currentFilteringSelection(cmd)
-	if err != nil {
-		return fmt.Errorf("parse filtering flags: %w", err)
-	}
-
+//   - error: An error when a per-instance request or the result output fails.
+func runFilteringRemoveURL(cmd *cobra.Command, args []string, values *flags.InstanceSelection) error {
 	results, operationErr := app.NewFilteringManagement(cmd.Context()).RemoveURL(
 		cmd.Context(),
-		selection,
+		values.Selection(),
 		args[0],
 	)
-	outputErr := writeFilteringMutationResults(cmd, results)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
-	err = errors.Join(operationErr, outputErr)
+	err := errors.Join(operationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("remove filtering URL: %w", err)
 	}

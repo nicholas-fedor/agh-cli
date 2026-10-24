@@ -132,6 +132,23 @@ func TestCredentialsSetPasswordKeepsKeySharedByAnotherInstance(t *testing.T) {
 	assert.Contains(t, err.Error(), "was replaced")
 }
 
+// TestCredentialsSetPasswordRefusesEmptyPassword verifies that an empty password
+// is refused before the store is read or written, whichever caller supplies it.
+func TestCredentialsSetPasswordRefusesEmptyPassword(t *testing.T) {
+	t.Parallel()
+
+	local := newConfig(t, plaintextConfig())
+
+	// The mock has no expectations, so any store call fails the test.
+	store := mockCredentials.NewMockStore(t)
+
+	result, err := NewManager(store, local).SetPassword(t.Context(), alphaInstance, "", "")
+
+	require.ErrorIs(t, err, ErrEmptyPassword)
+	assert.Equal(t, PasswordSetResult{}, result)
+	assert.Contains(t, err.Error(), `set password for "alpha"`)
+}
+
 // TestCredentialsSetPasswordRemovesNewCredentialWhenConfigSaveFails verifies a
 // store write whose configuration write failed is undone. The configuration
 // still points at nothing, so leaving the entry behind would create a secret no

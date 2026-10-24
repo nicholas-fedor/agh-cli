@@ -35,6 +35,9 @@ The intended dependency direction is:
 ```text
 main.go
   -> cmd
+    -> internal/prompt
+    -> internal/flags -> internal/output
+    -> internal/output -> internal/app and the domain value types
     -> internal/app
       -> internal/client | internal/filtering | internal/rewrite
         -> pkg/adguard
@@ -43,20 +46,25 @@ main.go
       -> internal/config | internal/credentials | internal/instance | internal/execution
 ```
 
-- `cmd` contains Cobra definitions, flags, argument validation, and presentation wiring only.
-- `internal/app` is the glue between commands, domain packages, `pkg/adguard`, instance selection, and execution.
+- `cmd` contains Cobra command definitions only. A command binds an `internal/flags` container and calls `internal/app`. It hands the result to `internal/output`. A helper that holds logic belongs in the package that owns the concern, never in `cmd`, and that includes validation and formatting.
+- `internal/flags` owns every command's flag values and bindings. It also owns flag validation that Cobra does not provide, and it turns flag values into requests and selections.
+- `internal/output` owns rendering, from tables and reports to result lines and the layout of multi-instance output. It also declares the sort columns of each table. Every writer takes an `io.Writer`, so the command chooses the stream.
+- `internal/prompt` owns operator input: hidden secret reads, redirected input, and confirmations.
+- `internal/flags` and `internal/output` sit beside `cmd`. They read the result and request types of `internal/app` and the domain packages, and `internal/flags` takes the sort columns from `internal/output`. Neither is imported by `internal/app` or a domain package.
+- `internal/app` is the glue between commands, domain packages, `pkg/adguard`, instance selection, and execution. Every use case a command runs is an `internal/app` call, the credential use cases included. `internal/app` never hands a command a domain object to call.
+- The credential store of a run is carried on the context. A run that attaches none uses the operating system credential store, and a test attaches its own with `app.WithCredentialStore`.
 - Requests from `cmd` carry only the operator's intent, such as selected names or `--all`. `internal/app` reads the configured instances from the run configuration itself.
 - Domain packages own use cases, validation, request shaping, wildcard behavior, and result shaping.
 - `pkg/adguard` owns transport, auth, timeouts, bounded responses, strict decoding, typed errors, and public domain types.
 - `internal/config` owns local YAML persistence and resolving which file a run uses: the search order, the per-user path, and the write-path fallback. `internal/app` loads the resolved file and attaches it to the command context.
-- `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, credential resolution, and the credential use cases in `Manager`. It reaches the configuration through an interface it defines and never imports `internal/config`.
+- `internal/credentials` owns the credential store adapter, the mounted-secret and environment readers, credential resolution, and the credential use cases in `Manager`. Commands reach `Manager` only through `internal/app`. It reaches the configuration through an interface it defines and never imports `internal/config`.
 - `internal/instance` owns validated instance configuration and catalog selection.
 - `internal/execution` owns ordered multi-target execution, cancellation, outcomes, error aggregation, and collecting per-target results.
 - `internal/connection` builds the `pkg/adguard` client for a configured instance. It owns the base URL, the authentication choice, and the one request timeout every feature uses.
 
 Do not let `cmd` import `pkg/adguard` for feature operations. Route feature behavior through `internal/app` and its domain package.
 
-`cmd` may import the domain packages `internal/client`, `internal/filtering`, `internal/rewrite`, and `internal/credentials` for their value types only, such as requests, results, and sentinel errors. It never calls into them, not even a constructor, a method, or a conversion, so every behavior still goes through `internal/app`. `internal/app` does not copy or re-export a domain type that `cmd` can name directly. `cmd` never imports `pkg/adguard`, `internal/config`, `internal/instance`, `internal/execution`, or `internal/connection` in production code. `cmd/layering_test.go` enforces both rules.
+`cmd` may import the domain packages `internal/client`, `internal/filtering`, `internal/rewrite`, and `internal/credentials` for their value types only, such as requests, results, and sentinel errors. It never calls into them, not even a constructor, a method, or a conversion, so every behavior still goes through `internal/app`. `internal/app` does not copy or re-export a domain type that `cmd` can name directly. `cmd` never imports `pkg/adguard`, `internal/config`, `internal/instance`, `internal/execution`, or `internal/connection` in production code. Production `cmd` code declares no interface, because a command needs no seam of its own.
 
 ## Command construction
 
@@ -65,12 +73,17 @@ Every command tree must be constructed fresh:
 - `cmd.NewRootCommand()` returns a new root tree.
 - Each feature package exports `NewCommand()`.
 - Each leaf command has an unexported constructor.
-- Flags bind to values owned by the constructed command.
+- Flags bind to an `internal/flags` container owned by the constructed command.
 - No package-level Cobra command or flag state.
 - No `init()` registration.
-- Shared command helpers belong in the owning package's `cmd.go`.
-- Command-specific helpers belong in the command's own file.
-- Do not create `wiring.go` or artificial `output.go` aggregation files.
+- Wiring shared by a family of subcommands, such as one constructor for several mutation commands, belongs in the owning package's `cmd.go`.
+- Logic does not belong in `cmd`. It goes to the package that owns it:
+  - rendering to `internal/output`
+  - operator input to `internal/prompt`
+  - flag validation and request shaping to `internal/flags`
+  - composition to `internal/app`
+  - domain rules to their domain package
+- Do not create `wiring.go` or `output.go` aggregation files under `cmd`.
 
 ## Go and comment conventions
 
@@ -94,7 +107,8 @@ Every command tree must be constructed fresh:
 - Integration and contract tests belong in the external `_test` package when they exercise public behavior.
 - Use `httptest.NewTestServer` for real HTTP contract coverage.
 - Use `t.Context()` and `t.Parallel()` unless the test mutates process-global state, such as with `t.Setenv` or `t.Chdir`.
-- Command tests execute with a context from `internal/app/apptest`, which carries a loaded configuration.
+- Command tests execute with a context from `internal/app/apptest`, which carries a loaded configuration and a credential store. The default store is a generated mock with no expectations, so a command under test never reaches the host credential store. A test that exercises the store supplies its own with `apptest.StoreContext`.
+- A command test controls a hidden prompt through `cmd.SetIn` with an input that implements `prompt.TerminalInput`.
 - `pkg/adguard` domains have unit, integration, and fuzz files named:
   - `<domain>_test.go`
   - `<domain>_integration_test.go`

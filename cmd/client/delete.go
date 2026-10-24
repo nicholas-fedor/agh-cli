@@ -4,11 +4,14 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newClientDeleteCommand creates the delete command and binds its flags.
@@ -16,7 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The delete command with its own flag values.
 func newClientDeleteCommand() *cobra.Command {
-	values := &selectionValues{}
+	values := new(flags.InstanceSelection)
 
 	command := &cobra.Command{
 		Use:   "delete <name>",
@@ -27,7 +30,7 @@ func newClientDeleteCommand() *cobra.Command {
 		},
 	}
 
-	registerClientSelectionFlags(command, values)
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -41,18 +44,17 @@ func newClientDeleteCommand() *cobra.Command {
 //
 // Returns:
 //   - error: An error when a selection or per-instance request fails.
-func runClientDelete(cmd *cobra.Command, args []string, values *selectionValues) error {
-	selection := values.selection()
-
+func runClientDelete(cmd *cobra.Command, args []string, values *flags.InstanceSelection) error {
 	results, operationErr := app.NewClientManagement(cmd.Context()).Delete(
 		cmd.Context(),
-		selection,
+		values.Selection(),
 		args[0],
 	)
-	writeClientMutationResults(cmd, results)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
-	if operationErr != nil {
-		return fmt.Errorf("run client delete: %w", operationErr)
+	err := errors.Join(operationErr, outputErr)
+	if err != nil {
+		return fmt.Errorf("run client delete: %w", err)
 	}
 
 	return nil

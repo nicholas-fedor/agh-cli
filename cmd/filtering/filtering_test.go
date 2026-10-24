@@ -4,26 +4,14 @@
 package filtering
 
 import (
-	"bytes"
-	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/filtering"
 )
-
-// filteringFailingWriter returns a deterministic output failure.
-type filteringFailingWriter struct {
-	// err is returned without writing any bytes.
-	err error
-}
 
 // filteringExpectedFlag describes one published flag of a filtering subcommand.
 type filteringExpectedFlag struct {
@@ -62,10 +50,6 @@ type filteringSyntaxCase struct {
 const (
 	// FilteringCommandAlphaInstance identifies the first rendering result.
 	filteringCommandAlphaInstance = "alpha"
-	// FilteringCommandZuluInstance identifies the second rendering result.
-	filteringCommandZuluInstance = "zulu"
-	// FilteringCommandAddedMessage identifies the add-URL success message.
-	filteringCommandAddedMessage = "Added filter URL filters"
 	// FilteringCommandBoolType identifies the published pflag boolean type.
 	filteringCommandBoolType = "bool"
 	// FilteringCommandAllFlagArg is the published long form of the --all flag.
@@ -81,34 +65,11 @@ const (
 	filteringCommandAddURLName = "add-url"
 	// FilteringCommandRemoveURLName identifies the remove-url subcommand.
 	filteringCommandRemoveURLName = "remove-url"
+	// FilteringAllFlag names the flag selecting every configured instance.
+	filteringAllFlag = "all"
+	// FilteringInstanceFlag names the flag selecting explicit instance names.
+	filteringInstanceFlag = "instance"
 )
-
-// TestFilteringConfigFromFlagsPreservesFalseAndZero verifies flag-to-app shaping.
-func TestFilteringConfigFromFlagsPreservesFalseAndZero(t *testing.T) {
-	t.Parallel()
-
-	command := filteringCommand(t, filteringCommandConfigName)
-	require.NoError(t, command.ParseFlags([]string{"--enabled=false", "--interval=0"}))
-
-	enabled, interval, err := filteringConfigFromFlags(command)
-
-	require.NoError(t, err)
-	assert.False(t, enabled)
-	assert.Zero(t, interval)
-}
-
-// TestFilteringURLFromFlagsPreservesEmptyAndFalse verifies argument-to-app shaping.
-func TestFilteringURLFromFlagsPreservesEmptyAndFalse(t *testing.T) {
-	t.Parallel()
-
-	command := filteringCommand(t, filteringCommandAddURLName)
-	require.NoError(t, command.ParseFlags([]string{"--whitelist=false"}))
-
-	whitelist, err := filteringURLFromFlags(command)
-
-	require.NoError(t, err)
-	assert.False(t, whitelist)
-}
 
 // TestNewCommandPreservesSubcommandSyntax verifies the published CLI surface.
 func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
@@ -149,138 +110,6 @@ func TestNewCommandReturnsIndependentSubcommands(t *testing.T) {
 
 	assert.False(t, all)
 	assert.Empty(t, names)
-}
-
-// TestCurrentFilteringSelectionReadsExecutedCommandFlags verifies that each
-// execution resolves instances from its own command state instead of state left
-// behind by an earlier execution.
-func TestCurrentFilteringSelectionReadsExecutedCommandFlags(t *testing.T) {
-	t.Parallel()
-
-	first := filteringCommand(t, filteringCommandAddURLName)
-	second := filteringCommand(t, filteringCommandRemoveURLName)
-
-	require.NoError(t, first.ParseFlags(
-		filteringAllInstancesArguments(filteringCommandAlphaInstance),
-	))
-	require.NoError(t, second.ParseFlags(
-		filteringNamedInstancesArguments(filteringCommandZuluInstance),
-	))
-
-	firstSelection, err := currentFilteringSelection(first)
-	require.NoError(t, err)
-
-	secondSelection, err := currentFilteringSelection(second)
-	require.NoError(t, err)
-
-	assert.True(t, firstSelection.All)
-	assert.Equal(t, []string{filteringCommandAlphaInstance}, firstSelection.Names)
-	assert.False(t, secondSelection.All)
-	assert.Equal(t, []string{filteringCommandZuluInstance}, secondSelection.Names)
-}
-
-// TestCurrentFilteringSelectionDefaultsToUnscopedSelection verifies that a
-// freshly constructed command selects neither explicit names nor every instance.
-func TestCurrentFilteringSelectionDefaultsToUnscopedSelection(t *testing.T) {
-	t.Parallel()
-
-	command := filteringCommand(t, filteringCommandStatusName)
-
-	selection, err := currentFilteringSelection(command)
-
-	require.NoError(t, err)
-	assert.False(t, selection.All)
-	assert.Empty(t, selection.Names)
-}
-
-// TestCurrentFilteringSelectionRejectsMissingFlags verifies flag lookup failures.
-func TestCurrentFilteringSelectionRejectsMissingFlags(t *testing.T) {
-	t.Parallel()
-
-	_, err := currentFilteringSelection(&cobra.Command{})
-
-	require.ErrorContains(t, err, "parse instance flag")
-}
-
-// TestWriteFilteringStatuses verifies command-owned status rendering and order,
-// and that the instance tables are separated by exactly one blank line, with
-// none before the first table.
-func TestWriteFilteringStatuses(t *testing.T) {
-	t.Parallel()
-
-	filters := []filtering.Subscription{{
-		Enabled:    false,
-		Name:       "filters",
-		RulesCount: 0,
-		URL:        "https://filters.example/list.txt",
-	}}
-	allowlists := []filtering.Subscription{}
-	var output bytes.Buffer
-
-	command := &cobra.Command{}
-	command.SetOut(&output)
-
-	err := writeFilteringStatuses(command, []app.FilteringStatusResult{
-		{
-			Filters:          &filters,
-			WhitelistFilters: &allowlists,
-			Instance:         filteringCommandAlphaInstance,
-			InstanceCount:    2,
-		},
-		{Instance: filteringCommandZuluInstance, InstanceCount: 2},
-	})
-
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(output.String(), "Instance: "+filteringCommandAlphaInstance+"\n"))
-	assert.Contains(t, output.String(), "filters")
-	assert.Contains(t, output.String(), "disabled")
-	assert.Contains(t, output.String(), "\n\nInstance: "+filteringCommandZuluInstance+"\n")
-	assert.NotContains(t, output.String(), "\n\n\n")
-	assert.Less(t, strings.Index(output.String(), "alpha"), strings.Index(output.String(), "zulu"))
-}
-
-// TestWriteFilteringMutationResults verifies success-message wiring.
-func TestWriteFilteringMutationResults(t *testing.T) {
-	t.Parallel()
-
-	var output bytes.Buffer
-
-	command := &cobra.Command{}
-	command.SetOut(&output)
-
-	err := writeFilteringMutationResults(command, []app.MutationResult{
-		{Instance: filteringCommandAlphaInstance, Message: filteringCommandAddedMessage},
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, "[alpha] Added filter URL filters\n", output.String())
-}
-
-// TestWriteFilteringMutationResultsPreservesWriterErrors verifies output failures.
-func TestWriteFilteringMutationResultsPreservesWriterErrors(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("write failed")
-	command := &cobra.Command{}
-	command.SetOut(filteringFailingWriter{err: wantErr})
-
-	err := writeFilteringMutationResults(command, []app.MutationResult{
-		{Instance: filteringCommandAlphaInstance, Message: filteringCommandAddedMessage},
-	})
-
-	require.ErrorIs(t, err, wantErr)
-}
-
-// Write returns the configured rendering error.
-//
-// Parameters:
-//   - _: Output bytes intentionally ignored.
-//
-// Returns:
-//   - int: The number of bytes written, always zero.
-//   - error: The configured rendering error.
-func (writer filteringFailingWriter) Write(_ []byte) (int, error) {
-	return 0, writer.err
 }
 
 // filteringCommand returns a freshly constructed filtering subcommand.

@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 	"github.com/nicholas-fedor/agh-cli/pkg/adguard"
 )
 
@@ -274,7 +275,7 @@ func TestNewCommandDeleteRequiresAnswer(t *testing.T) {
 	command.SetArgs([]string{RewriteCommandDelete, RewriteArgAll, rewriteCommandTestDomain})
 
 	err := command.Execute()
-	require.ErrorIs(t, err, errAnswerRequired)
+	require.ErrorIs(t, err, flags.ErrAnswerRequired)
 }
 
 // TestRunRewriteListUsesAppOutput verifies list command output wiring.
@@ -295,7 +296,7 @@ func TestRunRewriteListUsesAppOutput(t *testing.T) {
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
-	require.NoError(t, runRewriteList(command, nil, testRewriteFlagValues()))
+	require.NoError(t, runRewriteList(command, nil, testRewriteListFlags()))
 	assert.Contains(t, output.String(), "example.com")
 	assert.Contains(t, output.String(), "192.0.2.1")
 	assert.Contains(t, output.String(), "disabled")
@@ -310,7 +311,7 @@ func TestRunRewriteListPreservesStructuredError(t *testing.T) {
 	})
 	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
-	err := runRewriteList(newRewriteCommand(ctx), nil, testRewriteFlagValues())
+	err := runRewriteList(newRewriteCommand(ctx), nil, testRewriteListFlags())
 
 	gotErr, ok := errors.AsType[*adguard.Error](err)
 	require.True(t, ok)
@@ -392,9 +393,9 @@ func TestRunRewriteDiffFileUsesAppOutput(t *testing.T) {
 	contents := []byte("- domain: local.example\n  answer: 192.0.2.1\n  enabled: false\n")
 	require.NoError(t, os.WriteFile(path, contents, 0o600))
 
-	values := testRewriteFlagValues()
+	values := testRewriteDiffFlags()
 
-	values.file = path
+	values.File = path
 
 	command := newRewriteCommand(ctx)
 	output := &bytes.Buffer{}
@@ -515,14 +516,30 @@ func newRewriteCommand(ctx context.Context) *cobra.Command {
 	return command
 }
 
-// testRewriteFlagValues returns the flag values shared by run-function tests.
+// testRewriteListFlags returns the list flag values shared by run-function
+// tests.
 //
 // Returns:
-//   - *flagValues: Values targeting the single test instance with sorting by domain.
-func testRewriteFlagValues() *flagValues {
-	return &flagValues{
-		all:        true,
-		sortColumn: rewriteCommandTestSort,
+//   - *flags.RewriteListFlags: Values targeting every instance with sorting by
+//     domain.
+func testRewriteListFlags() *flags.RewriteListFlags {
+	return &flags.RewriteListFlags{
+		Names: nil, All: true,
+		Sort: rewriteCommandTestSort,
+	}
+}
+
+// testRewriteDiffFlags returns the diff flag values shared by run-function
+// tests.
+//
+// Returns:
+//   - *flags.RewriteDiffFlags: Values targeting every instance with sorting by
+//     domain and no rules file.
+func testRewriteDiffFlags() *flags.RewriteDiffFlags {
+	return &flags.RewriteDiffFlags{
+		Names: nil, All: true,
+		File: "",
+		Sort: rewriteCommandTestSort,
 	}
 }
 

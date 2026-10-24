@@ -6,12 +6,10 @@ package version
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/flags"
-	"github.com/nicholas-fedor/agh-cli/internal/metadata"
 )
 
 // NewCommand creates the version command.
@@ -34,7 +32,7 @@ func NewCommand() *cobra.Command {
   # Print version as JSON
   agh-cli version --json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runVersionCmd(cmd)
+			return runVersionCmd(cmd, versionFlags)
 		},
 	}
 
@@ -47,49 +45,15 @@ func NewCommand() *cobra.Command {
 //
 // Parameters:
 //   - cmd: Cobra command used for output.
+//   - values: Bound flag values selecting the output format.
 //
 // Returns:
-//   - error: Non-nil if the printer cannot be selected or output fails.
-func runVersionCmd(cmd *cobra.Command) error {
-	printer, err := selectPrinter(cmd)
-	if err != nil {
-		return fmt.Errorf("select printer: %w", err)
-	}
-
-	err = printer(cmd.OutOrStdout())
+//   - error: Non-nil if the version output fails.
+func runVersionCmd(cmd *cobra.Command, values *flags.VersionFlags) error {
+	err := values.Printer()(cmd.OutOrStdout())
 	if err != nil {
 		return fmt.Errorf("print version: %w", err)
 	}
 
 	return nil
-}
-
-// selectPrinter returns the appropriate version output printer based on flags.
-//
-// Parameters:
-//   - cmd: Cobra command providing access to the verbose and json flags.
-//
-// Returns:
-//   - func(io.Writer) error: The selected printer function.
-//   - error: Non-nil if a flag cannot be retrieved.
-func selectPrinter(cmd *cobra.Command) (func(io.Writer) error, error) {
-	json, err := cmd.Flags().GetBool("json")
-	if err != nil {
-		return nil, fmt.Errorf("get json flag: %w", err)
-	}
-
-	if json {
-		return metadata.PrintJSON, nil
-	}
-
-	verbose, err := cmd.Flags().GetBool("verbose")
-	if err != nil {
-		return nil, fmt.Errorf("get verbose flag: %w", err)
-	}
-
-	if verbose {
-		return metadata.PrintVerbose, nil
-	}
-
-	return metadata.PrintDefault, nil
 }

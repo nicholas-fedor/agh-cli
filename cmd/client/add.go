@@ -4,13 +4,14 @@
 package client
 
 import (
-	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/client"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newClientAddCommand creates the add command and binds its flags.
@@ -18,32 +19,27 @@ import (
 // Returns:
 //   - *cobra.Command: The add command with its own flag values.
 func newClientAddCommand() *cobra.Command {
-	return newClientMutationCommand("Add a client", "add <name>", runClientAdd)
+	return newClientMutationCommand("add <name>", "Add a client", runClientAdd)
 }
 
-// runClientAdd adds a new client configuration to one or more instances.
+// runClientAdd adds a new client configuration across one or more instances.
 //
 // Parameters:
-//   - cmd: Cobra command context and mutation flag access.
+//   - cmd: Cobra command providing output and context.
 //   - args: Client name argument.
-//   - values: Bound flag values selecting the target instances.
+//   - values: Bound flag values selecting the instances and client settings.
 //
 // Returns:
-//   - error: An error when flag parsing or a per-instance request fails.
-func runClientAdd(cmd *cobra.Command, args []string, values *selectionValues) error {
-	err := runClientMutation(
-		cmd,
-		args,
-		values,
-		func(
-			management *app.ClientManagement,
-			ctx context.Context,
-			selection app.Selection,
-			request client.Settings,
-		) ([]app.MutationResult, error) {
-			return management.Add(ctx, selection, request)
-		},
+//   - error: An error when a per-instance request or the result output fails.
+func runClientAdd(cmd *cobra.Command, args []string, values *flags.ClientMutationFlags) error {
+	results, operationErr := app.NewClientManagement(cmd.Context()).Add(
+		cmd.Context(),
+		values.Selection(),
+		values.Settings(args[0]),
 	)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
+
+	err := errors.Join(operationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("run client add: %w", err)
 	}

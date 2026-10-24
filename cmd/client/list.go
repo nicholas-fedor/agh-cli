@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
@@ -18,7 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The list command with its own flag values.
 func newClientListCommand() *cobra.Command {
-	values := &selectionValues{}
+	values := new(flags.InstanceSelection)
 
 	command := &cobra.Command{
 		Use:   "list",
@@ -28,7 +29,7 @@ func newClientListCommand() *cobra.Command {
 		},
 	}
 
-	registerClientSelectionFlags(command, values)
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -43,70 +44,13 @@ func newClientListCommand() *cobra.Command {
 // Returns:
 //   - error: An error when a selection, per-instance request, or output operation
 //     fails.
-func runClientList(cmd *cobra.Command, _ []string, values *selectionValues) error {
-	selection := values.selection()
-
-	results, operationErr := app.NewClientManagement(cmd.Context()).List(cmd.Context(), selection)
-	outputErr := writeClientList(cmd, results)
+func runClientList(cmd *cobra.Command, _ []string, values *flags.InstanceSelection) error {
+	results, operationErr := app.NewClientManagement(cmd.Context()).List(cmd.Context(), values.Selection())
+	outputErr := output.WriteClientList(cmd.OutOrStdout(), results)
 
 	err := errors.Join(operationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("list clients: %w", err)
-	}
-
-	return nil
-}
-
-// writeClientList renders successful list results in command output.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered tables.
-//   - results: Per-instance list results to render.
-//
-// Returns:
-//   - error: Joined errors from every failed instance table.
-func writeClientList(cmd *cobra.Command, results []app.ClientListResult) error {
-	errs := make([]error, 0, len(results))
-	for position, result := range results {
-		err := writeClientListResult(cmd, position, result)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-// writeClientListResult renders one instance table.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered table.
-//   - position: zero-based position of the result among the rendered results.
-//   - result: One per-instance list result.
-//
-// Returns:
-//   - error: An error when the instance table cannot be written.
-func writeClientListResult(
-	cmd *cobra.Command,
-	position int,
-	result app.ClientListResult,
-) error {
-	if position > 0 {
-		cmd.Println()
-	}
-
-	if result.InstanceCount > 1 {
-		cmd.Printf("Instance: %s\n", result.Instance)
-	}
-
-	tableWriter := output.NewTableWriter("INSTANCE", "NAME", "TYPE")
-	for _, row := range result.Rows {
-		tableWriter.Row(result.Instance, row.Name, output.FormatClientType(row.Automatic))
-	}
-
-	_, err := tableWriter.WriteTo(cmd.OutOrStdout())
-	if err != nil {
-		return fmt.Errorf("write instance %q: %w", result.Instance, err)
 	}
 
 	return nil

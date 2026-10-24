@@ -6,11 +6,11 @@ package rewrite
 import (
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
@@ -19,7 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The list command with its own flag values.
 func newRewriteListCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.RewriteListFlags)
 
 	command := &cobra.Command{
 		Use:   "list",
@@ -29,9 +29,7 @@ func newRewriteListCommand() *cobra.Command {
 		},
 	}
 
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
-	command.Flags().StringVarP(&values.sortColumn, "sort", "s", "domain", "sort column (domain, answer, status)")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -44,116 +42,20 @@ func newRewriteListCommand() *cobra.Command {
 //   - values: Bound flag values selecting the target instances.
 //
 // Returns:
-//   - error: An error when a selection, per-instance request, or the list output
-//     fails.
-func runRewriteList(cmd *cobra.Command, _ []string, values *flagValues) error {
-	selection := values.selection()
+//   - error: An error when the sort column is unknown, or when a selection,
+//     per-instance request, or the list output fails.
+func runRewriteList(cmd *cobra.Command, _ []string, values *flags.RewriteListFlags) error {
+	err := values.Validate()
+	if err != nil {
+		return fmt.Errorf("list rewrite rules: %w", err)
+	}
 
-	results, listErr := app.NewRewriteManagement(cmd.Context()).List(cmd.Context(), selection)
-	outputErr := writeRewriteLists(cmd, results, values.sortColumn)
+	results, listErr := app.NewRewriteManagement(cmd.Context()).List(cmd.Context(), values.Selection())
+	outputErr := output.WriteRewriteLists(cmd.OutOrStdout(), results, values.Sort)
 
 	listErr = errors.Join(listErr, outputErr)
 	if listErr != nil {
 		return fmt.Errorf("list rewrite rules: %w", listErr)
-	}
-
-	return nil
-}
-
-// writeRewriteLists renders every successful rewrite list result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered tables.
-//   - results: Per-instance rewrite list results to render.
-//   - sortColumn: Selected sort column, or an empty value for the default.
-//
-// Returns:
-//   - error: Joined errors from every failed instance table.
-func writeRewriteLists(
-	cmd *cobra.Command,
-	results []app.RewriteListResult,
-	sortColumn string,
-) error {
-	errs := make([]error, 0, len(results))
-
-	for position, result := range results {
-		err := writeRewriteList(cmd, position, result, sortColumn)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-// writeRewriteList renders one rewrite list result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered table.
-//   - position: zero-based position of the result among the rendered results.
-//   - result: One per-instance rewrite list result.
-//   - sortColumn: Selected sort column, or an empty value for the default.
-//
-// Returns:
-//   - error: An error when the instance table cannot be written.
-func writeRewriteList(
-	cmd *cobra.Command,
-	position int,
-	result app.RewriteListResult,
-	sortColumn string,
-) error {
-	writer := cmd.OutOrStdout()
-	err := writeRewriteListHeader(writer, position, result)
-	if err != nil {
-		return fmt.Errorf("write instance %q rewrite list header: %w", result.Instance, err)
-	}
-
-	tableWriter := output.NewTableWriter("INSTANCE", "DOMAIN", "ANSWER", "STATUS")
-	for _, rule := range result.Rules {
-		tableWriter.Row(
-			result.Instance,
-			rule.Domain,
-			rule.Answer,
-			output.FormatRewriteStatus(rule.Enabled),
-		)
-	}
-
-	applyRewriteSort(tableWriter, sortColumn, "INSTANCE")
-
-	_, err = tableWriter.WriteTo(writer)
-	if err != nil {
-		return fmt.Errorf("write instance %q rewrite rules: %w", result.Instance, err)
-	}
-
-	return nil
-}
-
-// writeRewriteListHeader renders separators and multi-instance headers.
-//
-// Parameters:
-//   - writer: Destination for the separator and instance header.
-//   - position: zero-based position of the result among the rendered results.
-//   - result: One per-instance rewrite list result.
-//
-// Returns:
-//   - error: An error when the separator or header cannot be written.
-func writeRewriteListHeader(writer io.Writer, position int, result app.RewriteListResult) error {
-	var err error
-
-	if position > 0 && result.InstanceCount > 1 {
-		_, err = fmt.Fprintln(writer)
-		if err != nil {
-			return fmt.Errorf("write instance separator: %w", err)
-		}
-	}
-
-	if result.InstanceCount <= 1 {
-		return nil
-	}
-
-	_, err = fmt.Fprintf(writer, "Instance: %s\n", result.Instance)
-	if err != nil {
-		return fmt.Errorf("write instance %q header: %w", result.Instance, err)
 	}
 
 	return nil

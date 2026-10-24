@@ -9,17 +9,6 @@ import (
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials"
 )
 
-// flagValues stores the flag values bound to one instance command.
-//
-// Every command constructor creates its own values so that repeated
-// construction never shares flag state between executions.
-type flagValues struct {
-	// all holds the --all flag value.
-	all bool
-	// scheme holds the --scheme flag value.
-	scheme string
-}
-
 // NewCommand creates the instance command and registers its subcommands.
 //
 // Returns:
@@ -36,7 +25,7 @@ manage the credentials those instances use.`,
 	instanceCmd.AddCommand(
 		newInstanceListCommand(),
 		newInstanceAddCommand(),
-		newInstanceRemoveCommand(removeInstance),
+		newInstanceRemoveCommand(),
 		credentials.NewCommand(),
 	)
 

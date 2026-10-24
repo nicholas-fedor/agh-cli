@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newInstanceAddCommand creates the instance add command and binds its flags.
@@ -23,7 +25,7 @@ import (
 // Returns:
 //   - *cobra.Command: The add command with its own flag values.
 func newInstanceAddCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.InstanceAddFlags)
 
 	command := &cobra.Command{
 		Use:   "add <instance> <host>",
@@ -41,7 +43,7 @@ literal out of the command line yourself.`,
 		},
 	}
 
-	command.Flags().StringVarP(&values.scheme, "scheme", "s", "https", "HTTP scheme")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -58,17 +60,20 @@ literal out of the command line yourself.`,
 //
 // Returns:
 //   - error: non-nil when config loading, validation, or save fails.
-func runInstanceAdd(cmd *cobra.Command, args []string, values *flagValues) error {
+func runInstanceAdd(cmd *cobra.Command, args []string, values *flags.InstanceAddFlags) error {
 	addErr := app.AddInstance(cmd.Context(), app.InstanceAddRequest{
 		Name:   args[0],
 		Host:   args[1],
-		Scheme: values.scheme,
+		Scheme: values.Scheme,
 	})
 	if addErr != nil {
 		return fmt.Errorf("add instance: %w", addErr)
 	}
 
-	cmd.Printf("Instance %q added\n", args[0])
+	err := output.WriteInstanceAdded(cmd.OutOrStderr(), args[0])
+	if err != nil {
+		return fmt.Errorf("add instance: %w", err)
+	}
 
 	return nil
 }

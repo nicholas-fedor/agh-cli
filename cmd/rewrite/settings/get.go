@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newRewriteSettingsGetCommand creates the get command and binds its flags.
@@ -17,7 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The get command with its own flag values.
 func newRewriteSettingsGetCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.InstanceSelection)
 
 	command := &cobra.Command{
 		Use:   "get",
@@ -27,8 +29,7 @@ func newRewriteSettingsGetCommand() *cobra.Command {
 		},
 	}
 
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -43,14 +44,12 @@ func newRewriteSettingsGetCommand() *cobra.Command {
 // Returns:
 //   - error: An error when a selection, per-instance request, or the settings
 //     output fails.
-func runRewriteSettingsGet(cmd *cobra.Command, _ []string, values *flagValues) error {
-	selection := values.selection()
-
+func runRewriteSettingsGet(cmd *cobra.Command, _ []string, values *flags.InstanceSelection) error {
 	results, getErr := app.NewRewriteManagement(cmd.Context()).GetSettings(
 		cmd.Context(),
-		selection,
+		values.Selection(),
 	)
-	outputErr := writeRewriteSettingsResults(cmd, results)
+	outputErr := output.WriteRewriteSettings(cmd.OutOrStdout(), results)
 
 	getErr = errors.Join(getErr, outputErr)
 	if getErr != nil {
@@ -58,34 +57,4 @@ func runRewriteSettingsGet(cmd *cobra.Command, _ []string, values *flagValues) e
 	}
 
 	return nil
-}
-
-// writeRewriteSettingsResults renders every successful settings result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered settings lines.
-//   - results: Per-instance settings results to render.
-//
-// Returns:
-//   - error: Joined errors from every failed settings write.
-func writeRewriteSettingsResults(
-	cmd *cobra.Command,
-	results []app.RewriteSettingsResult,
-) error {
-	writer := cmd.OutOrStdout()
-	errs := make([]error, 0, len(results))
-
-	for _, result := range results {
-		_, err := fmt.Fprintf(
-			writer,
-			"[%s] {\"enabled\":%t}\n",
-			result.Instance,
-			result.Enabled,
-		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("write instance %q settings: %w", result.Instance, err))
-		}
-	}
-
-	return errors.Join(errs...)
 }

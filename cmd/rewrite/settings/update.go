@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newRewriteSettingsUpdateCommand creates the update command and binds its flags.
@@ -17,7 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The update command with its own flag values.
 func newRewriteSettingsUpdateCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.RewriteSettingsFlags)
 
 	command := &cobra.Command{
 		Use:   "update",
@@ -27,9 +29,7 @@ func newRewriteSettingsUpdateCommand() *cobra.Command {
 		},
 	}
 
-	command.Flags().BoolVarP(&values.enabled, "enabled", "e", true, "enable rewrites")
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -37,7 +37,7 @@ func newRewriteSettingsUpdateCommand() *cobra.Command {
 // runRewriteSettingsUpdate updates settings across selected instances.
 //
 // Parameters:
-//   - cmd: Cobra command context and settings flag access.
+//   - cmd: Cobra command providing output and context.
 //   - args: Unused positional arguments.
 //   - values: Bound flag values selecting the target instances.
 //
@@ -47,16 +47,14 @@ func newRewriteSettingsUpdateCommand() *cobra.Command {
 func runRewriteSettingsUpdate(
 	cmd *cobra.Command,
 	_ []string,
-	values *flagValues,
+	values *flags.RewriteSettingsFlags,
 ) error {
-	selection := values.selection()
-
 	results, updateErr := app.NewRewriteManagement(cmd.Context()).UpdateSettings(
 		cmd.Context(),
-		selection,
-		values.enabled,
+		values.Selection(),
+		values.Enabled,
 	)
-	outputErr := writeRewriteSettingsMutationResults(cmd, results)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
 	updateErr = errors.Join(updateErr, outputErr)
 	if updateErr != nil {
@@ -64,29 +62,4 @@ func runRewriteSettingsUpdate(
 	}
 
 	return nil
-}
-
-// writeRewriteSettingsMutationResults renders every successful mutation result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered messages.
-//   - results: Per-instance mutation results to render.
-//
-// Returns:
-//   - error: Joined errors from every failed message write.
-func writeRewriteSettingsMutationResults(
-	cmd *cobra.Command,
-	results []app.MutationResult,
-) error {
-	writer := cmd.OutOrStdout()
-	errs := make([]error, 0, len(results))
-
-	for _, result := range results {
-		_, err := fmt.Fprintf(writer, "[%s] %s\n", result.Instance, result.Message)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("write instance %q result: %w", result.Instance, err))
-		}
-	}
-
-	return errors.Join(errs...)
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 )
 
 // rewriteSettingsFlagExpectation describes one expected flag registration.
@@ -208,7 +209,7 @@ func TestRunRewriteSettingsGetUsesAppOutput(t *testing.T) {
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
-	require.NoError(t, runRewriteSettingsGet(command, nil, testSettingsFlagValues()))
+	require.NoError(t, runRewriteSettingsGet(command, nil, testSettingsSelection()))
 	assert.Contains(t, output.String(), `"enabled":false`)
 }
 
@@ -227,7 +228,7 @@ func TestRunRewriteSettingsUpdateUsesAppOutput(t *testing.T) {
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 
-	require.NoError(t, runRewriteSettingsUpdate(command, nil, testSettingsFlagValues()))
+	require.NoError(t, runRewriteSettingsUpdate(command, nil, testSettingsFlags()))
 	assert.Contains(t, output.String(), "Rewrite settings updated: enabled=false")
 }
 
@@ -283,12 +284,22 @@ func newRewriteSettingsCommand(ctx context.Context) *cobra.Command {
 	return command
 }
 
-// testSettingsFlagValues returns the flag values shared by run-function tests.
+// testSettingsSelection returns the selection shared by the get run-function
+// test.
 //
 // Returns:
-//   - *flagValues: Values targeting the single test instance with rewrites disabled.
-func testSettingsFlagValues() *flagValues {
-	return &flagValues{all: true}
+//   - *flags.InstanceSelection: A selection of every instance.
+func testSettingsSelection() *flags.InstanceSelection {
+	return &flags.InstanceSelection{Names: nil, All: true}
+}
+
+// testSettingsFlags returns the update flag values shared by run-function tests.
+//
+// Returns:
+//   - *flags.RewriteSettingsFlags: Values targeting every instance with rewrites
+//     disabled.
+func testSettingsFlags() *flags.RewriteSettingsFlags {
+	return &flags.RewriteSettingsFlags{InstanceSelection: *testSettingsSelection(), Enabled: false}
 }
 
 // requireSettingsSubcommand returns the named subcommand of a command tree.

@@ -237,7 +237,7 @@ func TestRemoveInstanceDeletesEntry(t *testing.T) {
 			"  default:\n    host: "+testConfigHost+"\n",
 	)
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		mockCredentials.NewMockStore(t),
 		InstanceRemoveRequest{Name: "alpha"},
@@ -269,7 +269,7 @@ func TestRemoveInstanceDeletesStoredCredential(t *testing.T) {
 	store.EXPECT().Get(mock.Anything, "agh-cli", "alpha-key").Return("stored-secret", nil).Once()
 	store.EXPECT().Delete(mock.Anything, "agh-cli", "alpha-key").Return(nil).Once()
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -302,7 +302,7 @@ func TestRemoveInstanceDefaultsEmptyKeyToInstanceName(t *testing.T) {
 	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
 	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(nil).Once()
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -329,7 +329,7 @@ func TestRemoveInstanceKeepsCredentialSharedByAnotherInstance(t *testing.T) {
 
 	store := mockCredentials.NewMockStore(t)
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -365,7 +365,7 @@ func TestRemoveInstanceTreatsAbsentCredentialAsRemoved(t *testing.T) {
 		Return("", credentials.ErrNotFound).
 		Once()
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -394,7 +394,7 @@ func TestRemoveInstanceKeepsInstanceWhenCredentialDeleteFails(t *testing.T) {
 	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
 	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(wantErr).Once()
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -421,7 +421,7 @@ func TestRemoveInstanceReportsUnreadableStore(t *testing.T) {
 		Return("", credentials.ErrStoreUnavailable).
 		Once()
 
-	_, err := RemoveInstance(
+	_, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -446,7 +446,7 @@ func TestRemoveInstanceKeepsCredentialOfExternalSource(t *testing.T) {
 	)
 
 	for _, name := range []string{"mounted", "legacy"} {
-		result, err := RemoveInstance(
+		result, err := removeWithStore(
 			contextWithConfigFile(t.Context(), t, configPath),
 			mockCredentials.NewMockStore(t),
 			InstanceRemoveRequest{Name: name},
@@ -474,7 +474,7 @@ func TestRemoveInstanceRejectsUnknown(t *testing.T) {
 	document := "instances:\n  default:\n    host: " + testConfigHost + "\n"
 	configPath := writeTestConfig(t, document)
 
-	_, err := RemoveInstance(
+	_, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		mockCredentials.NewMockStore(t),
 		InstanceRemoveRequest{Name: "zulu"},
@@ -482,6 +482,24 @@ func TestRemoveInstanceRejectsUnknown(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+	assert.Equal(t, document, readTestConfig(t, configPath))
+}
+
+// TestRemoveInstanceNamesTheInstance verifies that the production removal names
+// the instance it could not remove. The run carries a store with no
+// expectations, so the test fails on any store call and can never reach the
+// host store.
+func TestRemoveInstanceNamesTheInstance(t *testing.T) {
+	t.Parallel()
+
+	document := "instances:\n  default:\n    host: " + testConfigHost + "\n"
+	configPath := writeTestConfig(t, document)
+	ctx := WithCredentialStore(contextWithConfigFile(t.Context(), t, configPath), mockCredentials.NewMockStore(t))
+
+	_, err := RemoveInstance(ctx, InstanceRemoveRequest{Name: "zulu"})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `remove "zulu"`)
 	assert.Equal(t, document, readTestConfig(t, configPath))
 }
 
@@ -519,7 +537,7 @@ func TestRemoveInstanceKeepsInstanceWhenConfigurationWriteFails(t *testing.T) {
 	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "alpha").Return("s", nil).Once()
 	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, "alpha").Return(nil).Once()
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		store,
 		InstanceRemoveRequest{Name: "alpha"},
@@ -569,7 +587,7 @@ func TestRemoveInstanceRemovesUndecodableInstance(t *testing.T) {
 			"  broken: https\n",
 	)
 
-	result, err := RemoveInstance(
+	result, err := removeWithStore(
 		contextWithConfigFile(t.Context(), t, configPath),
 		mockCredentials.NewMockStore(t),
 		InstanceRemoveRequest{Name: "broken"},
@@ -586,7 +604,7 @@ func TestRemoveInstanceRemovesUndecodableInstance(t *testing.T) {
 func TestRemoveInstanceRequiresRunConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := RemoveInstance(
+	_, err := removeWithStore(
 		t.Context(),
 		mockCredentials.NewMockStore(t),
 		InstanceRemoveRequest{Name: "default"},

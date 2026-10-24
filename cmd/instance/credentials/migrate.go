@@ -4,35 +4,26 @@
 package credentials
 
 import (
+	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
+	"github.com/nicholas-fedor/agh-cli/internal/app"
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
-
-// migrateValues stores the flag values bound to one migrate command.
-//
-// Every command constructor creates its own values so that repeated
-// construction never shares flag state between executions.
-type migrateValues struct {
-	// dryRun holds the --dry-run flag value.
-	dryRun bool
-}
 
 // newMigrateCommand creates the credentials migrate command and binds its flags.
 //
 // Migration is never implicit, so the command must be invoked deliberately and a
 // dry run is available before it is applied.
 //
-// Parameters:
-//   - seams: input seams and credential coordinator factory.
-//
 // Returns:
 //   - *cobra.Command: The migrate command with its own flag values.
-func newMigrateCommand(seams *streams) *cobra.Command {
-	values := &migrateValues{}
+func newMigrateCommand() *cobra.Command {
+	values := new(flags.MigrateFlags)
 
 	command := &cobra.Command{
 		Use:   "migrate",
@@ -44,16 +35,11 @@ credential store before it is removed from the configuration, and no
 password is ever printed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runMigrate(cmd, values, seams)
+			return runMigrate(cmd, values)
 		},
 	}
 
-	command.Flags().BoolVar(
-		&values.dryRun,
-		dryRunFlagName,
-		false,
-		"report the change without writing to the store or the configuration",
-	)
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -66,126 +52,22 @@ password is ever printed.`,
 // Parameters:
 //   - cmd: Cobra command context.
 //   - values: Bound flag values carrying the dry-run selection.
-//   - seams: input seams and credential coordinator factory.
 //
 // Returns:
-//   - error: a wrapped error when the coordinator cannot be built, the credential
+//   - error: a wrapped error when no configuration is loaded, the credential
 //     store is unusable, at least one instance was not migrated, or the
 //     configuration file cannot be written.
-func runMigrate(cmd *cobra.Command, values *migrateValues, seams *streams) error {
-	store, err := seams.coordinator(cmd.Context())
-	if err != nil {
-		return fmt.Errorf("build credential coordinator: %w", err)
-	}
-
-	report, migrateErr := store.Migrate(cmd.Context(), credentials.MigrationRequest{
-		DryRun: values.dryRun,
+func runMigrate(cmd *cobra.Command, values *flags.MigrateFlags) error {
+	report, migrateErr := app.MigrateCredentials(cmd.Context(), credentials.MigrationRequest{
+		DryRun: values.DryRun,
 	})
 
-	reportMigration(cmd, report)
+	outputErr := output.WriteMigration(cmd.OutOrStderr(), report)
 
+	migrateErr = errors.Join(migrateErr, outputErr)
 	if migrateErr != nil {
 		return fmt.Errorf("migrate credentials: %w", migrateErr)
 	}
 
 	return nil
-}
-
-// reportMigration renders the outcome of one migration run.
-//
-// Every line names an instance and a credential key. A password, and any value
-// derived from one, never reaches an output stream.
-//
-// Parameters:
-//   - cmd: Cobra command context.
-//   - report: outcome of the migration run.
-func reportMigration(cmd *cobra.Command, report credentials.MigrationReport) {
-	for _, result := range report.Results {
-		cmd.Println(migrationLine(result))
-	}
-
-	cmd.Printf(
-		"backend: %s\nservice: %s\n%s\n",
-		report.Backend,
-		report.Service,
-		migrationSummary(report),
-	)
-}
-
-// migrationLine renders the outcome of one migrated instance.
-//
-// Parameters:
-//   - result: outcome of one instance migration.
-//
-// Returns:
-//   - string: the rendered line.
-func migrationLine(result credentials.MigrationResult) string {
-	subject := strconv.Quote(result.Instance) + " to keyring key " + strconv.Quote(result.Key)
-
-	if result.DryRun && result.Err != nil {
-		return "would not migrate " + subject + ": " + result.Err.Error()
-	}
-
-	if result.DryRun {
-		return "would migrate " + subject
-	}
-
-	if result.Err != nil {
-		return "failed to migrate " + subject + ": " + result.Err.Error()
-	}
-
-	return "migrated " + subject
-}
-
-// migrationSummary renders the closing line of a migration run.
-//
-// The summary names the configuration outcome, because a migration that reached
-// the credential store but could not rewrite the file still leaves a plaintext
-// password on disk.
-//
-// Parameters:
-//   - report: outcome of the migration run.
-//
-// Returns:
-//   - string: the rendered summary line.
-func migrationSummary(report credentials.MigrationReport) string {
-	if report.DryRun {
-		return fmt.Sprintf(
-			"nothing was written: %d credential(s) would be migrated",
-			migratable(report.Results),
-		)
-	}
-
-	if len(report.Results) == 0 {
-		return "no plaintext credentials to migrate"
-	}
-
-	if report.Err != nil {
-		return "configuration not updated: " + report.Err.Error()
-	}
-
-	if !report.Saved {
-		return "configuration not updated: the file still holds every plaintext password"
-	}
-
-	return fmt.Sprintf("configuration updated: %d credential(s) migrated", migratable(report.Results))
-}
-
-// migratable counts the instances a migration run moved or would move.
-//
-// Parameters:
-//   - results: outcomes of the migration run.
-//
-// Returns:
-//   - int: the number of outcomes without an error.
-func migratable(results []credentials.MigrationResult) int {
-	count := 0
-
-	for _, result := range results {
-		if result.Err == nil {
-			count++
-		}
-	}
-
-	return count
 }

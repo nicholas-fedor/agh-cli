@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newInstanceListCommand creates the instance list command and binds its flags.
@@ -16,7 +18,7 @@ import (
 // Returns:
 //   - *cobra.Command: The list command with its own flag values.
 func newInstanceListCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.InstanceListFlags)
 
 	command := &cobra.Command{
 		Use:   "list",
@@ -26,7 +28,7 @@ func newInstanceListCommand() *cobra.Command {
 		},
 	}
 
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "show all instances")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -40,16 +42,17 @@ func newInstanceListCommand() *cobra.Command {
 //
 // Returns:
 //   - error: Non-nil when the configured instances cannot be read or resolved.
-func runInstanceList(cmd *cobra.Command, _ []string, values *flagValues) error {
+func runInstanceList(cmd *cobra.Command, _ []string, values *flags.InstanceListFlags) error {
 	configs, err := app.ListInstances(cmd.Context(), app.InstanceListRequest{
-		All: values.all,
+		All: values.All,
 	})
 	if err != nil {
 		return fmt.Errorf("resolve instances: %w", err)
 	}
 
-	for _, cfg := range configs {
-		cmd.Println(cfg.Name)
+	err = output.WriteInstanceNames(cmd.OutOrStderr(), configs)
+	if err != nil {
+		return fmt.Errorf("list instances: %w", err)
 	}
 
 	return nil

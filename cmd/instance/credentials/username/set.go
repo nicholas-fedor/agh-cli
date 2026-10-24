@@ -5,9 +5,11 @@ package username
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
+
+	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newSetCommand creates the username set command.
@@ -16,12 +18,9 @@ import (
 // secret. Unlike a password, it is safe in a process listing and in shell
 // history, and an argument keeps the command scriptable.
 //
-// Parameters:
-//   - seams: credential coordinator factory.
-//
 // Returns:
 //   - *cobra.Command: The set command.
-func newSetCommand(seams *streams) *cobra.Command {
+func newSetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <instance> <username>",
 		Short: "Set the administrator username of a configured instance",
@@ -31,9 +30,7 @@ credential store, so a stored password keeps working. Use 'agh-cli
 instance credentials password set <instance>' to change the password
 without disturbing the username.`,
 		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSet(cmd, args, seams)
-		},
+		RunE: runSet,
 	}
 }
 
@@ -43,25 +40,22 @@ without disturbing the username.`,
 //   - cmd: Cobra command context.
 //   - args: positional arguments, where args[0] is the instance name and args[1]
 //     is the username.
-//   - seams: credential coordinator factory.
 //
 // Returns:
-//   - error: a wrapped error when the coordinator cannot be built, the instance
-//     is unknown, or the configuration cannot be written.
-func runSet(cmd *cobra.Command, args []string, seams *streams) error {
+//   - error: a wrapped error when no configuration is loaded, the instance is
+//     unknown, or the configuration cannot be written.
+func runSet(cmd *cobra.Command, args []string) error {
 	name, username := args[0], args[1]
 
-	store, err := seams.coordinator(cmd.Context())
-	if err != nil {
-		return fmt.Errorf("build credential coordinator: %w", err)
-	}
-
-	_, err = store.SetUsername(name, username)
+	_, err := app.SetUsername(cmd.Context(), name, username)
 	if err != nil {
 		return fmt.Errorf("set username for %q: %w", name, err)
 	}
 
-	cmd.Printf("Username for instance %q set to %s.\n", name, strconv.Quote(username))
+	err = output.WriteUsernameSet(cmd.OutOrStderr(), name, username)
+	if err != nil {
+		return fmt.Errorf("report username for %q: %w", name, err)
+	}
 
 	return nil
 }

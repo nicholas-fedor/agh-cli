@@ -4,18 +4,13 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/client"
 )
 
 // clientExpectedFlag describes one published flag of a client subcommand.
@@ -102,57 +97,21 @@ const (
 	// ClientCommandFalseDefault is the published rendering of a false boolean
 	// flag default.
 	clientCommandFalseDefault = "false"
+	// ClientAllFlag names the flag selecting every configured instance.
+	clientAllFlag = "all"
+	// ClientInstanceFlag names the flag selecting explicit instance names.
+	clientInstanceFlag = "instance"
+	// ClientUseGlobalFlag names the flag requesting inherited global settings.
+	clientUseGlobalFlag = "use-global"
+	// ClientFilteringFlag names the flag requesting per-client filtering.
+	clientFilteringFlag = "filtering"
+	// ClientParentalFlag names the flag requesting per-client parental control.
+	clientParentalFlag = "parental"
+	// ClientSafebrowsingFlag names the flag requesting per-client safe browsing.
+	clientSafebrowsingFlag = "safebrowsing"
+	// ClientIDFlag names the flag carrying client identifiers.
+	clientIDFlag = "id"
 )
-
-// TestClientMutationFromFlagsPreservesFalse verifies explicit false flag wiring.
-func TestClientMutationFromFlagsPreservesFalse(t *testing.T) {
-	t.Parallel()
-
-	command := newClientAddCommand()
-	require.NoError(t, command.ParseFlags([]string{
-		"--id=192.0.2.10",
-		"--use-global=false",
-		"--filtering=false",
-		"--parental=true",
-		"--safebrowsing=false",
-	}))
-
-	mutation, err := clientMutationFromFlags(command)
-
-	require.NoError(t, err)
-	assert.Equal(t, client.Settings{
-		IDs:                 []string{"192.0.2.10"},
-		UseGlobalSettings:   false,
-		FilteringEnabled:    false,
-		ParentalEnabled:     true,
-		SafebrowsingEnabled: false,
-	}, mutation)
-}
-
-// TestClientMutationFromFlagsPreservesPublishedDefaults verifies that a freshly
-// constructed command keeps the documented mutation defaults.
-func TestClientMutationFromFlagsPreservesPublishedDefaults(t *testing.T) {
-	t.Parallel()
-
-	mutation, err := clientMutationFromFlags(newClientUpdateCommand())
-
-	require.NoError(t, err)
-	assert.Equal(t, client.Settings{
-		IDs:               []string{},
-		UseGlobalSettings: true,
-	}, mutation)
-}
-
-// TestClientMutationFromFlagsRejectsMissingFlags verifies that a command without
-// the mutation flags reports the missing flag instead of a zero request.
-func TestClientMutationFromFlagsRejectsMissingFlags(t *testing.T) {
-	t.Parallel()
-
-	mutation, err := clientMutationFromFlags(newClientDeleteCommand())
-
-	require.ErrorContains(t, err, "parse id flag")
-	assert.Equal(t, client.Settings{}, mutation)
-}
 
 // TestNewCommandPreservesSubcommandSyntax verifies the published CLI surface.
 func TestNewCommandPreservesSubcommandSyntax(t *testing.T) {
@@ -263,49 +222,6 @@ func TestNewCommandRepeatedConstructionKeepsSelectionDefaults(t *testing.T) {
 			assert.Empty(t, names)
 		}
 	}
-}
-
-// TestWriteClientList verifies command-owned rendering receives app-shaped results
-// and separates the instance tables by exactly one blank line, with none before
-// the first table.
-func TestWriteClientList(t *testing.T) {
-	t.Parallel()
-
-	var output bytes.Buffer
-
-	command := &cobra.Command{}
-	command.SetOut(&output)
-	command.SetErr(&output)
-
-	err := writeClientList(command, []app.ClientListResult{
-		{
-			Instance:      clientCommandAlphaInstance,
-			InstanceCount: 2,
-		},
-		{Instance: clientCommandZuluInstance, InstanceCount: 2},
-	})
-
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(output.String(), "Instance: alpha\n"))
-	assert.Contains(t, output.String(), "NAME")
-	assert.Contains(t, output.String(), "\n\nInstance: zulu\n")
-	assert.NotContains(t, output.String(), "\n\n\n")
-}
-
-// TestWriteClientMutationResults verifies success-message wiring.
-func TestWriteClientMutationResults(t *testing.T) {
-	t.Parallel()
-
-	var output bytes.Buffer
-
-	command := &cobra.Command{}
-	command.SetOut(&output)
-	command.SetErr(&output)
-	writeClientMutationResults(command, []app.MutationResult{
-		{Instance: clientCommandAlphaInstance, Message: "Updated client desk"},
-	})
-
-	assert.Equal(t, "[alpha] Updated client desk\n", output.String())
 }
 
 // clientCommand returns a freshly constructed client subcommand.

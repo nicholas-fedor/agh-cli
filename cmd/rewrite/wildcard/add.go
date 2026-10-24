@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newWildcardAddCommand creates the add command and binds its flags.
@@ -17,16 +19,7 @@ import (
 // Returns:
 //   - *cobra.Command: The add command with its own flag values.
 func newWildcardAddCommand() *cobra.Command {
-	command, values := newWildcardZoneCommand(
-		"add <domain>",
-		"Add wildcard rewrite rules for a zone",
-		runWildcardAdd,
-	)
-
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
-
-	return command
+	return newWildcardZoneCommand("add <domain>", "Add wildcard rewrite rules for a zone", runWildcardAdd)
 }
 
 // runWildcardAdd creates wildcard rules for selected instances.
@@ -39,15 +32,13 @@ func newWildcardAddCommand() *cobra.Command {
 // Returns:
 //   - error: An error when a selection, per-instance request, or the mutation
 //     output fails.
-func runWildcardAdd(cmd *cobra.Command, args []string, values *flagValues) error {
-	selection := values.selection()
-
+func runWildcardAdd(cmd *cobra.Command, args []string, values *flags.InstanceSelection) error {
 	results, addErr := app.NewRewriteManagement(cmd.Context()).WildcardAdd(
 		cmd.Context(),
-		selection,
+		values.Selection(),
 		args[0],
 	)
-	outputErr := writeWildcardMutationResults(cmd, results)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
 	addErr = errors.Join(addErr, outputErr)
 	if addErr != nil {

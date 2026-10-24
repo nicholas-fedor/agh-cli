@@ -4,7 +4,11 @@
 package flags
 
 import (
+	"io"
+
 	"github.com/spf13/pflag"
+
+	"github.com/nicholas-fedor/agh-cli/internal/metadata"
 )
 
 // VersionFlags stores values for the version command.
@@ -40,4 +44,23 @@ func (vf *VersionFlags) Bind(flags *pflag.FlagSet) {
 		false,
 		"Output version information in JSON format",
 	)
+}
+
+// Printer returns the version printer the flags select.
+//
+// JSON output takes precedence over verbose output, and the default printer
+// writes the short version line.
+//
+// Returns:
+//   - func(io.Writer) error: the selected version printer.
+func (vf *VersionFlags) Printer() func(io.Writer) error {
+	if vf.JSON {
+		return metadata.PrintJSON
+	}
+
+	if vf.Verbose {
+		return metadata.PrintVerbose
+	}
+
+	return metadata.PrintDefault
 }

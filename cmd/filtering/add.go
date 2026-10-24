@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newFilteringAddURLCommand creates the add-url command.
@@ -17,15 +19,18 @@ import (
 // Returns:
 //   - *cobra.Command: A fresh add-url command owning its selection flags.
 func newFilteringAddURLCommand() *cobra.Command {
+	values := new(flags.FilteringAddURLFlags)
+
 	command := &cobra.Command{
 		Use:   "add-url <name> <url>",
 		Short: "Add a filter URL",
 		Args:  cobra.ExactArgs(2),
-		RunE:  runFilteringAddURL,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFilteringAddURL(cmd, args, values)
+		},
 	}
 
-	command.Flags().BoolP("whitelist", "w", false, "add to whitelist")
-	registerFilteringSelectionFlags(command)
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -35,30 +40,21 @@ func newFilteringAddURLCommand() *cobra.Command {
 // Parameters:
 //   - cmd: Cobra command context.
 //   - args: Filter name and URL arguments.
+//   - values: Bound flag values selecting the instances and the list kind.
 //
 // Returns:
-//   - error: An error when flag parsing or a per-instance request fails.
-func runFilteringAddURL(cmd *cobra.Command, args []string) error {
-	selection, err := currentFilteringSelection(cmd)
-	if err != nil {
-		return fmt.Errorf("parse filtering flags: %w", err)
-	}
-
-	whitelist, err := filteringURLFromFlags(cmd)
-	if err != nil {
-		return fmt.Errorf("parse filtering flags: %w", err)
-	}
-
+//   - error: An error when a per-instance request or the result output fails.
+func runFilteringAddURL(cmd *cobra.Command, args []string, values *flags.FilteringAddURLFlags) error {
 	results, operationErr := app.NewFilteringManagement(cmd.Context()).AddURL(
 		cmd.Context(),
-		selection,
+		values.Selection(),
 		args[0],
 		args[1],
-		whitelist,
+		values.Whitelist,
 	)
-	outputErr := writeFilteringMutationResults(cmd, results)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
-	err = errors.Join(operationErr, outputErr)
+	err := errors.Join(operationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("run filtering add-url: %w", err)
 	}

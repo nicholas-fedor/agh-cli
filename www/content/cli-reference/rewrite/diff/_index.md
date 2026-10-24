@@ -20,7 +20,7 @@ agh-cli rewrite diff [<instance> <instance>]
 | `--all` | `-a` | false | bool | target all instances |
 | `--file` | `-f` | "" | string | path to YAML/JSON rewrite rules file |
 | `--instance` | `-i` | [] | stringSlice | target instance name(s) |
-| `--sort` | `-s` | domain | string | sort column (domain, answer, status) |
+| `--sort` | `-s` | domain | string | sort column (domain, change) |
 
 ### Global Options
 
