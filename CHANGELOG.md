@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Keep only command definitions in the command layer by @nicholas-fedor in [#134](https://github.com/nicholas-fedor/agh-cli/pull/134)
 - Embed the credential removal in the instance remove result by @nicholas-fedor in [#130](https://github.com/nicholas-fedor/agh-cli/pull/130)
 - Let commands place the instance separator by @nicholas-fedor in [#129](https://github.com/nicholas-fedor/agh-cli/pull/129)
 - Share feature management wiring by @nicholas-fedor in [#123](https://github.com/nicholas-fedor/agh-cli/pull/123)
