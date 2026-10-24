@@ -43,12 +43,12 @@ func runInstanceRemove(cmd *cobra.Command, args []string) error {
 		Name: args[0],
 	})
 	if removeErr != nil {
-		outputErr := output.WriteFailedInstanceRemoval(cmd.OutOrStderr(), result)
+		outputErr := output.WriteFailedInstanceRemoval(cmd.OutOrStdout(), result)
 
 		return fmt.Errorf("remove instance: %w", errors.Join(removeErr, outputErr))
 	}
 
-	err := output.WriteInstanceRemoval(cmd.OutOrStderr(), result)
+	err := output.WriteInstanceRemoval(cmd.OutOrStdout(), result)
 	if err != nil {
 		return fmt.Errorf("remove instance: %w", err)
 	}

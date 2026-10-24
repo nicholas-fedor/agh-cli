@@ -50,7 +50,7 @@ func runInstanceList(cmd *cobra.Command, _ []string, values *flags.InstanceListF
 		return fmt.Errorf("resolve instances: %w", err)
 	}
 
-	err = output.WriteInstanceNames(cmd.OutOrStderr(), configs)
+	err = output.WriteInstanceNames(cmd.OutOrStdout(), configs)
 	if err != nil {
 		return fmt.Errorf("list instances: %w", err)
 	}
