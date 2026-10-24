@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Remove unused output helpers and the command import tests by @nicholas-fedor in [#138](https://github.com/nicholas-fedor/agh-cli/pull/138)
 - Remove unused circleci configuration by @nicholas-fedor in [#107](https://github.com/nicholas-fedor/agh-cli/pull/107)
 - Remove commit lint workflow by @nicholas-fedor in [#103](https://github.com/nicholas-fedor/agh-cli/pull/103)
 
