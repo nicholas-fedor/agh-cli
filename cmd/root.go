@@ -33,6 +33,10 @@ var newRootCommand = func() *cobra.Command {
 		Long: `A Go CLI that provides CRUD operations for interacting with
 multiple AdGuard Home instances simultaneously.`,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Cobra has checked the arguments by now, so a later failure is not
+			// a usage error and prints only its message.
+			cmd.SilenceUsage = true
+
 			ctx, err := app.PrepareRun(cmd.Context(), common.Config, cmd.ErrOrStderr())
 			if err != nil {
 				return fmt.Errorf("%w", err)

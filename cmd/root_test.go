@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,16 @@ import (
 
 	"github.com/nicholas-fedor/agh-cli/internal/config"
 )
+
+// rootRun captures the rendered result of one root command execution.
+type rootRun struct {
+	// err is the execution error.
+	err error
+	// out is the command output stream.
+	out string
+	// errOut is the command error stream.
+	errOut string
+}
 
 const (
 	// RootConfigFlagName names the persistent configuration flag.
@@ -295,6 +306,103 @@ func TestExecuteContextPropagatesCancellation(t *testing.T) {
 	require.ErrorIs(t, command.ExecuteContext(ctx), context.Canceled)
 }
 
+// TestRootCommandReportsFailureWithoutUsage verifies that a failure after the
+// arguments were accepted prints its message once on the error stream and no
+// usage, because the operator typed the command correctly.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestRootCommandReportsFailureWithoutUsage(t *testing.T) {
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+	t.Setenv("HOME", workingDirectory)
+
+	validPath := writeRootConfigFile(t, workingDirectory, RootValidConfigFileName)
+	malformedPath := writeRootMalformedConfig(t, workingDirectory)
+
+	tests := []struct {
+		name     string
+		message  string
+		args     []string
+		canceled bool
+	}{
+		{
+			name:     "command failure",
+			canceled: true,
+			args:     []string{"--" + RootConfigFlagName, validPath, RootContextProbeName},
+			message:  "Error: " + context.Canceled.Error() + "\n",
+		},
+		{
+			name:     "configuration failure",
+			canceled: false,
+			args:     []string{"--" + RootConfigFlagName, malformedPath, RootVersionName},
+			message:  "Error: load config",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			command.AddCommand(rootContextProbeCommand())
+			command.SetArgs(test.args)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			if test.canceled {
+				cancel()
+			}
+
+			run := executeRoot(ctx, command)
+
+			cancel()
+
+			require.Error(t, run.err)
+			assert.Empty(t, run.out)
+			assert.True(t, strings.HasPrefix(run.errOut, test.message), run.errOut)
+			assert.Equal(t, 1, strings.Count(run.errOut, "Error: "))
+			assert.NotContains(t, run.errOut, "Usage:")
+		})
+	}
+}
+
+// TestRootCommandShowsUsageForInvalidInvocation verifies that a command line
+// Cobra rejects still prints the error and the usage of the command.
+//
+//nolint:paralleltest // The test isolates the configuration root through the process environment.
+func TestRootCommandShowsUsageForInvalidInvocation(t *testing.T) {
+	workingDirectory := t.TempDir()
+	t.Chdir(workingDirectory)
+	t.Setenv("HOME", workingDirectory)
+
+	tests := []struct {
+		name    string
+		message string
+		args    []string
+	}{
+		{
+			name:    "argument count",
+			args:    []string{RootInstanceName, RootInstanceAddName, RootConfigInstanceName},
+			message: "Error: accepts 2 arg(s), received 1\n",
+		},
+		{
+			name:    "unknown flag",
+			args:    []string{RootVersionName, "--unknown"},
+			message: "Error: unknown flag: --unknown\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			command.SetArgs(test.args)
+
+			run := executeRoot(t.Context(), command)
+
+			require.Error(t, run.err)
+			assert.Equal(t, test.message, run.errOut)
+			assert.Contains(t, run.out, "Usage:")
+		})
+	}
+}
+
 // TestNewRootCommandPreservesPublishedSyntax verifies the published root command
 // surface, including its persistent flag and subcommand set.
 func TestNewRootCommandPreservesPublishedSyntax(t *testing.T) {
@@ -417,6 +525,26 @@ func listRootInstances(t *testing.T, args ...string) string {
 	require.NoError(t, command.ExecuteContext(t.Context()))
 
 	return output.String()
+}
+
+// executeRoot executes a root command and captures both of its streams.
+//
+// Parameters:
+//   - ctx: context passed to the execution.
+//   - command: root command with its arguments set.
+//
+// Returns:
+//   - rootRun: the rendered output streams and the execution error.
+func executeRoot(ctx context.Context, command *cobra.Command) rootRun {
+	output := &bytes.Buffer{}
+	errorsOut := &bytes.Buffer{}
+
+	command.SetOut(output)
+	command.SetErr(errorsOut)
+
+	err := command.ExecuteContext(ctx)
+
+	return rootRun{err: err, out: output.String(), errOut: errorsOut.String()}
 }
 
 // setRootProcessArgs replaces the process arguments observed by ExecuteContext.
