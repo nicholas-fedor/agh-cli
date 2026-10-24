@@ -7,15 +7,15 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 
 	"github.com/nicholas-fedor/agh-cli/cmd"
 )
 
-// main is the CLI entrypoint. It executes the root Cobra command and
-// terminates the process on error.
+// main is the CLI entrypoint. It executes the root Cobra command and exits with
+// status 1 when the command fails. Cobra has already written the error to
+// standard error, so main does not report it again.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	err := cmd.ExecuteContext(ctx)
@@ -23,6 +23,6 @@ func main() {
 	stop()
 
 	if err != nil {
-		log.Fatalf("CLI execution failed: %v", err)
+		os.Exit(1)
 	}
 }
