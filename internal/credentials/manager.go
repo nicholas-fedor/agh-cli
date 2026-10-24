@@ -195,6 +195,12 @@ var ErrCredentialReplacedUnrecorded = errors.New(
 	"stored secret was replaced but the configuration is unchanged",
 )
 
+// ErrEmptyPassword reports a password write that supplied no characters.
+//
+// Storing an empty password would replace a working credential with one that
+// cannot authenticate, so the write is refused before the store is touched.
+var ErrEmptyPassword = errors.New("password is empty")
+
 // NewManager creates a credential coordinator.
 //
 // Parameters:
@@ -417,14 +423,19 @@ func (m *Manager) RemoveInstancePassword(
 // Returns:
 //   - PasswordSetResult: the written identity, whether it replaced a credential,
 //     and whether the configuration was rewritten.
-//   - error: a wrapped error when the instance is unknown, the store rejects the
-//     read or the write, or the configuration cannot be written.
+//   - error: a wrapped [ErrEmptyPassword] when the secret is empty, or a wrapped
+//     error when the instance is unknown, the store rejects the read or the
+//     write, or the configuration cannot be written.
 func (m *Manager) SetPassword(
 	ctx context.Context,
 	name string,
 	key string,
 	secret string,
 ) (PasswordSetResult, error) {
+	if secret == "" {
+		return PasswordSetResult{}, fmt.Errorf("set password for %q: %w", name, ErrEmptyPassword)
+	}
+
 	service := m.service()
 
 	credentialKey, err := m.credentialKey(name, key)

@@ -4,21 +4,18 @@
 package rewrite
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/app"
 	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // TestListReturnsInstanceFailure verifies that rewrite list fails when an instance request fails.
@@ -48,42 +45,33 @@ func TestListReturnsInstanceFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "401")
 }
 
-// TestWriteRewriteListsSeparatesInstances verifies that the instance tables are
-// separated by exactly one blank line, with none before the first table.
-func TestWriteRewriteListsSeparatesInstances(t *testing.T) {
+// TestRunRewriteListRejectsUnknownSortColumn verifies that an unknown sort
+// column fails before any instance is contacted.
+func TestRunRewriteListRejectsUnknownSortColumn(t *testing.T) {
 	t.Parallel()
 
-	var output bytes.Buffer
+	server := newRewriteCommandServer(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("an unknown sort column must not reach the instance")
+	})
+	ctx := rewriteCommandContext(t, server.Listener.Addr().String())
 
-	command := &cobra.Command{}
-	command.SetOut(&output)
+	values := testRewriteListFlags()
 
-	err := writeRewriteLists(command, []app.RewriteListResult{
-		{Instance: "alpha", Rules: []app.RewriteRule{}, InstanceCount: 2},
-		{Instance: "zulu", Rules: []app.RewriteRule{}, InstanceCount: 2},
-	}, "")
+	values.Sort = "bogus"
 
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(output.String(), "Instance: alpha\n"))
-	assert.Contains(t, output.String(), "\n\nInstance: zulu\n")
-	assert.NotContains(t, output.String(), "\n\n\n")
+	err := runRewriteList(newRewriteCommand(ctx), nil, values)
+
+	require.ErrorIs(t, err, output.ErrUnknownSortColumn)
+	assert.Contains(t, err.Error(), "use one of domain, answer, status")
 }
 
-// TestWriteRewriteListsOmitsHeaderForOneInstance verifies that a single
-// selected instance is rendered without a separator or an instance header.
-func TestWriteRewriteListsOmitsHeaderForOneInstance(t *testing.T) {
+// TestRewriteListSortUsageNamesItsColumns verifies that the --sort help lists
+// the columns the list table has.
+func TestRewriteListSortUsageNamesItsColumns(t *testing.T) {
 	t.Parallel()
 
-	var output bytes.Buffer
+	flag := newRewriteListCommand().Flags().Lookup("sort")
 
-	command := &cobra.Command{}
-	command.SetOut(&output)
-
-	err := writeRewriteLists(command, []app.RewriteListResult{
-		{Instance: "alpha", Rules: []app.RewriteRule{}, InstanceCount: 1},
-	}, "")
-
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(output.String(), "INSTANCE"))
-	assert.NotContains(t, output.String(), "Instance: ")
+	require.NotNil(t, flag)
+	assert.Equal(t, "sort column (domain, answer, status)", flag.Usage)
 }

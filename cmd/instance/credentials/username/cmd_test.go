@@ -6,57 +6,43 @@ package username
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
-	"strings"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	"github.com/nicholas-fedor/agh-cli/internal/app"
+	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
 )
-
-// fakeCoordinator records the username requests and returns the configured
-// outcomes.
-type fakeCoordinator struct {
-	// setResult is the outcome returned by SetUsername.
-	setResult credentials.UsernameResult
-	// setErr is the error returned by SetUsername.
-	setErr error
-	// clearResult is the outcome returned by ClearUsername.
-	clearResult credentials.UsernameResult
-	// clearErr is the error returned by ClearUsername.
-	clearErr error
-	// report is the outcome returned by StatusUsername.
-	report credentials.UsernameReport
-	// statusErr is the error returned by StatusUsername.
-	statusErr error
-	// name records the instance name handed to a use case.
-	name string
-	// names records the instance names handed to StatusUsername.
-	names []string
-	// username records the username handed to SetUsername.
-	username string
-	// sets counts the SetUsername calls made by the command.
-	sets int
-	// clears counts the ClearUsername calls made by the command.
-	clears int
-}
 
 // commandRun captures the rendered result of one command execution.
 type commandRun struct {
+	// err is the execution error.
+	err error
 	// out is the command output stream.
 	out string
 	// errOut is the command error stream.
 	errOut string
-	// err is the execution error.
-	err error
 }
 
 // usernameCommandName is the published name of the username command.
 const usernameCommandName = "username"
+
+// setCommandName is the published name of the set subcommand.
+const setCommandName = "set"
+
+// statusCommandName is the published name of the status subcommand.
+const statusCommandName = "status"
+
+// clearCommandName is the published name of the clear subcommand.
+const clearCommandName = "clear"
+
+// jsonFlagName is the published name of the machine-readable report flag.
+const jsonFlagName = "json"
 
 // testInstanceName is the instance name used by the command tests.
 const testInstanceName = "default"
@@ -64,103 +50,13 @@ const testInstanceName = "default"
 // testUsername is the administrator username used by the command tests.
 const testUsername = "admin"
 
-// errTestFactory is the coordinator construction failure the command tests inject.
-var errTestFactory = errors.New("no configuration file")
-
-// ClearUsername records the request and returns the configured outcome.
-func (f *fakeCoordinator) ClearUsername(name string) (credentials.UsernameResult, error) {
-	f.clears++
-
-	f.name = name
-
-	return f.clearResult, f.clearErr
-}
-
-// SetUsername records the request and returns the configured outcome.
-func (f *fakeCoordinator) SetUsername(
-	name, username string,
-) (credentials.UsernameResult, error) {
-	f.sets++
-
-	f.name = name
-
-	f.username = username
-
-	return f.setResult, f.setErr
-}
-
-// StatusUsername records the request and returns the configured outcome.
-func (f *fakeCoordinator) StatusUsername(names []string) (credentials.UsernameReport, error) {
-	f.names = names
-
-	return f.report, f.statusErr
-}
-
-// testStreams builds input seams over an injected coordinator.
-//
-// The username commands never read a secret, so the seams carry no terminal
-// reader. The field stays present so the tree matches the production shape.
-//
-// Parameters:
-//   - store: coordinator returned by the command.
-//
-// Returns:
-//   - *streams: test dependencies for the username commands.
-func testStreams(store coordinator) *streams {
-	return &streams{
-		coordinator: func(context.Context) (coordinator, error) {
-			return store, nil
-		},
-	}
-}
-
-// runUsername executes one freshly constructed username command tree.
-//
-// Parameters:
-//   - t: active test requiring command construction.
-//   - s: input seams and username coordinator factory.
-//   - args: command line arguments passed to the username command.
-//
-// Returns:
-//   - commandRun: the rendered output streams and the execution error.
-func runUsername(t *testing.T, s *streams, args ...string) commandRun {
-	t.Helper()
-
-	output := &bytes.Buffer{}
-	errorsOut := &bytes.Buffer{}
-	command := newCommandGroup(s)
-	command.SetOut(output)
-	command.SetErr(errorsOut)
-	command.SetIn(strings.NewReader(""))
-	command.SetArgs(args)
-
-	err := command.Execute()
-
-	return commandRun{
-		out:    output.String(),
-		errOut: errorsOut.String(),
-		err:    err,
-	}
-}
-
-// requireLeaf resolves one subcommand of the username group.
-//
-// Parameters:
-//   - t: active test requiring command resolution.
-//   - group: username command owning the subcommand.
-//   - name: subcommand name to resolve.
-//
-// Returns:
-//   - *cobra.Command: The resolved subcommand.
-func requireLeaf(t *testing.T, group *cobra.Command, name string) *cobra.Command {
-	t.Helper()
-
-	command, _, err := group.Find([]string{name})
-	require.NoError(t, err)
-	require.Equal(t, name, command.Name())
-
-	return command
-}
+// usernameDocument configures one instance with a username and one without.
+const usernameDocument = "instances:\n" +
+	"  default:\n" +
+	"    host: a.example\n" +
+	"    username: " + testUsername + "\n" +
+	"  spare:\n" +
+	"    host: b.example\n"
 
 // TestNewCommandPreservesLeafSyntax verifies the published CLI surface of the
 // username command group.
@@ -188,12 +84,10 @@ func TestNewCommandPreservesLeafSyntax(t *testing.T) {
 func TestNewCommandBuildsIndependentTrees(t *testing.T) {
 	t.Parallel()
 
-	first := NewCommand()
-	second := NewCommand()
+	first := requireLeaf(t, NewCommand(), setCommandName)
+	second := requireLeaf(t, NewCommand(), setCommandName)
 
 	assert.NotSame(t, first, second)
-	assert.NotSame(t, requireLeaf(t, first, setCommandName),
-		requireLeaf(t, second, setCommandName))
 }
 
 // TestSetPublishesNoPasswordFlag verifies the username group offers no secret
@@ -204,232 +98,179 @@ func TestSetPublishesNoPasswordFlag(t *testing.T) {
 	set := requireLeaf(t, NewCommand(), setCommandName)
 
 	assert.Nil(t, set.Flags().Lookup("password"))
-	assert.Nil(t, set.Flags().Lookup("p"))
+	assert.Nil(t, set.Flags().ShorthandLookup("p"))
 }
 
-// TestStatusMachineReadableFlagIsBound verifies the machine-readable report flag
-// is published.
-func TestStatusMachineReadableFlagIsBound(t *testing.T) {
+// TestNewCommandRequiresLoadedConfiguration verifies that a command run without
+// a loaded configuration fails.
+func TestNewCommandRequiresLoadedConfiguration(t *testing.T) {
 	t.Parallel()
 
-	status := requireLeaf(t, NewCommand(), statusCommandName)
+	run := runUsername(t.Context(), t, statusCommandName)
 
-	flag := status.Flags().Lookup(jsonFlagName)
-	require.NotNil(t, flag)
-	assert.Equal(t, "false", flag.DefValue)
+	require.ErrorIs(t, run.err, app.ErrNoRunConfig)
 }
 
-// TestNewCommandRejectsProductionConfigurationError verifies a coordinator
-// failure names the failing step.
-func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
-	t.Parallel()
-
-	group := newCommandGroup(&streams{
-		coordinator: func(context.Context) (coordinator, error) {
-			return nil, errTestFactory
-		},
-	})
-
-	group.SetOut(io.Discard)
-	group.SetErr(io.Discard)
-	group.SetArgs([]string{statusCommandName})
-
-	err := group.Execute()
-
-	require.ErrorIs(t, err, errTestFactory)
-	assert.Contains(t, err.Error(), "build credential coordinator")
-}
-
-// TestRunSetRecordsUsername verifies the command hands the instance name and the
-// username to the coordinator unchanged, and confirms the result.
+// TestRunSetRecordsUsername verifies that the username is written to the
+// configuration file and reported. The username never reaches the store.
 func TestRunSetRecordsUsername(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	run := runUsername(t, testStreams(store), setCommandName, testInstanceName, testUsername)
+	ctx, path := fileContext(t)
+
+	run := runUsername(ctx, t, setCommandName, "spare", "operator")
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 1, store.sets)
-	assert.Equal(t, testInstanceName, store.name)
-	assert.Equal(t, testUsername, store.username)
-	assert.Contains(t, run.out, testInstanceName)
-	assert.Contains(t, run.out, testUsername)
+	assert.Equal(t, "Username for instance \"spare\" set to \"operator\".\n", run.out)
+	assert.Contains(t, readFile(t, path), "username: operator")
 }
 
-// TestRunSetRequiresInstanceAndUsername verifies the published argument arity.
-func TestRunSetRequiresInstanceAndUsername(t *testing.T) {
+// TestRunSetRejectsUnknownInstance verifies that an unknown instance is named.
+func TestRunSetRejectsUnknownInstance(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	run := runUsername(t, testStreams(store), setCommandName)
+	ctx, _ := fileContext(t)
+
+	run := runUsername(ctx, t, setCommandName, "nope", "operator")
 
 	require.Error(t, run.err)
-	assert.Equal(t, 0, store.sets)
+	assert.Contains(t, run.err.Error(), `set username for "nope"`)
+	assert.NotContains(t, run.out, "set to")
 }
 
-// TestRunSetReportsCoordinatorFailure verifies a refused change surfaces as an
-// error and prints no confirmation.
-func TestRunSetReportsCoordinatorFailure(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{setErr: errTestFactory}
-	run := runUsername(t, testStreams(store), setCommandName, testInstanceName, testUsername)
-
-	require.ErrorIs(t, run.err, errTestFactory)
-	assert.NotContains(t, run.out, "Username for instance")
-}
-
-// TestRunClearRemovesUsername verifies the command confirms the removal.
+// TestRunClearRemovesUsername verifies that the username is removed from the
+// configuration file and reported.
 func TestRunClearRemovesUsername(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	run := runUsername(t, testStreams(store), clearCommandName, testInstanceName)
+	ctx, path := fileContext(t)
+
+	run := runUsername(ctx, t, clearCommandName, testInstanceName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 1, store.clears)
-	assert.Equal(t, testInstanceName, store.name)
-	assert.Contains(t, run.out, "cleared")
+	assert.Equal(t, "Username for instance \"default\" cleared.\n", run.out)
+	assert.NotContains(t, readFile(t, path), "username:")
 }
 
-// TestRunClearRequiresInstance verifies the published argument arity.
-func TestRunClearRequiresInstance(t *testing.T) {
+// TestRunStatusReportsUsernames verifies the text report over every instance.
+func TestRunStatusReportsUsernames(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	run := runUsername(t, testStreams(store), clearCommandName)
+	ctx, _ := fileContext(t)
 
-	require.Error(t, run.err)
-	assert.Equal(t, 0, store.clears)
+	run := runUsername(ctx, t, statusCommandName)
+
+	require.NoError(t, run.err)
+	assert.Equal(t, "instance \"default\": username \"admin\"\ninstance \"spare\": (unset)\n", run.out)
 }
 
-// TestRunClearReportsCoordinatorFailure verifies a refused clear surfaces as an
-// error and prints no confirmation.
-func TestRunClearReportsCoordinatorFailure(t *testing.T) {
+// TestRunStatusReportsUsernamesInJSON verifies that --json selects the
+// machine-readable report for a named instance.
+func TestRunStatusReportsUsernamesInJSON(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{clearErr: errTestFactory}
-	run := runUsername(t, testStreams(store), clearCommandName, testInstanceName)
+	ctx, _ := fileContext(t)
 
-	require.ErrorIs(t, run.err, errTestFactory)
-	assert.NotContains(t, run.out, "cleared")
+	run := runUsername(ctx, t, statusCommandName, testInstanceName, "--"+jsonFlagName)
+
+	require.NoError(t, run.err)
+
+	var report map[string][]map[string]string
+
+	require.NoError(t, json.Unmarshal([]byte(run.out), &report))
+	assert.Equal(t, []map[string]string{{"instance": testInstanceName, "username": testUsername}}, report["instances"])
 }
 
-// TestRunStatusReportsUsernameInText verifies the text report names the configured
-// username, so an operator can confirm which identity is configured.
-func TestRunStatusReportsUsernameInText(t *testing.T) {
+// TestRunCommandsRejectWrongArity verifies the published argument arity of every
+// leaf.
+func TestRunCommandsRejectWrongArity(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		report: credentials.UsernameReport{
-			Instances: []credentials.UsernameStatus{
-				{Instance: testInstanceName, Username: testUsername},
-			},
-		},
+	for name, args := range map[string][]string{
+		"set without username": {setCommandName, testInstanceName},
+		"clear without name":   {clearCommandName},
+		"status with two":      {statusCommandName, testInstanceName, "spare"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, _ := fileContext(t)
+
+			require.Error(t, runUsername(ctx, t, args...).err)
+		})
 	}
-
-	run := runUsername(t, testStreams(store), statusCommandName)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, testInstanceName)
-	assert.Contains(t, run.out, testUsername)
 }
 
-// TestRunStatusLabelsUnsetUsername verifies an instance without a username is
-// labeled, so an empty value is not mistaken for a configured identity.
-func TestRunStatusLabelsUnsetUsername(t *testing.T) {
-	t.Parallel()
+// fileContext writes the username document and returns a context carrying it.
+//
+// Returns:
+//   - [context.Context]: context carrying the configuration and a store that
+//     fails the test on any call.
+//   - string: path of the configuration file.
+func fileContext(t *testing.T) (context.Context, string) {
+	t.Helper()
 
-	store := &fakeCoordinator{
-		report: credentials.UsernameReport{
-			Instances: []credentials.UsernameStatus{
-				{Instance: testInstanceName, Username: ""},
-			},
-		},
-	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(usernameDocument), 0o600))
 
-	run := runUsername(t, testStreams(store), statusCommandName)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, unsetLabel)
+	return apptest.FileContext(t, path), path
 }
 
-// TestRunStatusReportsUsernameInJSON verifies the machine-readable report carries
-// the username.
-func TestRunStatusReportsUsernameInJSON(t *testing.T) {
-	t.Parallel()
+// readFile returns the content of a file.
+//
+// Parameters:
+//   - path: file to read.
+//
+// Returns:
+//   - string: the file content.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
 
-	store := &fakeCoordinator{
-		report: credentials.UsernameReport{
-			Instances: []credentials.UsernameStatus{
-				{Instance: testInstanceName, Username: testUsername},
-			},
-		},
-	}
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
 
-	run := runUsername(t, testStreams(store), statusCommandName, "--"+jsonFlagName)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, "\"username\": \""+testUsername+"\"")
+	return string(data)
 }
 
-// TestRunStatusOmitsUnsetUsernameFromJSON verifies the machine-readable report
-// omits an unconfigured username.
-func TestRunStatusOmitsUnsetUsernameFromJSON(t *testing.T) {
-	t.Parallel()
+// runUsername executes one freshly constructed username command tree.
+//
+// Parameters:
+//   - ctx: context carrying the configuration and the credential store.
+//   - args: command line arguments passed to the username command.
+//
+// Returns:
+//   - commandRun: the rendered output streams and the execution error.
+//
+//nolint:contextcheck // The command reads the context passed to ExecuteContext.
+func runUsername(ctx context.Context, t *testing.T, args ...string) commandRun {
+	t.Helper()
 
-	store := &fakeCoordinator{
-		report: credentials.UsernameReport{
-			Instances: []credentials.UsernameStatus{
-				{Instance: testInstanceName, Username: ""},
-			},
-		},
-	}
+	output := &bytes.Buffer{}
+	errorsOut := &bytes.Buffer{}
+	command := NewCommand()
+	command.SetOut(output)
+	command.SetErr(errorsOut)
+	command.SetArgs(args)
 
-	run := runUsername(t, testStreams(store), statusCommandName, "--"+jsonFlagName)
+	err := command.ExecuteContext(ctx)
 
-	require.NoError(t, run.err)
-	assert.NotContains(t, run.out, "username")
+	return commandRun{err: err, out: output.String(), errOut: errorsOut.String()}
 }
 
-// TestRunStatusSelectsNamedInstance verifies a single instance is inspected by
-// name, and that no argument reports every instance.
-func TestRunStatusSelectsNamedInstance(t *testing.T) {
-	t.Parallel()
+// requireLeaf resolves one subcommand of the username group.
+//
+// Parameters:
+//   - group: username command owning the subcommand.
+//   - name: subcommand name to resolve.
+//
+// Returns:
+//   - *cobra.Command: The resolved subcommand.
+func requireLeaf(t *testing.T, group *cobra.Command, name string) *cobra.Command {
+	t.Helper()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store)
+	command, _, err := group.Find([]string{name})
+	require.NoError(t, err)
+	require.Equal(t, name, command.Name())
 
-	run := runUsername(t, seams, statusCommandName, testInstanceName)
-
-	require.NoError(t, run.err)
-	assert.Equal(t, []string{testInstanceName}, store.names)
-
-	run = runUsername(t, seams, statusCommandName)
-
-	require.NoError(t, run.err)
-	assert.Empty(t, store.names)
-}
-
-// TestRunStatusForwardsCoordinatorFailure verifies an unknown instance reaches the
-// operator.
-func TestRunStatusForwardsCoordinatorFailure(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{statusErr: errTestFactory}
-	run := runUsername(t, testStreams(store), statusCommandName, "absent")
-
-	require.ErrorIs(t, run.err, errTestFactory)
-	assert.Contains(t, run.err.Error(), "report username status")
-}
-
-// TestRunStatusRejectsExtraArguments verifies the published argument arity.
-func TestRunStatusRejectsExtraArguments(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{}
-	run := runUsername(t, testStreams(store), statusCommandName, "one", "two")
-
-	require.Error(t, run.err)
-	assert.Empty(t, store.names)
+	return command
 }

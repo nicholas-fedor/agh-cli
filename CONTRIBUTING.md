@@ -42,6 +42,9 @@ The dependency direction is:
 ```text
 main.go
   -> cmd/*
+    -> internal/prompt
+    -> internal/flags -> internal/output
+    -> internal/output -> internal/app and the domain value types
     -> internal/app
       -> internal/client | internal/filtering | internal/rewrite
         -> pkg/adguard
@@ -51,12 +54,15 @@ main.go
 ```
 
 - `main.go` is the process entry point.
-- `cmd/**` defines Cobra commands, flags, arguments, and presentation wiring.
-- `internal/app` coordinates application use cases and multi-instance execution.
+- `cmd/**` defines Cobra commands and nothing else.
+- `internal/flags` holds every command's flag values and bindings, and builds requests from them.
+- `internal/output` renders tables, reports, and result lines to an `io.Writer`.
+- `internal/prompt` reads secrets and confirmations from the operator.
+- `internal/app` coordinates application use cases and multi-instance execution. Commands reach every use case through it, the credential use cases included.
 - `internal/client`, `internal/filtering`, and `internal/rewrite` contain domain behavior.
 - `internal/config`, `internal/instance`, and `internal/execution` own configuration, catalog selection, and ordered execution. `internal/config` also resolves which configuration file a run uses.
 - `internal/connection` builds the `pkg/adguard` client for a configured instance, with one request timeout for every feature.
-- `internal/credentials` owns the credential store adapter, the mounted-file and environment readers, credential resolution, and the credential use cases in `Manager`. It reaches the configuration through an interface it defines and never imports `internal/config`.
+- `internal/credentials` owns the credential store adapter, the mounted-file and environment readers, credential resolution, and the credential use cases in `Manager`, which commands reach only through `internal/app`. It reaches the configuration through an interface it defines and never imports `internal/config`.
 - `pkg/adguard` is the public, generated-code-independent AdGuard Home client.
 - `tools/docgen` generates the Hugo CLI reference from the Cobra tree.
 - `www` is the Hugo documentation module.
@@ -67,11 +73,10 @@ Do not import `pkg/adguard` from `internal` implementation details that should b
 
 Command packages are thin adapters. They may:
 
-- define Cobra commands;
-- register flags on the command being constructed;
-- validate positional arguments;
-- pass command context and output writers to the application layer;
-- render prepared results.
+- define Cobra commands, including Cobra's own argument checks such as `cobra.ExactArgs`;
+- bind an `internal/flags` container to the command being constructed;
+- pass the command context and the flag values to the application layer;
+- hand the results to an `internal/output` writer with the stream it should use.
 
 They may name the value types of the domain packages `internal/client`, `internal/filtering`, `internal/rewrite`, and `internal/credentials`, such as a request, a result, or a sentinel error. Every behavior goes through `internal/app`, so `internal/app` never copies or re-exports a domain type the commands can name directly.
 
@@ -83,17 +88,29 @@ They must not:
 - construct `pkg/adguard` clients directly;
 - implement domain algorithms;
 - perform multi-instance orchestration;
+- format output themselves;
+- read operator input themselves;
+- validate flag values themselves;
+- declare an interface or another seam for tests;
 - own shared package-level command or flag state.
 
 Every command tree must be constructed fresh:
 
 - each leaf command has an unexported constructor;
 - each package exports `NewCommand()`;
-- flags bind to values owned by the constructed command;
+- flags bind to an `internal/flags` container owned by the constructed command;
 - no `init()` function registers commands or flags;
 - `cmd.NewRootCommand()` returns a fresh root tree for execution and documentation.
 
-Place a command-specific helper in the command's own file. Place helpers shared by multiple subcommands in that package's `cmd.go`. Do not create `wiring.go` or artificial `output.go` aggregation files.
+Place wiring shared by several subcommands, such as one constructor for a family of mutation commands, in that package's `cmd.go`. Logic never goes in `cmd`. It belongs to the package that owns it:
+
+- rendering to `internal/output`;
+- operator input to `internal/prompt`;
+- flag validation and request shaping to `internal/flags`;
+- composition to `internal/app`;
+- domain rules to their domain package.
+
+Do not create `wiring.go` or `output.go` aggregation files under `cmd`.
 
 ## Code style
 
@@ -192,7 +209,7 @@ go test -race -coverprofile=coverage.out -covermode=atomic ./...
 - Fuzz tests are white-box unless external visibility is specifically required.
 - Use `t.Context()` rather than `context.Background()` in tests.
 - Use `t.Parallel()` unless the test mutates process-global state, such as with `t.Setenv` or `t.Chdir`.
-- Execute a command under test with a context from `internal/app/apptest`, which carries a loaded configuration.
+- Execute a command under test with a context from `internal/app/apptest`, which carries a loaded configuration and a credential store. The default store fails the test on any call, so a test never reaches the host credential store. Use `apptest.StoreContext` to supply a store with expectations, and drive a hidden prompt through `cmd.SetIn` with an input that implements `prompt.TerminalInput`.
 
 ### `pkg/adguard` test tiers
 

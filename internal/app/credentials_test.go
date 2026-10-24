@@ -105,38 +105,104 @@ func TestSelectTargetsReportCredentialFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "home")
 }
 
-// TestNewCredentialsCoordinatorUsesRunConfig verifies that the coordinator
-// works on the configuration the run loaded.
-func TestNewCredentialsCoordinatorUsesRunConfig(t *testing.T) {
+// TestStatusPasswordUsesRunConfig verifies that the credential use cases work on
+// the configuration the run loaded, through the store the run attached.
+func TestStatusPasswordUsesRunConfig(t *testing.T) {
 	t.Parallel()
 
-	ctx := runContext(t,
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Maybe()
+
+	ctx := WithCredentialStore(runContext(t,
 		"instances:\n"+
 			"  default:\n    host: "+testConfigHost+"\n    password: "+testLegacyPassword+"\n",
-	)
-
-	coordinator, err := NewCredentialsCoordinator(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, coordinator)
+	), store)
 
 	// A legacy plaintext instance is decided from the configuration alone, so
-	// this inspection never probes the operating system credential store.
-	report, statusErr := coordinator.StatusPassword(t.Context(), []string{"default"})
+	// this inspection never reads the store.
+	report, err := StatusPassword(ctx, []string{"default"})
 
-	require.NoError(t, statusErr)
+	require.NoError(t, err)
 	require.Len(t, report.Instances, 1)
 	assert.Equal(t, instance.PlaintextSource, report.Instances[0].Source)
-	assert.NotEmpty(t, report.Instances[0].Presence)
 	assert.NotContains(t, report.Service, testLegacyPassword)
 }
 
-// TestNewCredentialsCoordinatorRequiresRunConfig verifies that a coordinator is
-// never built without a loaded configuration.
-func TestNewCredentialsCoordinatorRequiresRunConfig(t *testing.T) {
+// TestSetPasswordWritesTheRunStore verifies that a password reaches the store the
+// run attached and that the instance is pointed at it.
+func TestSetPasswordWritesTheRunStore(t *testing.T) {
 	t.Parallel()
 
-	coordinator, err := NewCredentialsCoordinator(t.Context())
+	configPath := writeTestConfig(t, "instances:\n  default:\n    host: "+testConfigHost+"\n")
 
-	require.ErrorIs(t, err, ErrNoRunConfig)
-	assert.Nil(t, coordinator)
+	store := mockCredentials.NewMockStore(t)
+	store.EXPECT().Backend().Return(credentials.KeyringBackend).Once()
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, "default").Return("", credentials.ErrNotFound).Once()
+	store.EXPECT().Set(mock.Anything, credentials.DefaultService, "default", "fresh-secret").Return(nil).Once()
+
+	ctx := WithCredentialStore(contextWithConfigFile(t.Context(), t, configPath), store)
+
+	result, err := SetPassword(ctx, "default", "", "fresh-secret")
+
+	require.NoError(t, err)
+	assert.Equal(t, "default", result.Key)
+	assert.Contains(t, readTestConfig(t, configPath), "source: keyring")
+	assert.NotContains(t, readTestConfig(t, configPath), "fresh-secret")
+}
+
+// TestUsernameUseCasesRewriteTheRunConfig verifies that a username is recorded,
+// reported, and cleared in the configuration the run loaded.
+func TestUsernameUseCasesRewriteTheRunConfig(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestConfig(t, "instances:\n  default:\n    host: "+testConfigHost+"\n")
+	ctx := WithCredentialStore(contextWithConfigFile(t.Context(), t, configPath), mockCredentials.NewMockStore(t))
+
+	_, err := SetUsername(ctx, "default", "operator")
+	require.NoError(t, err)
+	assert.Contains(t, readTestConfig(t, configPath), "username: operator")
+
+	report, err := StatusUsername(ctx, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []credentials.UsernameStatus{{Instance: "default", Username: "operator"}}, report.Instances)
+
+	_, err = ClearUsername(ctx, "default")
+	require.NoError(t, err)
+	assert.NotContains(t, readTestConfig(t, configPath), "operator")
+}
+
+// TestCredentialUseCasesRequireRunConfig verifies that no credential use case
+// runs without a loaded configuration.
+func TestCredentialUseCasesRequireRunConfig(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	_, migrateErr := MigrateCredentials(ctx, credentials.MigrationRequest{DryRun: true})
+	_, setErr := SetPassword(ctx, "default", "", "secret")
+	_, clearErr := ClearPassword(ctx, "default")
+	_, clearAllErr := ClearAllPasswords(ctx)
+	_, statusErr := StatusPassword(ctx, nil)
+	_, setUsernameErr := SetUsername(ctx, "default", "operator")
+	_, clearUsernameErr := ClearUsername(ctx, "default")
+	_, statusUsernameErr := StatusUsername(ctx, nil)
+
+	for _, err := range []error{
+		migrateErr, setErr, clearErr, clearAllErr, statusErr, setUsernameErr, clearUsernameErr, statusUsernameErr,
+	} {
+		require.ErrorIs(t, err, ErrNoRunConfig)
+	}
+}
+
+// TestCredentialStoreDefaultsToSystemStore verifies that a run without an
+// attached store uses the operating system credential store, and that an
+// attached store replaces it. Building the system store never contacts it.
+func TestCredentialStoreDefaultsToSystemStore(t *testing.T) {
+	t.Parallel()
+
+	assert.IsType(t, &credentials.SystemStore{}, credentialStore(t.Context()))
+
+	store := mockCredentials.NewMockStore(t)
+
+	assert.Same(t, store, credentialStore(WithCredentialStore(t.Context(), store)))
 }

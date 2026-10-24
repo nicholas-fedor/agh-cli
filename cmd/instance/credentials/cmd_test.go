@@ -6,7 +6,6 @@ package credentials
 import (
 	"bytes"
 	"context"
-	"errors"
 	"go/parser"
 	"go/token"
 	"os"
@@ -19,22 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	"github.com/nicholas-fedor/agh-cli/internal/app"
 )
 
 // fakeCoordinator records the migration request and returns the configured
-// outcome.
-type fakeCoordinator struct {
-	// report is the outcome returned by Migrate.
-	report credentials.MigrationReport
-	// migrateErr is the error returned by Migrate.
-	migrateErr error
-	// dryRun records the dry-run selection handed to Migrate.
-	dryRun bool
-	// migrations counts the Migrate calls made by the command.
-	migrations int
-}
-
 // commandRun captures the rendered result of one command execution.
 type commandRun struct {
 	// out is the command output stream.
@@ -51,6 +38,9 @@ const credentialsCommandName = "credentials"
 // migrateCommandName is the published name of the migrate subcommand.
 const migrateCommandName = "migrate"
 
+// dryRunFlagName is the published name of the migration preview flag.
+const dryRunFlagName = "dry-run"
+
 // usernameCommandName is the published name of the username subcommand group.
 const usernameCommandName = "username"
 
@@ -63,17 +53,8 @@ const testInstanceName = "default"
 // testSecret is the password used by the command tests.
 const testSecret = "s3cr3t-adguard-password"
 
-// testService is the credential store namespace used by the command tests.
-const testService = "agh-cli"
-
-// testBackend is the credential store backend name used by the command tests.
-const testBackend = "keyring"
-
 // testKeyringKey is the credential key used by the command tests.
 const testKeyringKey = "default"
-
-// errTestFactory is the coordinator construction failure the command tests inject.
-var errTestFactory = errors.New("no configuration file")
 
 // allowedProductionImports is the complete set of third-party and project
 // imports the production command files may use.
@@ -81,8 +62,8 @@ var errTestFactory = errors.New("no configuration file")
 // The package renders a report and hands a migration request to the application
 // layer. Configuration loading and credential policy belong there, so these files
 // must never name the configuration package or the instance domain package. The
-// credential package is listed for its report and request types only, and the
-// command layer's layering test refuses any call into it. The two subpackages
+// credential package is listed for its report and request types only, and no
+// command calls into it. The two subpackages
 // are listed because this package composes them, and the composition is the
 // only import either one earns here.
 var allowedProductionImports = map[string]struct{}{
@@ -90,8 +71,10 @@ var allowedProductionImports = map[string]struct{}{
 	"github.com/nicholas-fedor/agh-cli/cmd/instance/credentials/username": {},
 	"github.com/nicholas-fedor/agh-cli/internal/app":                      {},
 	"github.com/nicholas-fedor/agh-cli/internal/credentials":              {},
+	"github.com/nicholas-fedor/agh-cli/internal/flags":                    {},
+	"github.com/nicholas-fedor/agh-cli/internal/output":                   {},
+	"github.com/nicholas-fedor/agh-cli/internal/prompt":                   {},
 	"github.com/spf13/cobra":                                              {},
-	"golang.org/x/term":                                                   {},
 }
 
 // forbiddenProductionImports names the packages the command files must not
@@ -101,66 +84,29 @@ var forbiddenProductionImports = map[string]string{
 	"github.com/nicholas-fedor/agh-cli/internal/instance": "instance policy belongs to internal/app",
 }
 
-// Migrate records the request and returns the configured outcome.
-func (f *fakeCoordinator) Migrate(
-	_ context.Context,
-	request credentials.MigrationRequest,
-) (credentials.MigrationReport, error) {
-	f.migrations++
-
-	f.dryRun = request.DryRun
-
-	return f.report, f.migrateErr
-}
-
-// testStreams builds input seams over an injected coordinator.
-//
-// Parameters:
-//   - store: coordinator returned by the command.
-//
-// Returns:
-//   - *streams: test dependencies for the credentials commands.
-func testStreams(store coordinator) *streams {
-	return &streams{
-		coordinator: func(context.Context) (coordinator, error) {
-			return store, nil
-		},
-	}
-}
-
 // runCredentials executes one freshly constructed credentials command tree.
 //
 // Parameters:
-//   - t: active test requiring command construction.
-//   - s: input seams and credential coordinator factory.
-//   - input: standard input supplied to the command.
+//   - ctx: context carrying the configuration and the credential store.
 //   - args: command line arguments passed to the credentials command.
 //
 // Returns:
 //   - commandRun: the rendered output streams and the execution error.
-func runCredentials(
-	t *testing.T,
-	s *streams,
-	input string,
-	args ...string,
-) commandRun {
+//
+//nolint:contextcheck // The command reads the context passed to ExecuteContext.
+func runCredentials(ctx context.Context, t *testing.T, args ...string) commandRun {
 	t.Helper()
 
 	output := &bytes.Buffer{}
 	errorsOut := &bytes.Buffer{}
-	command := newCommandGroup(s)
+	command := NewCommand()
 	command.SetOut(output)
 	command.SetErr(errorsOut)
-	command.SetIn(strings.NewReader(input))
 	command.SetArgs(args)
 
-	err := command.Execute()
+	err := command.ExecuteContext(ctx)
 
-	return commandRun{
-		out:    output.String(),
-		errOut: errorsOut.String(),
-		err:    err,
-	}
+	return commandRun{out: output.String(), errOut: errorsOut.String(), err: err}
 }
 
 // requireLeaf resolves one subcommand of the credentials group.
@@ -223,36 +169,29 @@ func TestMigrateDryRunFlagIsBound(t *testing.T) {
 	assert.Equal(t, "false", flag.DefValue)
 }
 
-// TestNewCommandRejectsProductionConfigurationError verifies a coordinator
-// failure names the failing step.
-func TestNewCommandRejectsProductionConfigurationError(t *testing.T) {
+// TestNewCommandRequiresLoadedConfiguration verifies that a migration run
+// without a loaded configuration fails.
+func TestNewCommandRequiresLoadedConfiguration(t *testing.T) {
 	t.Parallel()
 
-	group := newCommandGroup(&streams{
-		coordinator: func(context.Context) (coordinator, error) {
-			return nil, errTestFactory
-		},
-	})
+	run := runCredentials(t.Context(), t, migrateCommandName, "--"+dryRunFlagName)
 
-	group.SetOut(&bytes.Buffer{})
-	group.SetErr(&bytes.Buffer{})
-	group.SetArgs([]string{migrateCommandName})
-
-	err := group.Execute()
-
-	require.ErrorIs(t, err, errTestFactory)
-	assert.Contains(t, err.Error(), "build credential coordinator")
+	require.ErrorIs(t, run.err, app.ErrNoRunConfig)
 }
 
 // TestProductionFilesImportOnlyAllowedInternalPackages verifies that the only
 // project-internal packages a production command file imports are the
-// application layer and the credential types.
+// application layer, the credential types, and the flag, output, and prompt
+// packages the commands are built from.
 func TestProductionFilesImportOnlyAllowedInternalPackages(t *testing.T) {
 	t.Parallel()
 
 	allowed := []string{
 		"github.com/nicholas-fedor/agh-cli/internal/app",
 		"github.com/nicholas-fedor/agh-cli/internal/credentials",
+		"github.com/nicholas-fedor/agh-cli/internal/flags",
+		"github.com/nicholas-fedor/agh-cli/internal/output",
+		"github.com/nicholas-fedor/agh-cli/internal/prompt",
 	}
 
 	forEachProductionFile(t, func(t *testing.T, name string, imports []string) {

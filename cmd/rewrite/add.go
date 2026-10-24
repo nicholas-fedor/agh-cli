@@ -4,12 +4,14 @@
 package rewrite
 
 import (
-	"context"
+	"errors"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
 
 // newRewriteAddCommand creates the add command and binds its flags.
@@ -17,23 +19,30 @@ import (
 // Returns:
 //   - *cobra.Command: The add command with its own flag values.
 func newRewriteAddCommand() *cobra.Command {
-	command, values := newRewriteRuleCommand(
-		"add <domain> <answer>",
-		"Add a rewrite rule",
-		"add rewrite",
-		func(
-			management *app.RewriteManagement,
-			ctx context.Context,
-			selection app.Selection,
-			request rewrite.RuleRequest,
-		) ([]app.MutationResult, error) {
-			return management.Add(ctx, selection, request)
-		},
+	return newRewriteRuleCommand("add <domain> <answer>", "Add a rewrite rule", runRewriteAdd)
+}
+
+// runRewriteAdd adds a rewrite rule on one or more instances.
+//
+// Parameters:
+//   - cmd: Cobra command providing output and context.
+//   - args: Domain and answer arguments.
+//   - values: Bound flag values selecting the instances and rule state.
+//
+// Returns:
+//   - error: An error when a per-instance request or the result output fails.
+func runRewriteAdd(cmd *cobra.Command, args []string, values *flags.RewriteRuleFlags) error {
+	results, mutationErr := app.NewRewriteManagement(cmd.Context()).Add(
+		cmd.Context(),
+		values.Selection(),
+		values.Request(args[0], args[1]),
 	)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
 
-	command.Flags().BoolVarP(&values.enabled, "enabled", "e", true, "enable rule")
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
+	err := errors.Join(mutationErr, outputErr)
+	if err != nil {
+		return fmt.Errorf("add rewrite: %w", err)
+	}
 
-	return command
+	return nil
 }

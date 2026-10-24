@@ -5,309 +5,120 @@ package password
 
 import (
 	"errors"
-	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/prompt"
 )
 
-// TestRunClearRemovesNamedCredential verifies the single-instance clear and the
-// confirmation prompt that guards it.
+// TestRunClearRemovesNamedCredential verifies that the stored credential of one
+// instance is deleted and reported.
 func TestRunClearRemovesNamedCredential(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		clearResult: credentials.PasswordClearResult{
-			Instance: testInstanceName,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Removed:  true,
-			Saved:    true,
-		},
-	}
+	ctx, store := storeContext(t, keyringDocument)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, testInstanceName).Return(testSecret, nil).Once()
+	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, testInstanceName).Return(nil).Once()
 
-	seams := testStreams(store, true, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"y\n",
-		clearCommandName,
-		testInstanceName,
-	)
+	run := runPassword(ctx, t, nil, clearCommandName, testInstanceName, "--"+yesFlagName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 1, store.clears)
-	assert.Equal(t, 0, store.clearAlls)
-	assert.Equal(t, testInstanceName, store.name)
-	assert.Contains(
-		t,
-		run.out,
-		"Removed credential for instance \"default\" with key \"default\" "+
-			"from service \"agh-cli\".",
-	)
-	assert.Contains(
-		t,
-		run.errOut,
-		"Remove the stored credential of instance \"default\"?",
-	)
+	assert.Contains(t, run.out, `Removed credential for instance "default" with key "default"`)
+	assert.NotContains(t, run.out+run.errOut, testSecret)
 }
 
-// TestRunClearReportsAbsentCredential verifies that clearing an absent
-// credential converges instead of failing.
-func TestRunClearReportsAbsentCredential(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{
-		clearResult: credentials.PasswordClearResult{
-			Instance: testInstanceName,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Removed:  false,
-			Saved:    true,
-		},
-	}
-
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"",
-		clearCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, "No stored credential for instance \"default\"")
-}
-
-// TestRunClearReportsKeptSharedCredential verifies a key another instance still
-// reads is reported as kept rather than as absent.
-func TestRunClearReportsKeptSharedCredential(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{
-		clearResult: credentials.PasswordClearResult{
-			Instance: testInstanceName,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Shared:   true,
-			Saved:    true,
-		},
-	}
-
-	run := runPassword(
-		t,
-		testStreams(store, false, testSecret),
-		"",
-		clearCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, "Kept credential with key")
-	assert.NotContains(t, run.out, "No stored credential")
-}
-
-// TestRunClearWarnsWhenReferenceSurvives verifies that a deleted credential still
-// referenced by the configuration file is reported.
-func TestRunClearWarnsWhenReferenceSurvives(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{
-		clearResult: credentials.PasswordClearResult{
-			Instance: testInstanceName,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Removed:  true,
-			Saved:    false,
-		},
-	}
-
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"",
-		clearCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, "Removed credential")
-	assert.Contains(t, run.errOut, "still references it")
-}
-
-// TestRunClearRemovesWholeService verifies the service-wide clear and that the
-// configuration is deliberately left alone.
+// TestRunClearRemovesWholeService verifies that --all deletes every credential
+// of the configured service.
 func TestRunClearRemovesWholeService(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		clearAllResult: credentials.PasswordClearResult{
-			Service: testService,
-			Removed: true,
-			All:     true,
-		},
-	}
+	ctx, store := storeContext(t, keyringDocument)
+	store.EXPECT().DeleteAll(mock.Anything, credentials.DefaultService).Return(nil).Once()
 
-	seams := testStreams(store, true, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"y\n",
-		clearCommandName,
-		"--"+allFlagName,
-	)
+	run := runPassword(ctx, t, nil, clearCommandName, "--"+allFlagName, "--"+yesFlagName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 0, store.clears)
-	assert.Equal(t, 1, store.clearAlls)
-	assert.Equal(t, "Removed every credential in service \"agh-cli\".\n", run.out)
-	assert.Contains(
-		t,
-		run.errOut,
-		"Remove every credential of the configured service?",
-	)
+	assert.Contains(t, run.out, `Removed every credential in service "agh-cli".`)
 }
 
-// TestRunClearRejectsAmbiguousSelection verifies that the mutually exclusive
-// selections are refused before anything is deleted.
+// TestRunClearRejectsAmbiguousSelection verifies that a clear must name exactly
+// one of an instance and the whole service, before the store is reached.
 func TestRunClearRejectsAmbiguousSelection(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string][]string{
-		"instance and all": {clearCommandName, testInstanceName, "--" + allFlagName},
-		"neither":          {clearCommandName},
-	}
-
-	for name, args := range tests {
+	for name, args := range map[string][]string{
+		"neither":          {clearCommandName, "--" + yesFlagName},
+		"instance and all": {clearCommandName, testInstanceName, "--" + allFlagName, "--" + yesFlagName},
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			store := &fakeCoordinator{}
-			seams := testStreams(store, true, testSecret)
+			ctx, _ := storeContext(t, keyringDocument)
 
-			run := runPassword(t, seams, "y\n", args...)
+			run := runPassword(ctx, t, nil, args...)
 
-			require.ErrorIs(t, run.err, ErrInvalidSelection)
-			assert.Equal(t, 0, store.clears)
-			assert.Equal(t, 0, store.clearAlls)
+			require.ErrorIs(t, run.err, flags.ErrInvalidSelection)
 		})
 	}
 }
 
-// TestRunClearDeclinedConfirmationDeletesNothing verifies that a refused prompt
-// leaves the credential store untouched.
+// TestRunClearDeclinedConfirmationDeletesNothing verifies that a declined
+// confirmation never reaches the store and says so.
 func TestRunClearDeclinedConfirmationDeletesNothing(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store, true, testSecret)
+	ctx, _ := storeContext(t, keyringDocument)
 
-	run := runPassword(
-		t,
-		seams,
-		"no\n",
-		clearCommandName,
-		testInstanceName,
-	)
+	run := runPassword(ctx, t, terminalInput{Reader: strings.NewReader("n\n"), hidden: ""},
+		clearCommandName, testInstanceName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 0, store.clears)
-	assert.Contains(t, run.errOut, "Canceled")
+	assert.Contains(t, run.errOut, "Canceled; no credential was removed.")
 }
 
 // TestRunClearRequiresConfirmationWithoutTerminal verifies that a redirected
-// workflow cannot silently delete a credential.
+// workflow cannot delete a credential without --yes.
 func TestRunClearRequiresConfirmationWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
+	ctx, _ := storeContext(t, keyringDocument)
 
-	run := runPassword(t, seams, "", clearCommandName, testInstanceName)
+	run := runPassword(ctx, t, nil, clearCommandName, "--"+allFlagName)
 
-	require.ErrorIs(t, run.err, ErrConfirmationUnavailable)
-	assert.Equal(t, 0, store.clears)
+	require.ErrorIs(t, run.err, prompt.ErrConfirmationUnavailable)
 }
 
-// TestRunClearForwardsExternalSourceRefusal verifies that the external-source
-// refusal reaches the operator unchanged.
-func TestRunClearForwardsExternalSourceRefusal(t *testing.T) {
+// TestRunClearRefusesExternalSource verifies that a password owned by another
+// system is never deleted, and that the store is never reached.
+func TestRunClearRefusesExternalSource(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		clearErr: fmt.Errorf(
-			"clear credential of %q: %w: source is %q",
-			testInstanceName,
-			credentials.ErrExternalCredentialSource,
-			"env",
-		),
-	}
+	ctx, _ := storeContext(t, envDocument)
 
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"",
-		clearCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
+	run := runPassword(ctx, t, nil, clearCommandName, testInstanceName, "--"+yesFlagName)
 
 	require.ErrorIs(t, run.err, credentials.ErrExternalCredentialSource)
-	assert.Contains(t, run.err.Error(), "env")
 }
 
-// TestRunClearForwardsStoreFailure verifies that a store failure reaches the
-// operator.
+// TestRunClearForwardsStoreFailure verifies that a store failure names the
+// instance.
 func TestRunClearForwardsStoreFailure(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{clearErr: errors.New("credential store unavailable")}
-	seams := testStreams(store, false, testSecret)
+	storeErr := errors.New("keyring is locked")
 
-	run := runPassword(
-		t,
-		seams,
-		"",
-		clearCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
+	ctx, store := storeContext(t, keyringDocument)
+	store.EXPECT().Get(mock.Anything, credentials.DefaultService, testInstanceName).Return(testSecret, nil).Once()
+	store.EXPECT().Delete(mock.Anything, credentials.DefaultService, testInstanceName).Return(storeErr).Once()
 
-	require.Error(t, run.err)
-	assert.Contains(t, run.err.Error(), "credential store unavailable")
-}
+	run := runPassword(ctx, t, nil, clearCommandName, testInstanceName, "--"+yesFlagName)
 
-// TestRunClearForwardsServiceFailure verifies that a service-wide store failure
-// reaches the operator.
-func TestRunClearForwardsServiceFailure(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{clearAllErr: errors.New("credential store unavailable")}
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"",
-		clearCommandName,
-		"--"+allFlagName,
-		"--"+yesFlagName,
-	)
-
-	require.Error(t, run.err)
-	assert.Contains(t, run.err.Error(), "clear credential service")
+	require.ErrorIs(t, run.err, storeErr)
+	assert.Contains(t, run.err.Error(), `clear credential of "default"`)
 }

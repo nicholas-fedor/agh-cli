@@ -5,306 +5,122 @@ package password
 
 import (
 	"errors"
-	"io"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/credentials"
+	"github.com/nicholas-fedor/agh-cli/internal/prompt"
 )
 
-// failingReader always fails a read.
-type failingReader struct{}
-
-// failingWriter always fails a write.
-type failingWriter struct{}
-
-// TestRunSetReadsRedirectedSecret verifies the non-interactive write path, the
-// confirmation requirement, and that no output stream ever carries the secret.
+// TestRunSetReadsRedirectedSecret verifies the non-interactive write path, and
+// that no output stream ever carries the secret.
 func TestRunSetReadsRedirectedSecret(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		setResult: credentials.PasswordSetResult{
-			Instance: testInstanceName,
-			Backend:  testBackend,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Saved:    true,
-		},
-	}
+	ctx, store := storeContext(t, legacyDocument)
+	expectStoredAbsent(store, testInstanceName)
+	store.EXPECT().Set(mock.Anything, credentials.DefaultService, testInstanceName, testSecret).Return(nil).Once()
 
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n",
-		setCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
+	run := runPassword(ctx, t, strings.NewReader(testSecret+"\n"), setCommandName, testInstanceName, "--"+yesFlagName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 1, store.sets)
-	assert.Equal(t, testSecret, store.secret)
-	assert.Equal(t, testInstanceName, store.name)
-	assert.Empty(t, store.key)
-	assert.Equal(
-		t,
-		"Stored credential for instance \"default\" in keyring service "+
-			"\"agh-cli\" with key \"default\".\n",
-		run.out,
-	)
-	assert.NotContains(t, run.out, testSecret)
-	assert.NotContains(t, run.errOut, testSecret)
+	assert.Contains(t, run.out, `Stored credential for instance "default"`)
+	assert.NotContains(t, run.out+run.errOut, testSecret)
 }
 
-// TestRunSetUsesHiddenTerminalPrompt verifies the interactive write path prompts
-// on the error stream and never echoes the secret.
+// TestRunSetUsesHiddenTerminalPrompt verifies that a terminal input is read
+// through the hidden prompt and confirmed before it is stored.
 func TestRunSetUsesHiddenTerminalPrompt(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		setResult: credentials.PasswordSetResult{
-			Instance: testInstanceName,
-			Backend:  testBackend,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Saved:    true,
-		},
-	}
+	ctx, store := storeContext(t, legacyDocument)
+	expectStoredAbsent(store, testInstanceName)
+	store.EXPECT().Set(mock.Anything, credentials.DefaultService, testInstanceName, testSecret).Return(nil).Once()
 
-	seams := testStreams(store, true, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		"y\n",
-		setCommandName,
-		testInstanceName,
-	)
+	input := terminalInput{Reader: strings.NewReader("y\n"), hidden: testSecret}
+	run := runPassword(ctx, t, input, setCommandName, testInstanceName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, testSecret, store.secret)
-	assert.Equal(t, 1, store.sets)
 	assert.Contains(t, run.errOut, "Password: ")
-	assert.Contains(t, run.errOut, "Store this credential for instance \"default\"?")
-	assert.NotContains(t, run.errOut, testSecret)
-	assert.NotContains(t, run.out, testSecret)
+	assert.Contains(t, run.errOut, `Store this credential for instance "default"? [y/N]: `)
+	assert.NotContains(t, run.out+run.errOut, testSecret)
 }
 
 // TestRunSetRequiresConfirmationWithoutTerminal verifies that a redirected
-// workflow cannot silently store a credential.
+// secret is never stored without --yes. The store has no expectations, so any
+// call fails the test.
 func TestRunSetRequiresConfirmationWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
+	ctx, _ := storeContext(t, legacyDocument)
 
-	run := runPassword(t, seams, testSecret+"\n", setCommandName, testInstanceName)
+	run := runPassword(ctx, t, strings.NewReader(testSecret+"\n"), setCommandName, testInstanceName)
 
-	require.ErrorIs(t, run.err, ErrConfirmationUnavailable)
-	assert.Equal(t, 0, store.sets)
+	require.ErrorIs(t, run.err, prompt.ErrConfirmationUnavailable)
+	assert.NotContains(t, run.out+run.errOut+run.err.Error(), testSecret)
 }
 
-// TestRunSetDeclinedConfirmationStoresNothing verifies that a refused prompt
-// leaves the credential store untouched.
+// TestRunSetDeclinedConfirmationStoresNothing verifies that a declined
+// confirmation never reaches the store and says so.
 func TestRunSetDeclinedConfirmationStoresNothing(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store, true, testSecret)
+	ctx, _ := storeContext(t, legacyDocument)
 
-	run := runPassword(
-		t,
-		seams,
-		"n\n",
-		setCommandName,
-		testInstanceName,
-	)
+	input := terminalInput{Reader: strings.NewReader("n\n"), hidden: testSecret}
+	run := runPassword(ctx, t, input, setCommandName, testInstanceName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, 0, store.sets)
-	assert.Contains(t, run.errOut, "Canceled")
-	assert.NotContains(t, run.errOut, testSecret)
+	assert.Contains(t, run.errOut, "Canceled; no credential was stored.")
 }
 
-// TestRunSetRejectsEmptySecret verifies that an empty secret never reaches the
-// credential store, because it would replace a working password.
+// TestRunSetRejectsEmptySecret verifies that empty input never replaces a
+// working password.
 func TestRunSetRejectsEmptySecret(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]struct {
-		input    string
-		terminal bool
-		secret   string
-	}{
-		"redirected whitespace": {
-			input:    "\n",
-			terminal: false,
-			secret:   testSecret,
-		},
-		"hidden prompt blank": {
-			input:    "y\n",
-			terminal: true,
-			secret:   "",
-		},
-	}
+	ctx, _ := storeContext(t, legacyDocument)
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	run := runPassword(ctx, t, strings.NewReader("\n"), setCommandName, testInstanceName, "--"+yesFlagName)
 
-			store := &fakeCoordinator{}
-			seams := testStreams(store, test.terminal, test.secret)
-
-			run := runPassword(
-				t,
-				seams,
-				test.input,
-				setCommandName,
-				testInstanceName,
-				"--"+yesFlagName,
-			)
-
-			require.ErrorIs(t, run.err, ErrEmptySecret)
-			assert.Equal(t, 0, store.sets)
-		})
-	}
+	require.ErrorIs(t, run.err, prompt.ErrEmptySecret)
 }
 
-// TestRunSetTrimsSingleTrailingNewline verifies that a piped secret is not
-// polluted by the trailing newline of the pipe.
-func TestRunSetTrimsSingleTrailingNewline(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n",
-		setCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Equal(t, testSecret, store.secret)
-}
-
-// TestRunSetKeepsTrailingNewlineOfDoubledRedirect verifies that only the
-// transport newline is removed.
-func TestRunSetKeepsTrailingNewlineOfDoubledRedirect(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n\n",
-		setCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Equal(t, testSecret+"\n", store.secret)
-}
-
-// TestRunSetForwardsCustomKey verifies that a custom credential key reaches the
-// use case.
+// TestRunSetForwardsCustomKey verifies that --key selects the credential key.
 func TestRunSetForwardsCustomKey(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{
-		setResult: credentials.PasswordSetResult{
-			Instance: testInstanceName,
-			Backend:  testBackend,
-			Service:  testService,
-			Key:      "adguard-production-admin",
-			Replaced: true,
-			Saved:    true,
-		},
-	}
+	ctx, store := storeContext(t, legacyDocument)
+	expectStoredAbsent(store, "adguard-production-admin")
+	store.EXPECT().Set(mock.Anything, credentials.DefaultService, "adguard-production-admin", testSecret).
+		Return(nil).Once()
 
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n",
-		setCommandName,
-		testInstanceName,
-		"--"+keyFlagName, "adguard-production-admin",
-		"--"+yesFlagName,
-	)
+	run := runPassword(ctx, t, strings.NewReader(testSecret), setCommandName, testInstanceName,
+		"--"+keyFlagName, "adguard-production-admin", "--"+yesFlagName)
 
 	require.NoError(t, run.err)
-	assert.Equal(t, "adguard-production-admin", store.key)
-	assert.Contains(t, run.out, "Replaced credential")
-	assert.NotContains(t, run.out, testSecret)
+	assert.Contains(t, run.out, `with key "adguard-production-admin"`)
 }
 
-// TestRunSetWarnsWhenConfigurationWasNotSaved verifies that a stored credential
-// with an unsaved configuration is reported on the error stream.
-func TestRunSetWarnsWhenConfigurationWasNotSaved(t *testing.T) {
-	t.Parallel()
-
-	store := &fakeCoordinator{
-		setResult: credentials.PasswordSetResult{
-			Instance: testInstanceName,
-			Backend:  testBackend,
-			Service:  testService,
-			Key:      testKeyringKey,
-			Saved:    false,
-		},
-	}
-
-	seams := testStreams(store, false, testSecret)
-
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n",
-		setCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
-
-	require.NoError(t, run.err)
-	assert.Contains(t, run.out, "Stored credential")
-	assert.Contains(t, run.errOut, "still")
-	assert.NotContains(t, run.errOut, testSecret)
-}
-
-// TestRunSetForwardsStoreFailure verifies that a store failure reaches the
-// operator without disclosing the secret.
+// TestRunSetForwardsStoreFailure verifies that a store failure is reported with
+// the instance name and without the secret.
 func TestRunSetForwardsStoreFailure(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{setErr: errors.New("credential store unavailable")}
-	seams := testStreams(store, false, testSecret)
+	storeErr := errors.New("keyring is locked")
 
-	run := runPassword(
-		t,
-		seams,
-		testSecret+"\n",
-		setCommandName,
-		testInstanceName,
-		"--"+yesFlagName,
-	)
+	ctx, store := storeContext(t, legacyDocument)
+	expectStoredAbsent(store, testInstanceName)
+	store.EXPECT().Set(mock.Anything, credentials.DefaultService, testInstanceName, testSecret).Return(storeErr).Once()
 
-	require.Error(t, run.err)
-	assert.Contains(t, run.err.Error(), "credential store unavailable")
-	assert.Contains(t, run.err.Error(), testInstanceName)
-	assert.NotContains(t, run.out, testSecret)
+	run := runPassword(ctx, t, strings.NewReader(testSecret), setCommandName, testInstanceName, "--"+yesFlagName)
+
+	require.ErrorIs(t, run.err, storeErr)
+	assert.Contains(t, run.err.Error(), `set credential for "default"`)
 	assert.NotContains(t, run.err.Error(), testSecret)
 }
 
@@ -312,87 +128,9 @@ func TestRunSetForwardsStoreFailure(t *testing.T) {
 func TestRunSetRequiresInstanceName(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeCoordinator{}
-	seams := testStreams(store, false, testSecret)
+	ctx, _ := storeContext(t, legacyDocument)
 
-	run := runPassword(t, seams, testSecret, setCommandName)
+	run := runPassword(ctx, t, strings.NewReader(testSecret), setCommandName)
 
 	require.Error(t, run.err)
-	assert.Equal(t, 0, store.sets)
-}
-
-// TestSecretReaderPipedReportsReadFailure verifies that an unreadable input is
-// reported instead of storing an empty credential.
-func TestSecretReaderPipedReportsReadFailure(t *testing.T) {
-	t.Parallel()
-
-	reader := secretReader{in: &failingReader{}}
-
-	_, err := reader.piped()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "read secret from standard input")
-}
-
-// TestSecretReaderPromptReportsWriteFailure verifies that a failing prompt
-// stream is reported instead of silently reading a secret.
-func TestSecretReaderPromptReportsWriteFailure(t *testing.T) {
-	t.Parallel()
-
-	reader := secretReader{
-		in:  strings.NewReader(testSecret),
-		out: &failingWriter{},
-		readPassword: func(io.Reader) ([]byte, error) {
-			return []byte(testSecret), nil
-		},
-	}
-
-	_, err := reader.prompt()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "write secret prompt")
-}
-
-// TestSecretReaderPromptReportsReadFailure verifies that a failing hidden read is
-// reported before any credential write.
-func TestSecretReaderPromptReportsReadFailure(t *testing.T) {
-	t.Parallel()
-
-	reader := secretReader{
-		in:  strings.NewReader(testSecret),
-		out: &strings.Builder{},
-		readPassword: func(io.Reader) ([]byte, error) {
-			return nil, errors.New("terminal is unavailable")
-		},
-	}
-
-	_, err := reader.prompt()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "read secret from terminal")
-	assert.NotContains(t, err.Error(), testSecret)
-}
-
-// Read always reports a failure.
-//
-// Parameters:
-//   - _ buffer that would receive the read bytes.
-//
-// Returns:
-//   - int: always zero.
-//   - error: always a synthetic read failure.
-func (*failingReader) Read(_ []byte) (int, error) {
-	return 0, errors.New("input is unreadable")
-}
-
-// Write always reports a failure.
-//
-// Parameters:
-//   - _ bytes that would be written.
-//
-// Returns:
-//   - int: always zero.
-//   - error: always a synthetic write failure.
-func (*failingWriter) Write(_ []byte) (int, error) {
-	return 0, errors.New("output is unwritable")
 }

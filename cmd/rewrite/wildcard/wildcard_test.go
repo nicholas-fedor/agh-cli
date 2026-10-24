@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app/apptest"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 )
 
 // rewriteWildcardFlagExpectation describes one expected flag registration.
@@ -240,7 +241,7 @@ func TestRunWildcardRewriteCommandsUseAppOutput(t *testing.T) {
 	addCommand := newWildcardCommand(ctx)
 	addOutput := &bytes.Buffer{}
 	addCommand.SetOut(addOutput)
-	require.NoError(t, runWildcardAdd(addCommand, []string{RewriteWildcardCommandTestDomain}, testWildcardFlagValues()))
+	require.NoError(t, runWildcardAdd(addCommand, []string{RewriteWildcardCommandTestDomain}, testWildcardSelection()))
 
 	deleteCommand := newWildcardCommand(ctx)
 	deleteOutput := &bytes.Buffer{}
@@ -248,7 +249,7 @@ func TestRunWildcardRewriteCommandsUseAppOutput(t *testing.T) {
 	require.NoError(t, runWildcardDelete(
 		deleteCommand,
 		[]string{RewriteWildcardCommandTestDomain},
-		testWildcardFlagValues(),
+		testWildcardSelection(),
 	))
 
 	assert.Equal(t, int32(2), listCalls.Load())
@@ -289,12 +290,12 @@ func newWildcardCommand(ctx context.Context) *cobra.Command {
 	return command
 }
 
-// testWildcardFlagValues returns the flag values shared by run-function tests.
+// testWildcardSelection returns the selection shared by run-function tests.
 //
 // Returns:
-//   - *flagValues: Values targeting the single test instance.
-func testWildcardFlagValues() *flagValues {
-	return &flagValues{all: true}
+//   - *flags.InstanceSelection: A selection of every instance.
+func testWildcardSelection() *flags.InstanceSelection {
+	return &flags.InstanceSelection{Names: nil, All: true}
 }
 
 // requireWildcardSubcommand returns the named subcommand of a command tree.

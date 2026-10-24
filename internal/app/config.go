@@ -15,8 +15,8 @@ import (
 
 // RunConfig is the configuration one run resolved and loaded.
 //
-// The root command loads it once with [LoadRunConfig] and attaches it to the
-// command context with [WithRunConfig]. Every read and every write of the run
+// The root command loads it once with [PrepareRun], which attaches it to the
+// command context. Every read and every write of the run
 // then uses the same loaded file, so they always agree on one file, and a write
 // refuses to replace a file that changed after the run read it.
 type RunConfig struct {
@@ -29,6 +29,43 @@ type runConfigKey struct{}
 
 // ErrNoRunConfig indicates that an operation ran without a loaded configuration.
 var ErrNoRunConfig = errors.New("no configuration loaded for the run")
+
+// PrepareRun resolves and loads the configuration of one run, then attaches it
+// to the run's context.
+//
+// The configuration file is resolved and loaded once, here, so that every later
+// read and every write of the run agree on one file. Resolution decides between
+// an explicit path and the default search locations, and a blank document is
+// treated as no configuration so the first write creates it.
+//
+// A file that cannot be read is fatal and names the path, because an operator
+// must know which file failed. A file that does not exist and an instance that
+// cannot be used are warnings, written to warnings.
+//
+// Parameters:
+//   - ctx: context of the run.
+//   - explicit: explicit configuration file path, or an empty string that
+//     selects the default configuration locations.
+//   - warnings: destination for load warnings, normally the error stream.
+//
+// Returns:
+//   - [context.Context]: ctx carrying the configuration of the run, or nil on
+//     error.
+//   - error: a wrapped error when the configuration cannot be resolved, or the
+//     load error when it cannot be read.
+func PrepareRun(ctx context.Context, explicit string, warnings io.Writer) (context.Context, error) {
+	resolution, err := ResolveConfigPath(explicit)
+	if err != nil {
+		return nil, fmt.Errorf("resolve config: %w", err)
+	}
+
+	runConfig, err := LoadRunConfig(resolution, warnings)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return WithRunConfig(ctx, runConfig), nil
+}
 
 // ResolveConfigPath decides which configuration file a run uses.
 //

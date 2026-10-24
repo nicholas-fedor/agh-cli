@@ -4,49 +4,12 @@
 package rewrite
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"slices"
-
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite/settings"
 	"github.com/nicholas-fedor/agh-cli/cmd/rewrite/wildcard"
-	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/output"
-	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
 )
-
-// rewriteMutation executes one app mutation from command-supplied values.
-type rewriteMutation func(
-	*app.RewriteManagement,
-	context.Context,
-	app.Selection,
-	rewrite.RuleRequest,
-) ([]app.MutationResult, error)
-
-// flagValues stores the flag values bound to one rewrite command.
-//
-// Every command constructor creates its own values so that repeated
-// construction never shares flag state between executions.
-type flagValues struct {
-	// names holds the --instance flag values.
-	names []string
-	// all holds the --all flag value.
-	all bool
-	// sortColumn holds the --sort flag value.
-	sortColumn string
-	// enabled holds the --enabled flag value.
-	enabled bool
-	// answer holds the --answer flag value.
-	answer string
-	// file holds the --file flag value.
-	file string
-}
-
-// answerSortColumn identifies sorting by the rewrite answer column.
-const answerSortColumn = "answer"
 
 // NewCommand creates the rewrite command and registers its subcommands.
 //
@@ -74,142 +37,33 @@ AdGuard Home instances.`,
 	return rewriteCmd
 }
 
-// selection captures the instance selection taken from the flags.
-//
-// Returns:
-//   - app.Selection: The instance selection taken from the flags.
-func (values *flagValues) selection() app.Selection {
-	return app.Selection{
-		Names: slices.Clone(values.names),
-		All:   values.all,
-	}
-}
-
-// newRewriteRuleCommand creates a rewrite rule mutation command and returns it
-// with the fresh flag values its own file binds the command flags to.
-//
-// The command body runs the supplied mutation for the supplied domain and
-// answer arguments, wrapping every failure with the action name.
+// newRewriteRuleCommand creates a rewrite rule command, which takes a domain
+// and an answer and the rule state flags.
 //
 // Parameters:
-//   - use: Command usage line.
-//   - short: Command short description.
-//   - action: Command action name prefixed to wrapped failures.
-//   - mutation: App mutation invoked with the assembled rule request.
+//   - use: Published invocation syntax of the subcommand.
+//   - short: Published one-line description of the subcommand.
+//   - run: Run function bound to the flag values of this command.
 //
 // Returns:
-//   - *cobra.Command: The created command awaiting flag registration.
-//   - *flagValues: The fresh values the command flags bind to.
+//   - *cobra.Command: The command with its own flag values.
 func newRewriteRuleCommand(
 	use string,
 	short string,
-	action string,
-	mutation rewriteMutation,
-) (*cobra.Command, *flagValues) {
-	values := &flagValues{}
+	run func(*cobra.Command, []string, *flags.RewriteRuleFlags) error,
+) *cobra.Command {
+	values := new(flags.RewriteRuleFlags)
 
 	command := &cobra.Command{
 		Use:   use,
 		Short: short,
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := runRewriteRuleMutation(cmd, values, args[0], args[1], mutation)
-			if err != nil {
-				return fmt.Errorf("%s: %w", action, err)
-			}
-
-			return nil
+			return run(cmd, args, values)
 		},
 	}
 
-	return command, values
-}
+	values.Bind(command.Flags())
 
-// runRewriteRuleMutation wires flags, app mutation, and success output.
-//
-// Parameters:
-//   - cmd: Cobra command providing output and context.
-//   - values: Bound flag values selecting instances and rule state.
-//   - domain: Domain the mutation targets.
-//   - answer: Answer the mutation writes for the domain.
-//   - mutation: App mutation invoked with the assembled rule request.
-//
-// Returns:
-//   - error: An error when the app mutation fails or the success output cannot
-//     be written.
-func runRewriteRuleMutation(
-	cmd *cobra.Command,
-	values *flagValues,
-	domain string,
-	answer string,
-	mutation rewriteMutation,
-) error {
-	selection := values.selection()
-
-	results, mutationErr := mutation(
-		app.NewRewriteManagement(cmd.Context()),
-		cmd.Context(),
-		selection,
-		rewrite.RuleRequest{
-			Domain:  domain,
-			Answer:  answer,
-			Enabled: values.enabled,
-		},
-	)
-
-	outputErr := writeRewriteMutationResults(cmd, results)
-
-	mutationErr = errors.Join(mutationErr, outputErr)
-
-	return mutationErr
-}
-
-// writeRewriteMutationResults renders every successful mutation result.
-//
-// Parameters:
-//   - cmd: Cobra command receiving the rendered messages.
-//   - results: Per-instance mutation results to render.
-//
-// Returns:
-//   - error: Joined errors from every failed message write.
-func writeRewriteMutationResults(
-	cmd *cobra.Command,
-	results []app.MutationResult,
-) error {
-	writer := cmd.OutOrStdout()
-	errs := make([]error, 0, len(results))
-
-	for _, result := range results {
-		_, err := fmt.Fprintf(writer, "[%s] %s\n", result.Instance, result.Message)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("write instance %q result: %w", result.Instance, err))
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-// applyRewriteSort configures domain- or answer-oriented table sorting.
-//
-// Parameters:
-//   - tableWriter: Table whose sort column is configured.
-//   - sortColumn: Selected sort column, or an empty value for the default.
-//   - defaultColumn: Header used when no sort column is selected.
-func applyRewriteSort(
-	tableWriter *output.TableWriter,
-	sortColumn string,
-	defaultColumn string,
-) {
-	column := sortColumn
-	if column == "" {
-		column = defaultColumn
-	}
-
-	if column == answerSortColumn {
-		tableWriter.SortByHeader(column, output.AnswerLess)
-
-		return
-	}
-
-	tableWriter.SortByHeader(column, output.DomainLess)
+	return command
 }

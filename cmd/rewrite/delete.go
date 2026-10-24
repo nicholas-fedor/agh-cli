@@ -4,25 +4,22 @@
 package rewrite
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nicholas-fedor/agh-cli/internal/app"
-	"github.com/nicholas-fedor/agh-cli/internal/rewrite"
+	"github.com/nicholas-fedor/agh-cli/internal/flags"
+	"github.com/nicholas-fedor/agh-cli/internal/output"
 )
-
-// errAnswerRequired indicates that rewrite deletion lacks its answer flag.
-var errAnswerRequired = errors.New("--answer is required when deleting a rewrite rule")
 
 // newRewriteDeleteCommand creates the delete command and binds its flags.
 //
 // Returns:
 //   - *cobra.Command: The delete command with its own flag values.
 func newRewriteDeleteCommand() *cobra.Command {
-	values := &flagValues{}
+	values := new(flags.RewriteDeleteFlags)
 
 	command := &cobra.Command{
 		Use:   "delete <domain>",
@@ -33,10 +30,7 @@ func newRewriteDeleteCommand() *cobra.Command {
 		},
 	}
 
-	command.Flags().StringVarP(&values.answer, "answer", "A", "", "answer/IP to delete")
-	command.Flags().BoolVarP(&values.enabled, "enabled", "e", true, "rule enabled state")
-	command.Flags().BoolVarP(&values.all, "all", "a", false, "target all instances")
-	command.Flags().StringSliceVarP(&values.names, "instance", "i", []string{}, "target instance name(s)")
+	values.Bind(command.Flags())
 
 	return command
 }
@@ -44,32 +38,27 @@ func newRewriteDeleteCommand() *cobra.Command {
 // runRewriteDelete removes a DNS rewrite rule from one or more instances.
 //
 // Parameters:
-//   - cmd: Cobra command context and rewrite flag access.
+//   - cmd: Cobra command providing output and context.
 //   - args: Domain argument.
 //   - values: Bound flag values selecting the answer and target instances.
 //
 // Returns:
 //   - error: An error when the answer flag is missing or a per-instance
 //     request fails.
-func runRewriteDelete(cmd *cobra.Command, args []string, values *flagValues) error {
-	if values.answer == "" {
-		return errAnswerRequired
+func runRewriteDelete(cmd *cobra.Command, args []string, values *flags.RewriteDeleteFlags) error {
+	err := values.Validate()
+	if err != nil {
+		return fmt.Errorf("delete rewrite rule: %w", err)
 	}
 
-	err := runRewriteRuleMutation(
-		cmd,
-		values,
-		args[0],
-		values.answer,
-		func(
-			management *app.RewriteManagement,
-			ctx context.Context,
-			selection app.Selection,
-			request rewrite.RuleRequest,
-		) ([]app.MutationResult, error) {
-			return management.Delete(ctx, selection, request)
-		},
+	results, mutationErr := app.NewRewriteManagement(cmd.Context()).Delete(
+		cmd.Context(),
+		values.Selection(),
+		values.Request(args[0]),
 	)
+	outputErr := output.WriteMutationResults(cmd.OutOrStdout(), results)
+
+	err = errors.Join(mutationErr, outputErr)
 	if err != nil {
 		return fmt.Errorf("delete rewrite rule: %w", err)
 	}

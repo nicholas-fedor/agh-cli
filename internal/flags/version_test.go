@@ -4,6 +4,7 @@
 package flags
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -79,4 +80,31 @@ func TestVersionFlags_BindValues(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, vf.JSON)
+}
+
+// TestVersionFlagsPrinterSelectsFormat verifies that JSON wins over verbose
+// output and that the default printer writes one line.
+func TestVersionFlagsPrinterSelectsFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		values VersionFlags
+		want   string
+	}{
+		"json":    {values: VersionFlags{CommonFlags: CommonFlags{Config: ""}, Verbose: true, JSON: true}, want: "{"},
+		"verbose": {values: VersionFlags{CommonFlags: CommonFlags{Config: ""}, Verbose: true, JSON: false}, want: "\n"},
+		"default": {values: VersionFlags{CommonFlags: CommonFlags{Config: ""}, Verbose: false, JSON: false}, want: ""},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var rendered strings.Builder
+
+			require.NoError(t, test.values.Printer()(&rendered))
+			assert.NotEmpty(t, rendered.String())
+			assert.Contains(t, rendered.String(), test.want)
+		})
+	}
 }

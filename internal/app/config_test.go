@@ -20,6 +20,51 @@ import (
 // [os.UserConfigDir] reads the roaming application data directory.
 const windowsOS = "windows"
 
+// TestPrepareRunAttachesLoadedConfiguration verifies that the prepared context
+// carries the configuration of the named file.
+func TestPrepareRunAttachesLoadedConfiguration(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestConfig(t, "instances:\n  default:\n    host: "+testConfigHost+"\n")
+
+	var warnings strings.Builder
+
+	ctx, err := PrepareRun(t.Context(), configPath, &warnings)
+
+	require.NoError(t, err)
+	assert.Empty(t, warnings.String())
+
+	manager, err := configFrom(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"default"}, manager.OrderedNames())
+}
+
+// TestPrepareRunReportsUnusablePath verifies that a path that can never be a
+// configuration file fails the run and names the resolution step.
+func TestPrepareRunReportsUnusablePath(t *testing.T) {
+	t.Parallel()
+
+	ctx, err := PrepareRun(t.Context(), t.TempDir(), io.Discard)
+
+	require.ErrorIs(t, err, config.ErrConfigNotRegular)
+	assert.Nil(t, ctx)
+	assert.Contains(t, err.Error(), "resolve config")
+}
+
+// TestPrepareRunReportsUnreadableFile verifies that a file that cannot be loaded
+// fails the run with the load error.
+func TestPrepareRunReportsUnreadableFile(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+
+	ctx, err := PrepareRun(t.Context(), configPath, io.Discard)
+
+	require.Error(t, err)
+	assert.Nil(t, ctx)
+	assert.Contains(t, err.Error(), strconv.Quote(configPath))
+}
+
 // TestLoadRunConfigReadsResolvedFile verifies the run configuration serves the
 // instances and the credential namespace of the file it loaded, with instance
 // names exactly as the file writes them.
