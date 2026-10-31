@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update module go.yaml.in/yaml/v4 to v4.0.0-rc.7 by @renovate[bot] in [#147](https://github.com/nicholas-fedor/agh-cli/pull/147)
 - Update module go.yaml.in/yaml/v3 to v3.0.6 by @renovate[bot] in [#146](https://github.com/nicholas-fedor/agh-cli/pull/146)
 - Update step-security/harden-runner action to v2.22.3 by @renovate[bot] in [#144](https://github.com/nicholas-fedor/agh-cli/pull/144)
 
