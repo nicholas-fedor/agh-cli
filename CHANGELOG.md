@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update module golang.org/x/term to v0.48.0 by @renovate[bot] in [#164](https://github.com/nicholas-fedor/agh-cli/pull/164)
+- Update module golang.org/x/sys to v0.50.0 by @renovate[bot] in [#162](https://github.com/nicholas-fedor/agh-cli/pull/162)
+- Update module github.com/spf13/pflag to v1.1.0 by @renovate[bot] in [#163](https://github.com/nicholas-fedor/agh-cli/pull/163)
+- Update module go.yaml.in/yaml/v4 to v4.0.0 by @renovate[bot] in [#161](https://github.com/nicholas-fedor/agh-cli/pull/161)
 - Update step-security/harden-runner action to v2.22.4 by @renovate[bot] in [#160](https://github.com/nicholas-fedor/agh-cli/pull/160)
 - Update alpine docker tag to v3.24.4 by @renovate[bot] in [#157](https://github.com/nicholas-fedor/agh-cli/pull/157)
 - Update peter-evans/create-pull-request action to v8.1.3 by @renovate[bot] in [#158](https://github.com/nicholas-fedor/agh-cli/pull/158)
@@ -21,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update module go.yaml.in/yaml/v4 to v4.0.0-rc.7 by @renovate[bot] in [#147](https://github.com/nicholas-fedor/agh-cli/pull/147)
 - Update module go.yaml.in/yaml/v3 to v3.0.6 by @renovate[bot] in [#146](https://github.com/nicholas-fedor/agh-cli/pull/146)
 - Update step-security/harden-runner action to v2.22.3 by @renovate[bot] in [#144](https://github.com/nicholas-fedor/agh-cli/pull/144)
+
+### Fixed
+
+- Report the version injected at build time by @nicholas-fedor in [#155](https://github.com/nicholas-fedor/agh-cli/pull/155)
 
 ## [0.1.2] - 2026-10-24
 
