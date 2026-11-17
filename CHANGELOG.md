@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Order struct fields with betteralign by @nicholas-fedor in [#170](https://github.com/nicholas-fedor/agh-cli/pull/170)
+
 ### Chores
 
 - Add the house-style tasks to the Taskfile by @nicholas-fedor in [#168](https://github.com/nicholas-fedor/agh-cli/pull/168)
