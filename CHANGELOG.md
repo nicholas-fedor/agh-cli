@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update step-security/harden-runner action to v2.22.4 by @renovate[bot] in [#160](https://github.com/nicholas-fedor/agh-cli/pull/160)
+- Update alpine docker tag to v3.24.4 by @renovate[bot] in [#157](https://github.com/nicholas-fedor/agh-cli/pull/157)
+- Update peter-evans/create-pull-request action to v8.1.3 by @renovate[bot] in [#158](https://github.com/nicholas-fedor/agh-cli/pull/158)
+- Update github/codeql-action digest to 33d7b85 by @renovate[bot] in [#156](https://github.com/nicholas-fedor/agh-cli/pull/156)
+- Update sigstore/cosign-installer action to v4.1.3 by @renovate[bot] in [#159](https://github.com/nicholas-fedor/agh-cli/pull/159)
 - Add release and check taskfile tasks and remove makefile by @nicholas-fedor in [#153](https://github.com/nicholas-fedor/agh-cli/pull/153)
 - Update actions/setup-go digest to d8cbb80 by @renovate[bot] in [#150](https://github.com/nicholas-fedor/agh-cli/pull/150)
 - Update docker/login-action digest to 8aa5831 by @renovate[bot] in [#151](https://github.com/nicholas-fedor/agh-cli/pull/151)
