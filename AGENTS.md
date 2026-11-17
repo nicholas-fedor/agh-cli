@@ -89,6 +89,7 @@ Every command tree must be constructed fresh:
 ## Go and comment conventions
 
 - Go 1.27.1 syntax and standard library are the baseline.
+- After a Go toolchain upgrade, run `task modernize`. It fails when the `go fix` modernizers would change the code, and `task modernize FIX=true` applies them.
 - Prefer `errors.AsType`, `errors.Join`, `slices`, `maps`, and iterator helpers where appropriate.
 - Use short, consistent receivers: `c` for `Client`, `i` for `Instance`, `m` for `Manager`, `t` for `TableWriter`.
 - Do not mix pointer and value receivers on one type.
@@ -123,7 +124,7 @@ Every command tree must be constructed fresh:
 - Service interfaces live in their `pkg/adguard` domain files.
 - Interfaces remain small and feature-scoped.
 - Compile-time assertions that `*adguard.Client` satisfies each interface stay beside the interface.
-- Run `task mock` after interface changes.
+- Run `task mocks` after interface changes.
 - Generated mocks are disposable outputs; never edit them manually.
 - Use generated mocks in consumer/application tests, not in `pkg/adguard` HTTP contract tests.
 

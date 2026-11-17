@@ -16,6 +16,7 @@ Install the following tools:
 - [Task](https://taskfile.dev/)
 - [golangci-lint v2](https://golangci-lint.run/)
 - [Mockery v3](https://vektra.github.io/mockery/)
+- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
 - [Hugo Extended](https://gohugo.io/installation/) for documentation development
 - GoReleaser v2 and Cosign for release work
 
@@ -166,17 +167,22 @@ The Taskfile is the canonical cross-platform interface. Run `task --list` to see
 | Action | Task |
 |---|---|
 | Build | `task build` |
-| Test | `task test` |
-| Coverage | `task test-coverage` |
+| Test with race detection and the coverage gate | `task test` |
+| Fuzz | `task fuzz` |
+| Benchmark | `task bench` |
 | Format | `task fmt` |
 | Lint and autofix | `task lint` |
 | Vet | `task vet` |
 | Tidy modules | `task tidy` |
-| Generate mocks | `task mock` |
+| Update dependencies | `task update` |
+| Check for go fix modernizations | `task modernize` |
+| Scan for vulnerabilities | `task vuln` |
+| Generate mocks | `task mocks` |
 | Generate CLI docs | `task docs` |
 | Verify docs drift | `task docs-check` |
 | Serve docs | `task docs-serve` |
 | Local checks | `task check` |
+| Install and uninstall | `task install`, `task uninstall` |
 | Local images | `task release:snapshot` |
 | Tag a release | `task tag:bump-patch`, `tag:bump-minor`, or `tag:bump-major` |
 
@@ -194,11 +200,9 @@ Do not copy or modify the lint configuration for a one-off non-mutating check.
 
 ### Tests
 
-The CI test command enables the race detector. Run the same coverage locally before submitting:
+The CI test command enables the race detector. `task test` runs the tests the same way and writes `coverage.out`. It fails when total coverage drops below 80%, with the generated mocks left out of the total.
 
-```bash
-go test -race -coverprofile=coverage.out -covermode=atomic ./...
-```
+`task fuzz` runs each fuzz target for 30 seconds. Set `FUZZTIME` to change that, for example `task fuzz FUZZTIME=2m`.
 
 `task check` is a fast local subset, not a complete replacement for CI.
 
@@ -245,7 +249,7 @@ Service interfaces belong in their domain files and must remain small and featur
 Generate mocks with:
 
 ```bash
-task mock
+task mocks
 ```
 
 Generated files live under:
