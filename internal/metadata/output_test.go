@@ -135,14 +135,14 @@ func TestPrintJSON(t *testing.T) {
 //
 //nolint:paralleltest // The test sets the package-level build metadata.
 func TestPrintVerboseIncludesBuildMetadata(t *testing.T) {
-	setBuildMetadata(t, "abc1234", "2026-01-02T03:04:05Z")
+	setBuildMetadata(t, "v1.2.3", "abc1234", "2026-01-02T03:04:05Z")
 
 	writer := &bytes.Buffer{}
 	require.NoError(t, PrintVerbose(writer))
 
 	info := GetInfo()
 	assert.Equal(t, "name:      "+Name+"\n"+
-		"version:   "+info.Version+"\n"+
+		"version:   v1.2.3\n"+
 		"commitSha: abc1234\n"+
 		"buildTime: 2026-01-02 03:04:05 UTC\n"+
 		"goVersion: "+info.GoVersion+"\n"+

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
-	"sync"
 	"time"
 )
 
@@ -32,30 +31,52 @@ type VersionInfo struct {
 const (
 	// Name is the application name.
 	Name = "agh-cli"
-	// DefaultVersion is used when no released version is available.
+	// DefaultVersion is the version reported when neither the build nor the Go
+	// build information supplies one.
 	DefaultVersion = "dev"
 	// Optional metadata uses emptyString as its absent-value sentinel.
 	emptyString = ""
+	// Go records develModuleVersion as the main module version when it builds a
+	// source tree that has no version.
+	develModuleVersion = "(devel)"
 )
 
 var (
-	// Version is the application version before CommitSHA is appended.
+	// Version is the application version injected at build time. It stays
+	// DefaultVersion when the build injects none, and the reported version then
+	// comes from the Go build information.
 	Version = DefaultVersion
 	// CommitSHA is the optional source revision injected at build time.
 	CommitSHA = ""
 	// BuildTime is the optional RFC3339 build timestamp injected at build time.
 	BuildTime = ""
-
-	// The versionOnce guard limits version initialization to one execution.
-	versionOnce sync.Once
 )
 
-// initVersion initializes Version from embedded build information when a
-// non-development version is available.
-func initVersion() {
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
-		Version = info.Main.Version
+// resolveVersion returns the version the application reports.
+//
+// A version injected at build time always wins. Without one, the main module
+// version from the Go build information is used, such as the one go install
+// records for a tagged module. DefaultVersion is the last resort, for builds
+// whose build information has no version.
+//
+// Parameters:
+//   - injected: the version injected at build time, or DefaultVersion or an
+//     empty string when the build injected none.
+//   - readBuildInfo: reads the Go build information, such as [debug.ReadBuildInfo].
+//
+// Returns:
+//   - string: the injected version, the module version, or DefaultVersion.
+func resolveVersion(injected string, readBuildInfo func() (*debug.BuildInfo, bool)) string {
+	if injected != DefaultVersion && injected != emptyString {
+		return injected
 	}
+
+	info, ok := readBuildInfo()
+	if !ok || info.Main.Version == emptyString || info.Main.Version == develModuleVersion {
+		return DefaultVersion
+	}
+
+	return info.Main.Version
 }
 
 // String returns the application version and appends CommitSHA when present.
@@ -63,13 +84,13 @@ func initVersion() {
 // Returns:
 //   - string: application version, optionally followed by the commit SHA.
 func String() string {
-	versionOnce.Do(initVersion)
+	version := resolveVersion(Version, debug.ReadBuildInfo)
 
 	if CommitSHA != emptyString {
-		return fmt.Sprintf("%s (%s)", Version, CommitSHA)
+		return fmt.Sprintf("%s (%s)", version, CommitSHA)
 	}
 
-	return Version
+	return version
 }
 
 // GetGoVersion returns the Go toolchain version used for the build.
@@ -126,7 +147,7 @@ func GetInfo() VersionInfo {
 
 	info := VersionInfo{
 		Name:      Name,
-		Version:   Version,
+		Version:   resolveVersion(Version, debug.ReadBuildInfo),
 		CommitSHA: commitSHA,
 		BuildTime: buildTime,
 		GoVersion: GetGoVersion(),
