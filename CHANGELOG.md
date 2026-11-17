@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Add the house-style tasks to the Taskfile by @nicholas-fedor in [#168](https://github.com/nicholas-fedor/agh-cli/pull/168)
 - Update module golang.org/x/term to v0.48.0 by @renovate[bot] in [#164](https://github.com/nicholas-fedor/agh-cli/pull/164)
 - Update module golang.org/x/sys to v0.50.0 by @renovate[bot] in [#162](https://github.com/nicholas-fedor/agh-cli/pull/162)
 - Update module github.com/spf13/pflag to v1.1.0 by @renovate[bot] in [#163](https://github.com/nicholas-fedor/agh-cli/pull/163)
