@@ -17,6 +17,9 @@ vars:
     -X '{{.PKG}}/internal/metadata.Version={{.VERSION}}'
     -X '{{.PKG}}/internal/metadata.CommitSHA={{.COMMIT}}'
     -X '{{.PKG}}/internal/metadata.BuildTime={{.BUILD_TIME}}'
+  # Test, bench, and fuzz runs skip the generated mocks, which hold no tests of their own.
+  PKGS:
+    sh: go list ./... | grep -v /mocks$ | tr '\n' ' '
 
 tasks:
   build:
@@ -29,7 +32,7 @@ tasks:
     cmds:
       - go run .
 
-  mock:
+  mocks:
     desc: Generate test mocks using mockery
     cmds:
       - mockery --config=build/mockery/mockery.yaml
@@ -38,19 +41,64 @@ tasks:
         msg: "mockery must be installed (run: task mockery-install)"
 
   test:
-    desc: Run Go tests
+    desc: Run the tests with race detection and an 80% coverage gate, writing coverage.out
+    vars:
+      COVERAGE_MIN: "80"
     cmds:
-      - go test -test.fullpath=true -timeout 30s -covermode atomic -v ./...
-
-  test-coverage:
-    desc: Run Go tests with coverage
-    cmds:
-      - go test  -test.fullpath=true -timeout 30s -covermode=atomic -v  -coverprofile=coverage.out ./...
+      - go test -race -count=1 -covermode=atomic -coverprofile=coverage.out {{.PKGS}}
+      - |
+        go tool cover -func=coverage.out \
+          | awk -v min={{.COVERAGE_MIN}} '/^total:/ { gsub(/%/, "", $3);
+              if ($3 + 0 < min + 0) {
+                printf "coverage %.1f%% is below the %s%% gate\n", $3, min
+                exit 1
+              }
+              printf "coverage %.1f%% meets the %s%% gate\n", $3, min }'
 
   bench:
     desc: Run benchmarks
     cmds:
-      - go test -bench=. -benchmem ./...
+      - go test -bench=. -benchmem -run='^$' {{.PKGS}}
+
+  fuzz:
+    desc: Run each fuzz target for 30s, or FUZZTIME=<duration> to override
+    # go test fuzzes one target in one package per run, so the loop lists each
+    # package's fuzz targets and runs them one at a time, anchored so that one
+    # name cannot match another. set -eu stops at the first failure.
+    # FUZZTIME has no vars entry, because a declared var would shadow the command line.
+    cmds:
+      - |
+        set -eu
+        for pkg in {{.PKGS}}; do
+          for target in $(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true); do
+            echo "fuzzing $pkg $target"
+            go test -run='^$' -fuzz="^${target}\$" -fuzztime={{.FUZZTIME | default "30s"}} "$pkg"
+          done
+        done
+
+  modernize:
+    desc: Fail when the go fix modernizers would change the code, or apply them with FIX=true
+    # Run after every Go toolchain upgrade to adopt the new version's idioms.
+    cmds:
+      - |
+        if [ "{{.FIX | default "false"}}" = "true" ]; then
+          go fix ./...
+        else
+          diff=$(go fix -diff ./...)
+          if [ -n "$diff" ]; then
+            printf '%s\n' "$diff"
+            echo "modernize: run 'task modernize FIX=true' to apply" >&2
+            exit 1
+          fi
+        fi
+
+  vuln:
+    desc: Report known vulnerabilities in the dependency graph
+    cmds:
+      - govulncheck ./...
+    preconditions:
+      - sh: "command -v govulncheck"
+        msg: "govulncheck must be installed (run: task govulncheck-install)"
 
   lint:
     desc: Run linter and apply fixes
@@ -105,17 +153,33 @@ tasks:
       - rm -rf ./www/content/cli-reference
 
   install:
-    desc: "Install the application"
+    desc: Install agh-cli into the Go binary directory with its version metadata
     cmds:
-      - go install ./...
+      - go install {{.GOFLAGS}} -ldflags="{{.LDFLAGS}}" .
+
+  update:
+    desc: Update every dependency to its latest release, then tidy and verify the modules
+    cmds:
+      - go get -u ./...
+      - task: tidy
+
+  uninstall:
+    desc: Remove agh-cli from the Go binary directory, keeping its configuration and stored credentials
+    cmds:
+      - |
+        bindir="$(go env GOBIN)"
+        [ -n "$bindir" ] || bindir="$(go env GOPATH)/bin"
+        rm -f "$bindir/{{.BINARY_NAME}}"
 
   check:
-    desc: Run tidy, lint, vet, and test, a local subset of the CI checks
+    desc: Run fmt, vet, test, lint, vuln, and docs-check, a local subset of the CI checks
     cmds:
-      - task: tidy
-      - task: lint
+      - task: fmt
       - task: vet
       - task: test
+      - task: lint
+      - task: vuln
+      - task: docs-check
 
   # Release Tasks
 
@@ -214,15 +278,21 @@ tasks:
       - sh: "command -v go"
         msg: "Go must be installed"
 
-  install-tools:
-    desc: Install required Go-based development tools
+  govulncheck-install:
+    desc: Install govulncheck for scanning the dependencies for known vulnerabilities
     cmds:
-      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-      - go install github.com/goreleaser/goreleaser/v2@latest
-      - go install github.com/vektra/mockery/v3@latest
+      - go install golang.org/x/vuln/cmd/govulncheck@latest
     preconditions:
       - sh: "command -v go"
         msg: "Go must be installed"
+
+  install-tools:
+    desc: Install required Go-based development tools
+    cmds:
+      - task: golangci-lint-install
+      - task: goreleaser-install
+      - task: mockery-install
+      - task: govulncheck-install
 
   check-tools:
     desc: Check which development tools are installed
@@ -230,10 +300,11 @@ tasks:
       - |
         echo "Checking required tools:"
         echo ""
-        echo "  task: $(command -v task >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/go-task/task/v3/cmd/task@latest')"
-        echo "  golangci-lint: $(command -v golangci-lint >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest')"
-        echo "  goreleaser: $(command -v goreleaser >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/goreleaser/goreleaser/v2@latest')"
-        echo "  mockery: $(command -v mockery >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND — run: go install github.com/vektra/mockery/v3@latest')"
+        echo "  task: $(command -v task >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: go install github.com/go-task/task/v3/cmd/task@latest)')"
+        echo "  golangci-lint: $(command -v golangci-lint >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task golangci-lint-install)')"
+        echo "  goreleaser: $(command -v goreleaser >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task goreleaser-install)')"
+        echo "  mockery: $(command -v mockery >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task mockery-install)')"
+        echo "  govulncheck: $(command -v govulncheck >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task govulncheck-install)')"
 
   setup:
     desc: Initial project setup (install dependencies and tools)
