@@ -45,7 +45,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.Version={{.Version}}
+      - -X github.com/nicholas-fedor/agh-cli/internal/metadata.Version={{.Summary}}
       - -X github.com/nicholas-fedor/agh-cli/internal/metadata.CommitSHA={{.Commit}}
       - -X github.com/nicholas-fedor/agh-cli/internal/metadata.BuildTime={{.Date}}
     env:

@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package metadata provides application version and build information.
-// It derives the version from Go build information and supports build-time
-// values for commit and timestamp metadata.
+//
+// A build injects the version, commit, and timestamp with ldflags. An injected
+// version is always the one reported. A build that injects no version reports
+// the main module version from the Go build information, such as the version
+// go install records for a tagged module. Without either, the version is
+// [DefaultVersion].
 //
 // # Usage
 //
