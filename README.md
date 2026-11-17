@@ -591,9 +591,11 @@ docker run --rm \
 ### Building locally
 
 ```bash
-make docker-build
-docker run --rm agh-cli version
+task release:snapshot
+docker run --rm nickfedor/agh-cli:nightly-amd64 version
 ```
+
+`task release:snapshot` builds one local image per platform with GoReleaser and publishes nothing. Each tag ends in its platform, such as `nightly-amd64` or `nightly-arm64`.
 
 The Docker image is a minimal scratch-based binary with static linking. CA certificates and timezone data are layered via an intermediate Alpine stage.
 
@@ -604,17 +606,9 @@ The Docker image is a minimal scratch-based binary with static linking. CA certi
 ### Prerequisites
 
 - Go 1.27+
-- `make` or `task` (optional)
+- [Task](https://taskfile.dev/) (optional)
 
 ### Build
-
-Using Make:
-
-```bash
-make build
-```
-
-Using Task:
 
 ```bash
 task build

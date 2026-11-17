@@ -46,4 +46,4 @@ jobs:
 
       - name: Check for uncommitted changes after formatting
         run: |
-          git diff --exit-code || (echo "Detected unformatted files. Run 'make fmt' to format your code."; exit 1)
+          git diff --exit-code || (echo "Detected unformatted files. Run 'task lint' to apply the lint and format fixes."; exit 1)

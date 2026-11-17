@@ -10,6 +10,7 @@ These instructions apply to automated contributors working in this repository.
 - CLI entry point: `main.go`
 - Canonical command tree: `cmd.NewRootCommand()`
 - Canonical local task interface: `Taskfile.yml`
+- Release tagging: `task tag:bump-patch`, `tag:bump-minor`, or `tag:bump-major` pushes the next `vX.Y.Z` tag from a clean `main` that matches `origin/main`, which starts `release-stable.yaml`. It is a state-changing Git command, so run it only when the user authorizes that release.
 - Canonical lint configuration: `build/golangci-lint/golangci-lint.yaml`
 - Canonical Mockery configuration: `build/mockery/mockery.yaml`
 - Generated CLI docs: `www/content/cli-reference/`
@@ -189,4 +190,4 @@ staticcheck ./...
 task docs-check
 ```
 
-`make ci-check` is a local subset of CI, not a full replacement for the GitHub Actions checks.
+`task check` is a local subset of CI, not a full replacement for the GitHub Actions checks.
