@@ -5,6 +5,8 @@ package main
 
 // CommandDoc represents a command's documentation data for template rendering.
 type CommandDoc struct {
+	// Index contains index documentation for command groups.
+	Index *IndexDoc
 	// Name is the command name.
 	Name string
 	// Short is the short description.
@@ -33,8 +35,6 @@ type CommandDoc struct {
 	SubCommands []*CommandDoc
 	// HasSubs indicates if the command has subcommands.
 	HasSubs bool
-	// Index contains index documentation for command groups.
-	Index *IndexDoc
 }
 
 // FlagDoc represents a flag's documentation data.
@@ -77,10 +77,10 @@ type sectionEntry struct {
 	Title string
 	// Description is the section description.
 	Description string
-	// HasSubs indicates if the section has subcommands.
-	HasSubs bool
 	// SubCommands contains the subcommand entries.
 	SubCommands []subCommandEntry
+	// HasSubs indicates if the section has subcommands.
+	HasSubs bool
 }
 
 // subCommandEntry represents a subcommand entry in a section.

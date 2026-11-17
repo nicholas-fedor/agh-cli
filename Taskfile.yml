@@ -101,14 +101,22 @@ tasks:
         msg: "govulncheck must be installed (run: task govulncheck-install)"
 
   lint:
-    desc: Run linter and apply fixes
+    desc: Run the linters, applying their fixes, and report structs whose fields betteralign would reorder
     cmds:
       - golangci-lint run --fix --config build/golangci-lint/golangci-lint.yaml ./...
+      - betteralign ./...
+    preconditions:
+      - sh: "command -v betteralign"
+        msg: "betteralign must be installed (run: task betteralign-install)"
 
   fmt:
-    desc: Run fmt
+    desc: Reorder struct fields with betteralign, then format the code
     cmds:
+      - betteralign -apply ./...
       - golangci-lint fmt --config build/golangci-lint/golangci-lint.yaml ./...
+    preconditions:
+      - sh: "command -v betteralign"
+        msg: "betteralign must be installed (run: task betteralign-install)"
 
   vet:
     desc: Run go vet
@@ -286,10 +294,19 @@ tasks:
       - sh: "command -v go"
         msg: "Go must be installed"
 
+  betteralign-install:
+    desc: Install betteralign for ordering struct fields
+    cmds:
+      - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
+    preconditions:
+      - sh: "command -v go"
+        msg: "Go must be installed"
+
   install-tools:
     desc: Install required Go-based development tools
     cmds:
       - task: golangci-lint-install
+      - task: betteralign-install
       - task: goreleaser-install
       - task: mockery-install
       - task: govulncheck-install
@@ -302,6 +319,7 @@ tasks:
         echo ""
         echo "  task: $(command -v task >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: go install github.com/go-task/task/v3/cmd/task@latest)')"
         echo "  golangci-lint: $(command -v golangci-lint >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task golangci-lint-install)')"
+        echo "  betteralign: $(command -v betteralign >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task betteralign-install)')"
         echo "  goreleaser: $(command -v goreleaser >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task goreleaser-install)')"
         echo "  mockery: $(command -v mockery >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task mockery-install)')"
         echo "  govulncheck: $(command -v govulncheck >/dev/null 2>&1 && echo '✓ installed' || echo '✗ NOT FOUND (run: task govulncheck-install)')"

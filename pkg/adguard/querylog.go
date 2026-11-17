@@ -135,14 +135,14 @@ type QueryLogRule struct {
 // QueryLogClient contains the resolved details of the client that issued a
 // query.
 type QueryLogClient struct {
-	// Disallowed reports whether the client name matches a blocked-client rule.
-	Disallowed bool `json:"disallowed"`
+	// Whois contains the optional WHOIS details for the client address.
+	Whois *QueryLogClientWhois `json:"whois"`
 	// DisallowedRule is the blocked-client rule that matched the client name.
 	DisallowedRule string `json:"disallowed_rule"`
 	// Name is the resolved client name.
 	Name string `json:"name"`
-	// Whois contains the optional WHOIS details for the client address.
-	Whois *QueryLogClientWhois `json:"whois"`
+	// Disallowed reports whether the client name matches a blocked-client rule.
+	Disallowed bool `json:"disallowed"`
 }
 
 // QueryLogClientWhois contains the WHOIS details resolved for a client address.
@@ -158,17 +158,17 @@ type QueryLogClientWhois struct {
 // QueryLogConfig is the query-log configuration returned by
 // GET /control/querylog/config.
 type QueryLogConfig struct {
-	// Enabled reports whether query-log recording is enabled.
-	Enabled bool `json:"enabled"`
-	// Interval is the query-log rotation interval in days.
-	Interval float64 `json:"interval"`
-	// AnonymizeClientIP reports whether client addresses are anonymized.
-	AnonymizeClientIP bool `json:"anonymize_client_ip"`
-	// Ignored contains the logged domain names to ignore.
-	Ignored []string `json:"ignored"`
 	// IgnoredEnabled is the optional companion setting for Ignored. Nil omits
 	// the field, while a nonnil pointer sends an explicit false value.
 	IgnoredEnabled *bool `json:"ignored_enabled,omitzero"`
+	// Ignored contains the logged domain names to ignore.
+	Ignored []string `json:"ignored"`
+	// Interval is the query-log rotation interval in days.
+	Interval float64 `json:"interval"`
+	// Enabled reports whether query-log recording is enabled.
+	Enabled bool `json:"enabled"`
+	// AnonymizeClientIP reports whether client addresses are anonymized.
+	AnonymizeClientIP bool `json:"anonymize_client_ip"`
 }
 
 // queryLogResponse mirrors the pinned query-log response schema.

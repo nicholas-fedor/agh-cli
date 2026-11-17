@@ -15,6 +15,7 @@ Install the following tools:
 - Go 1.27.1
 - [Task](https://taskfile.dev/)
 - [golangci-lint v2](https://golangci-lint.run/)
+- [betteralign](https://github.com/dkorunic/betteralign)
 - [Mockery v3](https://vektra.github.io/mockery/)
 - [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
 - [Hugo Extended](https://gohugo.io/installation/) for documentation development

@@ -56,7 +56,10 @@ type InstanceRemoveRequest struct {
 //
 // The result describes configuration state only. It never carries a secret or a
 // value derived from one.
-type InstanceRemoveResult struct {
+//
+// Embedded fields come first, as the embeddedstructfieldcheck linter requires, so
+// betteralign leaves the order alone.
+type InstanceRemoveResult struct { // betteralign:ignore
 	// InstancePasswordRemoval reports what happened to the password the instance
 	// kept in the credential store.
 	credentials.InstancePasswordRemoval

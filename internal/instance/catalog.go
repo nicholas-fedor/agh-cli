@@ -18,10 +18,10 @@ type SelectionMode uint8
 // Catalog is an immutable, ordered collection of validated instance
 // configurations. Its zero value is an empty catalog.
 type Catalog struct {
-	// entries contains validated configurations in their supplied order.
-	entries []Config
 	// byID indexes the same configurations by their mapping-derived identity.
 	byID map[ID]Config
+	// entries contains validated configurations in their supplied order.
+	entries []Config
 }
 
 const (

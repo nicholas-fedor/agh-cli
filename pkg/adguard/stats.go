@@ -99,15 +99,15 @@ type Stats struct {
 // represents an absent or null response value. A nonnil IgnoredEnabled preserves
 // an explicit false value.
 type StatsConfig struct {
-	// Enabled reports or sets whether statistics are enabled.
-	Enabled bool `json:"enabled"`
-	// Interval is the statistics rotation interval in milliseconds.
-	Interval float64 `json:"interval"`
+	// IgnoredEnabled optionally controls whether Ignored is excluded.
+	IgnoredEnabled *bool `json:"ignored_enabled,omitzero"`
 	// Ignored contains host names that statistics may exclude. A nil slice is
 	// rejected by PutStatsConfig; a nonnil empty slice is sent as an empty array.
 	Ignored []string `json:"ignored"`
-	// IgnoredEnabled optionally controls whether Ignored is excluded.
-	IgnoredEnabled *bool `json:"ignored_enabled,omitzero"`
+	// Interval is the statistics rotation interval in milliseconds.
+	Interval float64 `json:"interval"`
+	// Enabled reports or sets whether statistics are enabled.
+	Enabled bool `json:"enabled"`
 }
 
 const (

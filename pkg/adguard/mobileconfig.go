@@ -25,11 +25,11 @@ type MobileConfigService interface {
 // Host is required. ClientID is optional; a nonnil pointer is encoded as the
 // client_id query parameter even when its value is empty.
 type MobileConfigRequest struct {
-	// Host is the validated server name used to generate the configuration.
-	Host string
 	// ClientID is the optional encrypted-DNS client identifier. Nil omits the
 	// client_id query parameter.
 	ClientID *string
+	// Host is the validated server name used to generate the configuration.
+	Host string
 }
 
 // Artifact contains one bounded binary response returned by the client.

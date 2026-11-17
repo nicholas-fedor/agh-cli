@@ -10,18 +10,19 @@ import (
 
 // ProtectionConfig configures AdGuard Home protection.
 type ProtectionConfig struct {
-	// Enabled selects whether protection is enabled. The value is always sent,
-	// including an explicit false value.
-	Enabled bool
 	// Duration optionally sets the protection pause duration. Nil omits the
 	// field, while a nonnil pointer sends an explicit value, including zero.
 	Duration *uint64
+	// Enabled selects whether protection is enabled. The value is always sent,
+	// including an explicit false value.
+	Enabled bool
 }
 
-// protectionConfigWire mirrors the pinned protection request contract.
+// protectionConfigWire mirrors the pinned protection request contract. Its
+// fields match the order of ProtectionConfig, which converts to it.
 type protectionConfigWire struct {
-	Enabled  bool    `json:"enabled"`
 	Duration *uint64 `json:"duration,omitempty"`
+	Enabled  bool    `json:"enabled"`
 }
 
 const (

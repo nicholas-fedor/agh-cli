@@ -16,6 +16,9 @@ type ID string
 
 // Config contains the connection settings for one AdGuard Home instance.
 type Config struct {
+	// Credential is the optional credential reference. A nil reference selects
+	// the legacy plaintext password only.
+	Credential *CredentialRef
 	// Name is the stable, case-sensitive identifier used for catalog selection.
 	Name string
 	// Host is the required AdGuard Home hostname or IP address.
@@ -27,9 +30,6 @@ type Config struct {
 	Username string
 	// Password is the optional AdGuard Home administrator password.
 	Password string
-	// Credential is the optional credential reference. A nil reference selects
-	// the legacy plaintext password only.
-	Credential *CredentialRef
 }
 
 // CredentialSource identifies where an instance password is read from.

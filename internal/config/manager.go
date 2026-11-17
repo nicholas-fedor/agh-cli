@@ -26,10 +26,10 @@ import (
 
 // FileData represents the top-level structure of the agh-cli config file.
 type FileData struct {
-	// Credentials holds the top-level credential store settings.
-	Credentials CredentialsSettings `yaml:"credentials"`
 	// Instances maps each instance name to its connection configuration.
 	Instances map[string]instance.Config `yaml:"instances"`
+	// Credentials holds the top-level credential store settings.
+	Credentials CredentialsSettings `yaml:"credentials"`
 }
 
 // instanceNode is the intermediate representation used during Load. It keeps
@@ -60,20 +60,8 @@ type configField struct {
 // Manager owns the in-memory configuration state and its source file path.
 // Mutations remain in memory until Save is called.
 type Manager struct {
-	// path is the source and Save destination for the YAML configuration.
-	path string
 	// data is the typed top-level configuration state.
 	data *FileData
-	// nameOrder contains instance names in file or insertion order.
-	nameOrder []string
-	// credentialsSet reports whether the source file declares a top-level
-	// credentials mapping. Save writes that mapping only when it was present,
-	// so a configuration without it round-trips unchanged.
-	credentialsSet bool
-	// foreign holds the top-level keys agh-cli does not own, in file order. Save
-	// re-emits them ahead of the keys it owns, so an annotation or a key kept for
-	// another tool survives every write.
-	foreign []configField
 	// undecoded holds the instances whose stanza could not be decoded, keyed by
 	// name. Save writes each stanza back unchanged, so a mistyped instance is
 	// never lost to a write that concerns another instance.
@@ -81,10 +69,22 @@ type Manager struct {
 	// unknown holds the keys of each instance stanza that agh-cli does not
 	// read, keyed by name. Save writes them back.
 	unknown map[string]unknownFields
+	// path is the source and Save destination for the YAML configuration.
+	path string
+	// nameOrder contains instance names in file or insertion order.
+	nameOrder []string
+	// foreign holds the top-level keys agh-cli does not own, in file order. Save
+	// re-emits them ahead of the keys it owns, so an annotation or a key kept for
+	// another tool survives every write.
+	foreign []configField
 	// stamp is the observable state the source file had when it was read. Save
 	// refuses to write when the file no longer matches, because a rewrite would
 	// discard whatever changed it in the meantime.
 	stamp fileStamp
+	// credentialsSet reports whether the source file declares a top-level
+	// credentials mapping. Save writes that mapping only when it was present,
+	// so a configuration without it round-trips unchanged.
+	credentialsSet bool
 }
 
 // undecodedInstance is an instance whose stanza could not be decoded.
@@ -120,10 +120,10 @@ type aliasResolver struct {
 // match is the content digest compared, so the common stale case costs a single
 // stat and the ambiguous case costs one read of a small file.
 type fileStamp struct {
-	// size is the file length in bytes.
-	size int64
 	// modified is the last modification time.
 	modified time.Time
+	// size is the file length in bytes.
+	size int64
 	// digest is a hash of the contents the file held when it was read.
 	digest [sha256.Size]byte
 	// hashed reports whether the digest was taken, which is false for a file

@@ -38,19 +38,19 @@ type FilteringService interface {
 // required field causes FilteringStatus to return a JSON error. LastUpdated is
 // optional; nil represents an absent or null value.
 type FilterSubscription struct {
-	// Enabled reports whether the subscription is enabled.
-	Enabled bool
-	// ID is the subscription identifier.
-	ID int64
 	// LastUpdated is the subscription's most recent update time, or nil when
 	// the server omitted it or returned null.
 	LastUpdated *time.Time
 	// Name is the subscription display name.
 	Name string
-	// RulesCount is the number of rules in the subscription.
-	RulesCount uint32
 	// URL is the subscription location.
 	URL string
+	// ID is the subscription identifier.
+	ID int64
+	// RulesCount is the number of rules in the subscription.
+	RulesCount uint32
+	// Enabled reports whether the subscription is enabled.
+	Enabled bool
 }
 
 // FilteringStatus is the response-only filtering configuration snapshot.
@@ -120,12 +120,12 @@ type RemoveFilteringURLRequest struct {
 // All fields are always serialized, including false, the empty string, and
 // zero values where applicable.
 type FilteringURLData struct {
-	// Enabled reports whether the replacement subscription is enabled.
-	Enabled bool `json:"enabled"`
 	// Name is the replacement subscription display name.
 	Name string `json:"name"`
 	// URL is the replacement subscription location.
 	URL string `json:"url"`
+	// Enabled reports whether the replacement subscription is enabled.
+	Enabled bool `json:"enabled"`
 }
 
 // SetFilteringURLRequest updates a filter subscription.
@@ -177,13 +177,13 @@ type SetFilteringRulesRequest struct {
 // Name is always encoded as the name query parameter. Nil Client and QType
 // fields are omitted; nonnil values are encoded even when empty.
 type CheckHostRequest struct {
-	// Name is the required host name encoded as the name query parameter.
-	Name string `json:"-"`
 	// Client is the optional client identifier or IP address. Nil omits the
 	// client query parameter.
 	Client *string `json:"-"`
 	// QType is the optional DNS query type. Nil omits the qtype query parameter.
 	QType *string `json:"-"`
+	// Name is the required host name encoded as the name query parameter.
+	Name string `json:"-"`
 }
 
 // FilteringRule describes one optional rule entry returned by a host check.

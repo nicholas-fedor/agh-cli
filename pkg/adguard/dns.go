@@ -151,10 +151,10 @@ type dnsConfigWire struct {
 
 // upstreamConfigWire mirrors the pinned upstream test request contract.
 type upstreamConfigWire struct {
-	BootstrapDNS    []string         `json:"bootstrap_dns"`
-	UpstreamDNS     []string         `json:"upstream_dns"`
 	FallbackDNS     *optionalStrings `json:"fallback_dns,omitempty"`
 	PrivateUpstream *optionalStrings `json:"private_upstream,omitempty"`
+	BootstrapDNS    []string         `json:"bootstrap_dns"`
+	UpstreamDNS     []string         `json:"upstream_dns"`
 }
 
 const (

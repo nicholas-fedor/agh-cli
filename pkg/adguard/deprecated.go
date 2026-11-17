@@ -13,8 +13,8 @@ import (
 
 // deprecatedQueryLogConfigRequest mirrors the legacy query-log configuration request.
 type deprecatedQueryLogConfigRequest struct {
-	Enabled           bool    `json:"enabled"`
 	Interval          float64 `json:"interval"`
+	Enabled           bool    `json:"enabled"`
 	AnonymizeClientIP bool    `json:"anonymize_client_ip"`
 }
 

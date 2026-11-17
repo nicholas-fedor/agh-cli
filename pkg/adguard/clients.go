@@ -63,11 +63,31 @@ type SafeSearchConfig struct {
 // booleans and nonzero cache sizes are sent. The same value type is used for
 // response decoding, where false and zero remain meaningful ordinary values.
 type ClientConfig struct {
+	// SafeSearch optionally contains provider-specific safe-search settings.
+	// Nil omits the object, while a nonnil zero value sends an object whose
+	// provider fields are themselves omitted.
+	SafeSearch *SafeSearchConfig `json:"safe_search,omitempty"`
+	// BlockedServicesSchedule contains the blocked-services schedule. Nil and
+	// empty maps are omitted from add requests; response decoding distinguishes
+	// absent or null from an explicitly empty map.
+	BlockedServicesSchedule map[string]any `json:"blocked_services_schedule,omitempty"`
 	// Name is the client name. ClientsAdd requires it to contain non-whitespace text.
 	Name string `json:"name,omitempty"`
 	// IDs contains the client identifiers. ClientsAdd requires at least one ID;
 	// nil and empty lists are omitted from add requests.
 	IDs []string `json:"ids,omitempty"`
+	// BlockedServices contains blocked-service identifiers. Nil and empty lists
+	// are omitted from add requests; response decoding preserves the distinction.
+	BlockedServices []string `json:"blocked_services,omitempty"`
+	// Upstreams contains client-specific DNS upstreams. Nil and empty lists are
+	// omitted from add requests; response decoding preserves the distinction.
+	Upstreams []string `json:"upstreams,omitempty"`
+	// Tags contains the client's tags. Nil and empty lists are omitted from add
+	// requests; response decoding preserves the distinction.
+	Tags []string `json:"tags,omitempty"`
+	// UpstreamsCacheSize reports or requests the client upstream cache size.
+	// ClientsAdd omits zero and sends only nonzero values.
+	UpstreamsCacheSize int64 `json:"upstreams_cache_size,omitempty"`
 	// UseGlobalSettings reports or requests use of global client settings.
 	// ClientsAdd omits false and sends only true.
 	UseGlobalSettings bool `json:"use_global_settings,omitempty"`
@@ -83,26 +103,9 @@ type ClientConfig struct {
 	// SafesearchEnabled reports or requests per-client safe search.
 	// ClientsAdd omits false and sends only true.
 	SafesearchEnabled bool `json:"safesearch_enabled,omitempty"`
-	// SafeSearch optionally contains provider-specific safe-search settings.
-	// Nil omits the object, while a nonnil zero value sends an object whose
-	// provider fields are themselves omitted.
-	SafeSearch *SafeSearchConfig `json:"safe_search,omitempty"`
 	// UseGlobalBlockedServices reports or requests use of global blocked services.
 	// ClientsAdd omits false and sends only true.
 	UseGlobalBlockedServices bool `json:"use_global_blocked_services,omitempty"`
-	// BlockedServicesSchedule contains the blocked-services schedule. Nil and
-	// empty maps are omitted from add requests; response decoding distinguishes
-	// absent or null from an explicitly empty map.
-	BlockedServicesSchedule map[string]any `json:"blocked_services_schedule,omitempty"`
-	// BlockedServices contains blocked-service identifiers. Nil and empty lists
-	// are omitted from add requests; response decoding preserves the distinction.
-	BlockedServices []string `json:"blocked_services,omitempty"`
-	// Upstreams contains client-specific DNS upstreams. Nil and empty lists are
-	// omitted from add requests; response decoding preserves the distinction.
-	Upstreams []string `json:"upstreams,omitempty"`
-	// Tags contains the client's tags. Nil and empty lists are omitted from add
-	// requests; response decoding preserves the distinction.
-	Tags []string `json:"tags,omitempty"`
 	// IgnoreQuerylog reports or requests exclusion from the query log.
 	// ClientsAdd omits false and sends only true.
 	IgnoreQuerylog bool `json:"ignore_querylog,omitempty"`
@@ -112,30 +115,27 @@ type ClientConfig struct {
 	// UpstreamsCacheEnabled reports or requests the client upstream cache.
 	// ClientsAdd omits false and sends only true.
 	UpstreamsCacheEnabled bool `json:"upstreams_cache_enabled,omitempty"`
-	// UpstreamsCacheSize reports or requests the client upstream cache size.
-	// ClientsAdd omits zero and sends only nonzero values.
-	UpstreamsCacheSize int64 `json:"upstreams_cache_size,omitempty"`
 }
 
 // clientConfigRequest preserves add-request presence semantics.
 type clientConfigRequest struct {
+	SafeSearch               *SafeSearchConfig `json:"safe_search,omitempty"`
+	BlockedServicesSchedule  map[string]any    `json:"blocked_services_schedule,omitempty"`
+	UpstreamsCacheSize       *int64            `json:"upstreams_cache_size,omitempty"`
 	Name                     string            `json:"name,omitempty"`
 	IDs                      []string          `json:"ids,omitempty"`
+	BlockedServices          []string          `json:"blocked_services,omitempty"`
+	Upstreams                []string          `json:"upstreams,omitempty"`
+	Tags                     []string          `json:"tags,omitempty"`
 	UseGlobalSettings        optionalTrue      `json:"use_global_settings,omitzero"`
 	FilteringEnabled         optionalTrue      `json:"filtering_enabled,omitzero"`
 	ParentalEnabled          optionalTrue      `json:"parental_enabled,omitzero"`
 	SafebrowsingEnabled      optionalTrue      `json:"safebrowsing_enabled,omitzero"`
 	SafesearchEnabled        optionalTrue      `json:"safesearch_enabled,omitzero"`
-	SafeSearch               *SafeSearchConfig `json:"safe_search,omitempty"`
 	UseGlobalBlockedServices optionalTrue      `json:"use_global_blocked_services,omitzero"`
-	BlockedServicesSchedule  map[string]any    `json:"blocked_services_schedule,omitempty"`
-	BlockedServices          []string          `json:"blocked_services,omitempty"`
-	Upstreams                []string          `json:"upstreams,omitempty"`
-	Tags                     []string          `json:"tags,omitempty"`
 	IgnoreQuerylog           optionalTrue      `json:"ignore_querylog,omitzero"`
 	IgnoreStatistics         optionalTrue      `json:"ignore_statistics,omitzero"`
 	UpstreamsCacheEnabled    optionalTrue      `json:"upstreams_cache_enabled,omitzero"`
-	UpstreamsCacheSize       *int64            `json:"upstreams_cache_size,omitempty"`
 }
 
 // optionalTrue serializes true and omits false.
@@ -146,14 +146,14 @@ type optionalTrue bool
 // A nil WhoisInfo map represents an absent or null value, while a nonnil empty
 // map represents an explicitly empty object.
 type ClientAuto struct {
+	// WhoisInfo contains optional WHOIS information keyed by field name.
+	WhoisInfo map[string]string `json:"whois_info,omitempty"`
 	// IP is the discovered client's IP address.
 	IP string `json:"ip,omitempty"`
 	// Name is the discovered client's name.
 	Name string `json:"name,omitempty"`
 	// Source is the discovery source reported by AdGuard Home.
 	Source string `json:"source,omitempty"`
-	// WhoisInfo contains optional WHOIS information keyed by field name.
-	WhoisInfo map[string]string `json:"whois_info,omitempty"`
 }
 
 // ClientsStatus contains configured and automatically discovered clients.
@@ -228,11 +228,11 @@ type ClientUpdateData struct {
 
 // ClientUpdate identifies a client and supplies a presence-sensitive patch.
 type ClientUpdate struct {
+	// Data contains the fields to patch. ClientsUpdate requires a nonnil value.
+	Data *ClientUpdateData `json:"data,omitzero"`
 	// Name identifies the configured client to update. It must contain
 	// non-whitespace text, but the original untrimmed value is sent.
 	Name string `json:"name,omitempty"`
-	// Data contains the fields to patch. ClientsUpdate requires a nonnil value.
-	Data *ClientUpdateData `json:"data,omitzero"`
 }
 
 // ClientsSearchRequestItem identifies one client search input.
@@ -255,10 +255,20 @@ type ClientsSearchRequest struct {
 // Nil slices and maps represent absent or null values, while nonnil empty values
 // represent explicitly empty lists or objects.
 type ClientFindInfo struct {
+	// SafeSearch optionally contains provider-specific safe-search settings.
+	SafeSearch *SafeSearchConfig `json:"safe_search,omitempty"`
+	// WhoisInfo contains WHOIS information keyed by field name.
+	WhoisInfo map[string]string `json:"whois_info,omitempty"`
 	// Name is the matched client's name.
 	Name string `json:"name,omitempty"`
+	// DisallowedRule contains the rule that disallowed the client.
+	DisallowedRule string `json:"disallowed_rule,omitempty"`
 	// IDs contains the matched client's identifiers.
 	IDs []string `json:"ids,omitempty"`
+	// BlockedServices contains blocked-service identifiers.
+	BlockedServices []string `json:"blocked_services,omitempty"`
+	// Upstreams contains client-specific DNS upstreams.
+	Upstreams []string `json:"upstreams,omitempty"`
 	// UseGlobalSettings reports whether the client uses global settings.
 	UseGlobalSettings bool `json:"use_global_settings,omitempty"`
 	// FilteringEnabled reports whether filtering is enabled for the client.
@@ -269,20 +279,10 @@ type ClientFindInfo struct {
 	SafebrowsingEnabled bool `json:"safebrowsing_enabled,omitempty"`
 	// SafesearchEnabled reports whether safe search is enabled for the client.
 	SafesearchEnabled bool `json:"safesearch_enabled,omitempty"`
-	// SafeSearch optionally contains provider-specific safe-search settings.
-	SafeSearch *SafeSearchConfig `json:"safe_search,omitempty"`
 	// UseGlobalBlockedServices reports whether the client uses global blocked services.
 	UseGlobalBlockedServices bool `json:"use_global_blocked_services,omitempty"`
-	// BlockedServices contains blocked-service identifiers.
-	BlockedServices []string `json:"blocked_services,omitempty"`
-	// Upstreams contains client-specific DNS upstreams.
-	Upstreams []string `json:"upstreams,omitempty"`
-	// WhoisInfo contains WHOIS information keyed by field name.
-	WhoisInfo map[string]string `json:"whois_info,omitempty"`
 	// Disallowed reports whether the client is disallowed.
 	Disallowed bool `json:"disallowed,omitempty"`
-	// DisallowedRule contains the rule that disallowed the client.
-	DisallowedRule string `json:"disallowed_rule,omitempty"`
 	// IgnoreQuerylog reports whether the client is excluded from the query log.
 	IgnoreQuerylog bool `json:"ignore_querylog,omitempty"`
 	// IgnoreStatistics reports whether the client is excluded from statistics.

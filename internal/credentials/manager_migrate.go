@@ -18,6 +18,9 @@ type MigrationRequest struct {
 
 // MigrationResult reports the outcome for one legacy plaintext instance.
 type MigrationResult struct {
+	// Err explains why the instance was not migrated. Its message never contains
+	// a secret. It is nil for a successful migration.
+	Err error
 	// Instance is the instance name that was migrated or previewed.
 	Instance string
 	// Key is the keyring key that receives the password.
@@ -27,28 +30,25 @@ type MigrationResult struct {
 	// Migrated reports that the password reached the credential store and the
 	// configuration no longer writes it.
 	Migrated bool
-	// Err explains why the instance was not migrated. Its message never contains
-	// a secret. It is nil for a successful migration.
-	Err error
 }
 
 // MigrationReport contains the outcome of one migration run.
 type MigrationReport struct {
-	// Backend is the credential store backend name.
-	Backend string
-	// Service is the credential store namespace that receives the passwords.
-	Service string
-	// DryRun reports that nothing was written to the store or the file.
-	DryRun bool
-	// Results contains one entry per legacy plaintext instance in configuration
-	// order.
-	Results []MigrationResult
-	// Saved reports whether the configuration file was rewritten.
-	Saved bool
 	// Err explains why the configuration was not rewritten. Its message never
 	// contains a secret. A save failure leaves every plaintext password on disk,
 	// so a repeated run stays safe.
 	Err error
+	// Backend is the credential store backend name.
+	Backend string
+	// Service is the credential store namespace that receives the passwords.
+	Service string
+	// Results contains one entry per legacy plaintext instance in configuration
+	// order.
+	Results []MigrationResult
+	// DryRun reports that nothing was written to the store or the file.
+	DryRun bool
+	// Saved reports whether the configuration file was rewritten.
+	Saved bool
 }
 
 // migrationCandidate is one legacy plaintext instance selected for migration.
