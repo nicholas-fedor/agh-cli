@@ -13,7 +13,7 @@ The project is licensed under the GNU Affero General Public License v3.0 or late
 Install the following tools:
 
 - Go 1.27.1
-- [Task](https://taskfile.dev/) or GNU Make
+- [Task](https://taskfile.dev/)
 - [golangci-lint v2](https://golangci-lint.run/)
 - [Mockery v3](https://vektra.github.io/mockery/)
 - [Hugo Extended](https://gohugo.io/installation/) for documentation development
@@ -161,26 +161,28 @@ Never modify lint configuration merely to hide a new finding.
 
 ## Development commands
 
-The Taskfile is the canonical cross-platform interface. Make targets cover the same local workflow plus release and Docker helpers.
+The Taskfile is the canonical cross-platform interface. Run `task --list` to see every task.
 
-| Action | Task | Make |
-|---|---|---|
-| Build | `task build` | `make build` |
-| Test | `task test` | `make test` |
-| Coverage | `task test-coverage` | `make test-coverage` |
-| Format | `task fmt` | `make fmt` |
-| Lint and autofix | `task lint` | `make lint` |
-| Vet | `task vet` | `make vet` |
-| Tidy modules | `task tidy` | `make tidy` |
-| Generate mocks | `task mock` | `make mock` |
-| Generate CLI docs | `task docs` | — |
-| Verify docs drift | `task docs-check` | — |
-| Serve docs | `task docs-serve` | — |
-| Local checks | — | `make ci-check` |
+| Action | Task |
+|---|---|
+| Build | `task build` |
+| Test | `task test` |
+| Coverage | `task test-coverage` |
+| Format | `task fmt` |
+| Lint and autofix | `task lint` |
+| Vet | `task vet` |
+| Tidy modules | `task tidy` |
+| Generate mocks | `task mock` |
+| Generate CLI docs | `task docs` |
+| Verify docs drift | `task docs-check` |
+| Serve docs | `task docs-serve` |
+| Local checks | `task check` |
+| Local images | `task release:snapshot` |
+| Tag a release | `task tag:bump-patch`, `tag:bump-minor`, or `tag:bump-major` |
 
 ### Lint autofix
 
-`build/golangci-lint/golangci-lint.yaml` intentionally sets `issues.fix: true`, and both `task lint` and `make lint` apply fixes. Run them when you want autofixes.
+`build/golangci-lint/golangci-lint.yaml` intentionally sets `issues.fix: true`, and `task lint` applies fixes. Run it when you want autofixes.
 
 For a read-only verification run, use the CLI override:
 
@@ -198,7 +200,7 @@ The CI test command enables the race detector. Run the same coverage locally bef
 go test -race -coverprofile=coverage.out -covermode=atomic ./...
 ```
 
-`make ci-check` is a fast local subset, not a complete replacement for CI.
+`task check` is a fast local subset, not a complete replacement for CI.
 
 ## Testing conventions
 
@@ -353,6 +355,8 @@ Before opening a pull request:
 ## Release overview
 
 Stable releases are triggered by tags matching `vX.Y.Z`. Nightly image builds run from `main`.
+
+Tag a release with `task tag:bump-patch`, `tag:bump-minor`, or `tag:bump-major`. The task fetches origin first. It refuses unless HEAD is a clean `main` that matches `origin/main` and has no release tag. It also refuses `--force`, because `--force` skips those checks. It asks for confirmation and then pushes an annotated `vX.Y.Z` tag, which starts `release-stable.yaml`.
 
 Maintainers must use GoReleaser through CI rather than publishing locally. Release automation requires:
 
