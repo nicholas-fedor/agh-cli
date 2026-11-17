@@ -18,6 +18,9 @@ type Presence uint8
 // PasswordStatus reports the configured password state of one named instance.
 // It never carries a secret, a value derived from one, or the instance username.
 type PasswordStatus struct {
+	// Err explains why Presence is unknown for a keyring source. Its message
+	// never contains a secret. It is nil when the store answered the read.
+	Err error
 	// Instance is the instance name whose password was inspected.
 	Instance string
 	// Source is the configured credential source. A legacy instance without a
@@ -34,9 +37,6 @@ type PasswordStatus struct {
 	TargetKind string
 	// Presence reports how the configured source currently supplies a password.
 	Presence Presence
-	// Err explains why Presence is unknown for a keyring source. Its message
-	// never contains a secret. It is nil when the store answered the read.
-	Err error
 }
 
 // PasswordReport reports credential store state for a service and its named
@@ -49,10 +49,10 @@ type PasswordReport struct {
 	Backend string
 	// Service is the credential store namespace.
 	Service string
-	// Available reports whether every credential store read succeeded.
-	Available bool
 	// Instances contains one entry per named instance in configuration order.
 	Instances []PasswordStatus
+	// Available reports whether every credential store read succeeded.
+	Available bool
 }
 
 const (

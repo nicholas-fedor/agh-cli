@@ -26,6 +26,19 @@ type ServerService interface {
 // DHCPAvailable, and StartTime are optional: nil means that the server omitted
 // the field or returned JSON null. Unknown response members are ignored.
 type ServerStatus struct {
+	// ProtectionDisabledDuration is the remaining disabled-protection duration
+	// reported by the server, or nil when the optional value is absent or null.
+	ProtectionDisabledDuration *int64
+	// DHCPAvailable reports whether the DHCP service is available, or is nil when
+	// the optional value is absent or null.
+	DHCPAvailable *bool
+	// StartTime is the optional web API server start time in Unix milliseconds,
+	// or nil when the value is absent or null.
+	StartTime *float64
+	// Language is the required configured web-interface language.
+	Language string
+	// Version is the required AdGuard Home version.
+	Version string
 	// DNSAddresses contains the addresses served by AdGuard Home. An empty,
 	// non-nil slice means that the server returned an empty list.
 	DNSAddresses []string
@@ -33,23 +46,10 @@ type ServerStatus struct {
 	DNSPort uint16
 	// HTTPPort is the required web-interface listening port and must be non-zero.
 	HTTPPort uint16
-	// Language is the required configured web-interface language.
-	Language string
 	// ProtectionEnabled reports whether filtering protection is enabled.
 	ProtectionEnabled bool
-	// ProtectionDisabledDuration is the remaining disabled-protection duration
-	// reported by the server, or nil when the optional value is absent or null.
-	ProtectionDisabledDuration *int64
-	// DHCPAvailable reports whether the DHCP service is available, or is nil when
-	// the optional value is absent or null.
-	DHCPAvailable *bool
 	// Running reports whether the AdGuard Home server is running.
 	Running bool
-	// Version is the required AdGuard Home version.
-	Version string
-	// StartTime is the optional web API server start time in Unix milliseconds,
-	// or nil when the value is absent or null.
-	StartTime *float64
 }
 
 // serverStatusResponse mirrors the pinned status response schema.

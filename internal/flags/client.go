@@ -12,7 +12,10 @@ import (
 )
 
 // ClientMutationFlags stores the flags of the client add and update commands.
-type ClientMutationFlags struct {
+//
+// Embedded fields come first, as the embeddedstructfieldcheck linter requires, so
+// betteralign leaves the order alone.
+type ClientMutationFlags struct { // betteralign:ignore
 	// InstanceSelection stores the instance-selection flags.
 	InstanceSelection
 

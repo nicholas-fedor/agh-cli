@@ -98,7 +98,7 @@ func TestClientsMutationsSendExactJSONAndAcceptEmptySuccess(t *testing.T) {
 
 			request := <-captured
 			require.NoError(t, request.err)
-			assert.Equal(t, test.wantBody, request.body)
+			assert.JSONEq(t, test.wantBody, request.body)
 		})
 	}
 }

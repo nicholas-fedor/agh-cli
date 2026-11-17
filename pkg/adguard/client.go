@@ -25,22 +25,22 @@ import (
 // application/json. Redirects are rejected before a redirected request can be
 // sent, and response bodies are read only within the configured size limit.
 type Client struct {
-	// baseURL is the validated server URL and optional API path prefix.
-	baseURL url.URL
 	// httpClient is the private client clone used for every request.
 	httpClient *http.Client
-	// basicAuth reports whether requests include HTTP Basic credentials.
-	basicAuth bool
 	// username is the configured HTTP Basic authentication username.
 	username string
 	// password is the configured HTTP Basic authentication password.
 	password string
+	// userAgent is the value sent in the User-Agent request header.
+	userAgent string
+	// baseURL is the validated server URL and optional API path prefix.
+	baseURL url.URL
 	// requestTimeout bounds each complete request and response-body read.
 	requestTimeout time.Duration
 	// maxResponseBytes is the maximum response body size accepted by the client.
 	maxResponseBytes int64
-	// userAgent is the value sent in the User-Agent request header.
-	userAgent string
+	// basicAuth reports whether requests include HTTP Basic credentials.
+	basicAuth bool
 }
 
 // apiResponse contains a bounded, validated JSON response body.

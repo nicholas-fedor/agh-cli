@@ -20,8 +20,6 @@ type VersionService interface {
 // an absent or null value and nonnil pointers preserving explicit false,
 // zero-length, or empty values.
 type VersionInfo struct {
-	// Disabled reports whether version checking is disabled.
-	Disabled bool
 	// NewVersion contains the available version when one was reported.
 	NewVersion *string
 	// Announcement contains the release announcement when one was reported.
@@ -30,6 +28,8 @@ type VersionInfo struct {
 	AnnouncementURL *string
 	// CanAutoupdate reports whether automatic updates are available when present.
 	CanAutoupdate *bool
+	// Disabled reports whether version checking is disabled.
+	Disabled bool
 }
 
 // versionRequestWire mirrors the pinned version lookup request contract.

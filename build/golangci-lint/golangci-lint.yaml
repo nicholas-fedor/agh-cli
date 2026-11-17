@@ -1672,7 +1672,7 @@ linters:
         #     - defers
         #     - directive
         #     - errorsas
-        - fieldalignment # too noisy
+        - fieldalignment # betteralign orders struct fields instead, because this fix deletes field comments
       #     - findcall
       #     - framepointer
       #     - hostport

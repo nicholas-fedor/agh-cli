@@ -42,12 +42,12 @@ type RewriteDiff struct {
 
 // RewriteDiffResult contains one completed rewrite diff.
 type RewriteDiffResult struct {
-	// Mode identifies file or instance comparison.
-	Mode RewriteDiffMode
-	// InstanceNames contains compared instances in display order.
-	InstanceNames []string
 	// Diff contains the computed differences.
 	Diff RewriteDiff
+	// InstanceNames contains compared instances in display order.
+	InstanceNames []string
+	// Mode identifies file or instance comparison.
+	Mode RewriteDiffMode
 }
 
 const (

@@ -18,14 +18,14 @@ import (
 // is an error rather than a fallback, and the none source clears the password
 // without any lookup at all.
 type Resolver struct {
-	// service is the credential store namespace used by instance.KeyringSource.
-	service string
 	// store is the credential store read by instance.KeyringSource.
 	store Store
 	// files reads the mounted secret read by instance.FileSource.
 	files FileReader
 	// env reads the environment variable read by instance.EnvSource.
 	env EnvReader
+	// service is the credential store namespace used by instance.KeyringSource.
+	service string
 }
 
 // Resolver satisfies the instance credential contract.

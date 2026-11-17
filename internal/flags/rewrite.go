@@ -23,7 +23,10 @@ type RewriteRuleFlags struct {
 }
 
 // RewriteDeleteFlags stores the flags of the rewrite delete command.
-type RewriteDeleteFlags struct {
+//
+// Embedded fields come first, as the embeddedstructfieldcheck linter requires, so
+// betteralign leaves the order alone.
+type RewriteDeleteFlags struct { // betteralign:ignore
 	// InstanceSelection stores the instance-selection flags.
 	InstanceSelection
 
@@ -34,7 +37,10 @@ type RewriteDeleteFlags struct {
 }
 
 // RewriteListFlags stores the flags of the rewrite list command.
-type RewriteListFlags struct {
+//
+// Embedded fields come first, as the embeddedstructfieldcheck linter requires, so
+// betteralign leaves the order alone.
+type RewriteListFlags struct { // betteralign:ignore
 	// InstanceSelection stores the instance-selection flags.
 	InstanceSelection
 
@@ -43,7 +49,10 @@ type RewriteListFlags struct {
 }
 
 // RewriteDiffFlags stores the flags of the rewrite diff command.
-type RewriteDiffFlags struct {
+//
+// Embedded fields come first, as the embeddedstructfieldcheck linter requires, so
+// betteralign leaves the order alone.
+type RewriteDiffFlags struct { // betteralign:ignore
 	// InstanceSelection stores the instance-selection flags.
 	InstanceSelection
 

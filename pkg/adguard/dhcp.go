@@ -115,12 +115,12 @@ type DHCPStatus struct {
 	V4 *DHCPConfigV4
 	// V6 contains optional IPv6 DHCP settings.
 	V6 *DHCPConfigV6
-	// Leases contains the required dynamic lease list. An empty slice means
-	// that the server returned an empty list.
-	Leases []DHCPLease
 	// StaticLeases is the optional static lease list. Nil means that the field
 	// was absent or null; a pointer to an empty slice means that it was empty.
 	StaticLeases *[]DHCPStaticLease
+	// Leases contains the required dynamic lease list. An empty slice means
+	// that the server returned an empty list.
+	Leases []DHCPLease
 }
 
 // DHCPInterface is a response-only network interface available to the DHCP
@@ -135,14 +135,14 @@ type DHCPInterface struct {
 	GatewayIP string
 	// HardwareAddress is the interface's hardware address.
 	HardwareAddress string
+	// Name is the interface name.
+	Name string
 	// IPv4Addresses contains the interface's IPv4 addresses with prefix
 	// lengths. An empty slice means that no addresses were reported.
 	IPv4Addresses []string
 	// IPv6Addresses contains the interface's IPv6 addresses with prefix
 	// lengths. An empty slice means that no addresses were reported.
 	IPv6Addresses []string
-	// Name is the interface name.
-	Name string
 }
 
 // DHCPFindRequest contains optional criteria for an active DHCP server search.

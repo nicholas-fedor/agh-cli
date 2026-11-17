@@ -94,6 +94,7 @@ Every command tree must be constructed fresh:
 - Use short, consistent receivers: `c` for `Client`, `i` for `Instance`, `m` for `Manager`, `t` for `TableWriter`.
 - Do not mix pointer and value receivers on one type.
 - Do not use named returns.
+- Struct field order follows betteralign: `task fmt` applies it and `task lint` fails on a struct it would reorder. A struct whose field order is meaningful carries `// betteralign:ignore` on its `type` line and a doc comment that says why. Two cases come up: embedded fields, which `embeddedstructfieldcheck` requires first, and a field order that sets the key order of a JSON document.
 - Wrap errors with lowercase context and `%w`.
 - Use sentinel errors for matchable failure categories.
 - Every Go file requires the copyright and SPDX header.

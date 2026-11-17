@@ -14,14 +14,14 @@ import (
 
 // TableWriter builds aligned ASCII tables.
 type TableWriter struct {
+	// sortFunc compares complete rows when sorting is configured.
+	sortFunc func(a, b []string) bool
 	// headers contains the column headings in display order.
 	headers []string
 	// rows contains the pending data rows in insertion order.
 	rows [][]string
 	// widths contains the rendered width of each column.
 	widths []int
-	// sortFunc compares complete rows when sorting is configured.
-	sortFunc func(a, b []string) bool
 }
 
 // answerFamily ranks the kinds of rewrite answer in sort order.

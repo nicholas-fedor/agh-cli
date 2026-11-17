@@ -33,18 +33,18 @@ type URLRequest struct {
 
 // Subscription describes one filtering subscription in a status result.
 type Subscription struct {
-	// Enabled reports whether the subscription is enabled.
-	Enabled bool
-	// ID is the subscription identifier.
-	ID int64
 	// LastUpdated is the most recent subscription update time.
 	LastUpdated *time.Time
 	// Name is the subscription display name.
 	Name string
-	// RulesCount is the number of rules in the subscription.
-	RulesCount uint32
 	// URL is the subscription location.
 	URL string
+	// ID is the subscription identifier.
+	ID int64
+	// RulesCount is the number of rules in the subscription.
+	RulesCount uint32
+	// Enabled reports whether the subscription is enabled.
+	Enabled bool
 }
 
 // Status contains the presence-aware filtering configuration snapshot.

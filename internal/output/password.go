@@ -34,7 +34,9 @@ type passwordEntry struct {
 }
 
 // passwordReport is the machine-readable credential status document.
-type passwordReport struct {
+//
+// The field order is the key order of the JSON document, so betteralign leaves it alone.
+type passwordReport struct { // betteralign:ignore
 	// Backend is the credential store backend name.
 	Backend string `json:"backend"`
 	// Service is the credential store namespace.

@@ -43,6 +43,8 @@ type BlockedServicesAll struct {
 // IconSVG, ID, Name, and Rules are required response fields. GroupID is optional;
 // nil represents an absent or null value.
 type BlockedService struct {
+	// GroupID is the optional group identifier.
+	GroupID *string `json:"group_id,omitzero"`
 	// IconSVG is the Base64-encoded SVG icon for the service.
 	IconSVG string `json:"icon_svg"`
 	// ID is the service identifier.
@@ -51,8 +53,6 @@ type BlockedService struct {
 	Name string `json:"name"`
 	// Rules contains the service's filtering rules.
 	Rules []string `json:"rules"`
-	// GroupID is the optional group identifier.
-	GroupID *string `json:"group_id,omitzero"`
 }
 
 // ServiceGroup identifies a group of blocked services.

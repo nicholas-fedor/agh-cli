@@ -30,12 +30,12 @@ type AddressInfo struct {
 // AddressesInfo contains the network interfaces and default ports reported by
 // the installation endpoint.
 type AddressesInfo struct {
-	// DNSPort is the default DNS listening port.
-	DNSPort uint16 `json:"dns_port"`
 	// Interfaces contains the available network interfaces keyed by name.
 	Interfaces map[string]NetInterface `json:"interfaces"`
 	// Version is the AdGuard Home version.
 	Version string `json:"version"`
+	// DNSPort is the default DNS listening port.
+	DNSPort uint16 `json:"dns_port"`
 	// WebPort is the default web-interface listening port.
 	WebPort uint16 `json:"web_port"`
 }
@@ -48,12 +48,12 @@ type NetInterface struct {
 	GatewayIP string `json:"gateway_ip"`
 	// HardwareAddress is the interface hardware address.
 	HardwareAddress string `json:"hardware_address"`
+	// Name is the interface name.
+	Name string `json:"name"`
 	// IPv4Addresses contains the interface's IPv4 addresses.
 	IPv4Addresses []string `json:"ipv4_addresses"`
 	// IPv6Addresses contains the interface's IPv6 addresses.
 	IPv6Addresses []string `json:"ipv6_addresses"`
-	// Name is the interface name.
-	Name string `json:"name"`
 }
 
 // CheckConfigRequest contains the optional listener settings to validate.
@@ -79,12 +79,12 @@ type CheckConfigRequestInfo struct {
 // CheckConfigResponse contains the result of checking an installation
 // configuration.
 type CheckConfigResponse struct {
+	// StaticIP contains the optional static-IP check result.
+	StaticIP CheckConfigStaticIPInfo `json:"static_ip"`
 	// DNS contains the DNS listener check result.
 	DNS CheckConfigResponseInfo `json:"dns"`
 	// Web contains the web listener check result.
 	Web CheckConfigResponseInfo `json:"web"`
-	// StaticIP contains the optional static-IP check result.
-	StaticIP CheckConfigStaticIPInfo `json:"static_ip"`
 }
 
 // CheckConfigResponseInfo contains the result for one listener.
@@ -111,14 +111,14 @@ type CheckConfigStaticIPInfo struct {
 // InitialConfiguration contains the settings submitted to complete the initial
 // installation.
 type InitialConfiguration struct {
-	// DNS contains the DNS listener settings.
-	DNS AddressInfo `json:"dns"`
-	// Web contains the web-interface listener settings.
-	Web AddressInfo `json:"web"`
 	// Username is the administrator username.
 	Username string `json:"username"`
 	// Password is the administrator password.
 	Password string `json:"password"`
+	// DNS contains the DNS listener settings.
+	DNS AddressInfo `json:"dns"`
+	// Web contains the web-interface listener settings.
+	Web AddressInfo `json:"web"`
 }
 
 // installAddressesResponse mirrors the pinned get-addresses response schema.

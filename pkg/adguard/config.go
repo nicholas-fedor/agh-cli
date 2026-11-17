@@ -15,22 +15,22 @@ import (
 
 // config contains normalized client construction settings.
 type config struct {
-	// baseURL is the validated absolute server URL and API path prefix.
-	baseURL url.URL
 	// httpClient is the HTTP client selected before it is cloned for redirects.
 	httpClient *http.Client
-	// basicAuth reports whether requests include HTTP Basic credentials.
-	basicAuth bool
 	// username is the configured HTTP Basic authentication username.
 	username string
 	// password is the configured HTTP Basic authentication password.
 	password string
+	// userAgent is the value sent in the User-Agent request header.
+	userAgent string
+	// baseURL is the validated absolute server URL and API path prefix.
+	baseURL url.URL
 	// requestTimeout bounds each complete request and response-body read.
 	requestTimeout time.Duration
 	// maxResponseBytes is the maximum response body size accepted by the client.
 	maxResponseBytes int64
-	// userAgent is the value sent in the User-Agent request header.
-	userAgent string
+	// basicAuth reports whether requests include HTTP Basic credentials.
+	basicAuth bool
 }
 
 const (

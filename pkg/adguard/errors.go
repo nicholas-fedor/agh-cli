@@ -26,6 +26,8 @@ type ErrorKind string
 // The wrapped cause supports [errors.Is], so context cancellation, deadline
 // expiration, and transport causes remain matchable.
 type Error struct {
+	// Err is the underlying cause when one is available.
+	Err error
 	// Kind classifies the failure.
 	Kind ErrorKind
 	// Operation identifies the client operation, or is empty when no operation
@@ -35,18 +37,16 @@ type Error struct {
 	Method string
 	// Status is the HTTP status line when a response was received.
 	Status string
-	// StatusCode is the HTTP status code when a response was received.
-	StatusCode int
 	// ContentType is the raw response Content-Type header when available.
 	ContentType string
-	// Body contains the bounded response body for a non-success HTTP status.
-	Body []byte
-	// Limit is the configured response body limit for an oversized response.
-	Limit int64
 	// Location is the rejected redirect target when relevant.
 	Location string
-	// Err is the underlying cause when one is available.
-	Err error
+	// Body contains the bounded response body for a non-success HTTP status.
+	Body []byte
+	// StatusCode is the HTTP status code when a response was received.
+	StatusCode int
+	// Limit is the configured response body limit for an oversized response.
+	Limit int64
 }
 
 const (
