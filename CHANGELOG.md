@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Add release and check taskfile tasks and remove makefile by @nicholas-fedor in [#153](https://github.com/nicholas-fedor/agh-cli/pull/153)
 - Update actions/setup-go digest to d8cbb80 by @renovate[bot] in [#150](https://github.com/nicholas-fedor/agh-cli/pull/150)
 - Update docker/login-action digest to 8aa5831 by @renovate[bot] in [#151](https://github.com/nicholas-fedor/agh-cli/pull/151)
 - Update module go.yaml.in/yaml/v4 to v4.0.0-rc.7 by @renovate[bot] in [#147](https://github.com/nicholas-fedor/agh-cli/pull/147)
