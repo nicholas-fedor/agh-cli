@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Chores
+
+- Update step-security/harden-runner action to v2.23.0 by @renovate[bot] in [#172](https://github.com/nicholas-fedor/agh-cli/pull/172)
+
+## [0.1.3] - 2026-11-17
+
 ### Changed
 
 - Order struct fields with betteralign by @nicholas-fedor in [#170](https://github.com/nicholas-fedor/agh-cli/pull/170)
@@ -158,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Compare Releases
 
-- [unreleased](https://github.com/nicholas-fedor/agh-cli/compare/v0.1.2...HEAD)
+- [unreleased](https://github.com/nicholas-fedor/agh-cli/compare/v0.1.3...HEAD)
+- [0.1.3](https://github.com/nicholas-fedor/agh-cli/compare/v0.1.2...v0.1.3)
 - [0.1.2](https://github.com/nicholas-fedor/agh-cli/compare/v0.1.1...v0.1.2)
 - [0.1.1](https://github.com/nicholas-fedor/agh-cli/compare/v0.1.0...v0.1.1)
 
