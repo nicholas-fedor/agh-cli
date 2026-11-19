@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update ossf/scorecard-action action to v2.6.0 by @renovate[bot] in [#174](https://github.com/nicholas-fedor/agh-cli/pull/174)
 - Update step-security/harden-runner action to v2.23.0 by @renovate[bot] in [#172](https://github.com/nicholas-fedor/agh-cli/pull/172)
 
 ## [0.1.3] - 2026-11-17
