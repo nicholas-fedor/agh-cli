@@ -5,7 +5,7 @@ These instructions apply to automated contributors working in this repository.
 ## Repository facts
 
 - Module: `github.com/nicholas-fedor/agh-cli`
-- Go directive: `1.27.1`
+- Go version: the `go` directive in `go.mod`
 - Public library: `pkg/adguard`
 - CLI entry point: `main.go`
 - Canonical command tree: `cmd.NewRootCommand()`
@@ -88,7 +88,7 @@ Every command tree must be constructed fresh:
 
 ## Go and comment conventions
 
-- Go 1.27.1 syntax and standard library are the baseline.
+- The `go` directive in `go.mod` sets the syntax and standard library baseline.
 - After a Go toolchain upgrade, run `task modernize`. It fails when the `go fix` modernizers would change the code, and `task modernize FIX=true` applies them.
 - Prefer `errors.AsType`, `errors.Join`, `slices`, `maps`, and iterator helpers where appropriate.
 - Use short, consistent receivers: `c` for `Client`, `i` for `Instance`, `m` for `Manager`, `t` for `TableWriter`.

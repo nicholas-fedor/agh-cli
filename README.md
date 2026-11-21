@@ -605,7 +605,7 @@ The Docker image is a minimal scratch-based binary with static linking. CA certi
 
 ### Prerequisites
 
-- Go 1.27+
+- [Go](https://go.dev/)
 - [Task](https://taskfile.dev/) (optional)
 
 ### Build
