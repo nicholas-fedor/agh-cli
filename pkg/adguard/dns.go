@@ -110,51 +110,48 @@ type UpstreamConfig struct {
 	PrivateUpstream []string
 }
 
-// optionalStrings distinguishes an absent list from an explicitly empty list.
-type optionalStrings struct {
-	values []string
-}
-
-// dnsConfigWire mirrors the pinned DNS configuration JSON contract.
+// dnsConfigWire mirrors the pinned DNS configuration JSON contract. Encoding
+// omits a nil field and keeps a present one, including an empty list.
 type dnsConfigWire struct {
-	BootstrapDNS              *optionalStrings `json:"bootstrap_dns,omitempty"`
-	UpstreamDNS               *optionalStrings `json:"upstream_dns,omitempty"`
-	FallbackDNS               *optionalStrings `json:"fallback_dns,omitempty"`
-	UpstreamDNSFile           *string          `json:"upstream_dns_file,omitempty"`
-	ProtectionEnabled         *bool            `json:"protection_enabled,omitempty"`
-	RateLimit                 *int64           `json:"ratelimit,omitempty"`
-	RateLimitSubnetLengthIPv4 *int             `json:"ratelimit_subnet_subnet_len_ipv4,omitempty"`
-	RateLimitSubnetLengthIPv6 *int             `json:"ratelimit_subnet_subnet_len_ipv6,omitempty"`
-	RateLimitWhitelist        *optionalStrings `json:"ratelimit_whitelist,omitempty"`
-	BlockingMode              *string          `json:"blocking_mode,omitempty"`
-	BlockingIPv4              *string          `json:"blocking_ipv4,omitempty"`
-	BlockingIPv6              *string          `json:"blocking_ipv6,omitempty"`
-	BlockedResponseTTL        *int64           `json:"blocked_response_ttl,omitempty"`
-	ProtectionDisabledUntil   *string          `json:"protection_disabled_until,omitempty"`
-	EDNSCSEnabled             *bool            `json:"edns_cs_enabled,omitempty"`
-	EDNSCSUseCustom           *bool            `json:"edns_cs_use_custom,omitempty"`
-	EDNSCSCustomIP            *string          `json:"edns_cs_custom_ip,omitempty"`
-	DisableIPv6               *bool            `json:"disable_ipv6,omitempty"`
-	DNSSECEnabled             *bool            `json:"dnssec_enabled,omitempty"`
-	CacheSize                 *int64           `json:"cache_size,omitempty"`
-	CacheTTLMin               *int64           `json:"cache_ttl_min,omitempty"`
-	CacheTTLMax               *int64           `json:"cache_ttl_max,omitempty"`
-	CacheEnabled              *bool            `json:"cache_enabled,omitempty"`
-	CacheOptimistic           *bool            `json:"cache_optimistic,omitempty"`
-	UpstreamMode              *string          `json:"upstream_mode,omitempty"`
-	UsePrivatePTRResolvers    *bool            `json:"use_private_ptr_resolvers,omitempty"`
-	ResolveClients            *bool            `json:"resolve_clients,omitempty"`
-	LocalPTRUpstreams         *optionalStrings `json:"local_ptr_upstreams,omitempty"`
-	UpstreamTimeout           *int64           `json:"upstream_timeout,omitempty"`
-	DefaultLocalPTRUpstreams  *optionalStrings `json:"default_local_ptr_upstreams,omitempty"`
+	BootstrapDNS              *[]string `json:"bootstrap_dns,omitzero"`
+	UpstreamDNS               *[]string `json:"upstream_dns,omitzero"`
+	FallbackDNS               *[]string `json:"fallback_dns,omitzero"`
+	UpstreamDNSFile           *string   `json:"upstream_dns_file,omitzero"`
+	ProtectionEnabled         *bool     `json:"protection_enabled,omitzero"`
+	RateLimit                 *int64    `json:"ratelimit,omitzero"`
+	RateLimitSubnetLengthIPv4 *int      `json:"ratelimit_subnet_len_ipv4,omitzero"`
+	RateLimitSubnetLengthIPv6 *int      `json:"ratelimit_subnet_len_ipv6,omitzero"`
+	RateLimitWhitelist        *[]string `json:"ratelimit_whitelist,omitzero"`
+	BlockingMode              *string   `json:"blocking_mode,omitzero"`
+	BlockingIPv4              *string   `json:"blocking_ipv4,omitzero"`
+	BlockingIPv6              *string   `json:"blocking_ipv6,omitzero"`
+	BlockedResponseTTL        *int64    `json:"blocked_response_ttl,omitzero"`
+	ProtectionDisabledUntil   *string   `json:"protection_disabled_until,omitzero"`
+	EDNSCSEnabled             *bool     `json:"edns_cs_enabled,omitzero"`
+	EDNSCSUseCustom           *bool     `json:"edns_cs_use_custom,omitzero"`
+	EDNSCSCustomIP            *string   `json:"edns_cs_custom_ip,omitzero"`
+	DisableIPv6               *bool     `json:"disable_ipv6,omitzero"`
+	DNSSECEnabled             *bool     `json:"dnssec_enabled,omitzero"`
+	CacheSize                 *int64    `json:"cache_size,omitzero"`
+	CacheTTLMin               *int64    `json:"cache_ttl_min,omitzero"`
+	CacheTTLMax               *int64    `json:"cache_ttl_max,omitzero"`
+	CacheEnabled              *bool     `json:"cache_enabled,omitzero"`
+	CacheOptimistic           *bool     `json:"cache_optimistic,omitzero"`
+	UpstreamMode              *string   `json:"upstream_mode,omitzero"`
+	UsePrivatePTRResolvers    *bool     `json:"use_private_ptr_resolvers,omitzero"`
+	ResolveClients            *bool     `json:"resolve_clients,omitzero"`
+	LocalPTRUpstreams         *[]string `json:"local_ptr_upstreams,omitzero"`
+	UpstreamTimeout           *int64    `json:"upstream_timeout,omitzero"`
+	DefaultLocalPTRUpstreams  *[]string `json:"default_local_ptr_upstreams,omitzero"`
 }
 
 // upstreamConfigWire mirrors the pinned upstream test request contract.
+// Encoding always sends both required lists and omits a nil optional list.
 type upstreamConfigWire struct {
-	FallbackDNS     *optionalStrings `json:"fallback_dns,omitempty"`
-	PrivateUpstream *optionalStrings `json:"private_upstream,omitempty"`
-	BootstrapDNS    []string         `json:"bootstrap_dns"`
-	UpstreamDNS     []string         `json:"upstream_dns"`
+	FallbackDNS     *[]string `json:"fallback_dns,omitzero"`
+	PrivateUpstream *[]string `json:"private_upstream,omitzero"`
+	BootstrapDNS    []string  `json:"bootstrap_dns"`
+	UpstreamDNS     []string  `json:"upstream_dns"`
 }
 
 const (
@@ -297,235 +294,6 @@ func (c *Client) TestUpstreamDNS(
 	}
 
 	return results, nil
-}
-
-// IsZero prevents an explicitly present empty list from being omitted.
-//
-// Returns:
-//   - Always false so a nonnil wrapper remains present during JSON encoding.
-func (*optionalStrings) IsZero() bool {
-	return false
-}
-
-// UnmarshalJSON decodes an optional string list.
-//
-// Parameters:
-//   - o: The optional string list to populate.
-//   - data: The JSON list to decode.
-//
-// Returns:
-//   - An error when data is not a valid JSON string list.
-func (o *optionalStrings) UnmarshalJSON(data []byte) error {
-	err := json.Unmarshal(data, &o.values)
-	if err != nil {
-		return fmt.Errorf("unmarshal optional string list: %w", err)
-	}
-
-	return nil
-}
-
-// MarshalJSON emits only fields present in the DNS configuration request.
-//
-// Parameters:
-//   - dc: The DNS configuration wire representation to encode.
-//
-// Returns:
-//   - The encoded JSON object, or an error when it cannot be encoded.
-func (dc dnsConfigWire) MarshalJSON() ([]byte, error) {
-	payload := make(map[string]any, 31)
-	addDNSListFields(payload, dc)
-	addDNSNetworkFields(payload, dc)
-	addDNSBlockingFields(payload, dc)
-	addDNSCacheFields(payload, dc)
-	addDNSExtensionFields(payload, dc)
-	addDNSResolverFields(payload, dc)
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal DNS configuration: %w", err)
-	}
-
-	return payloadBytes, nil
-}
-
-// MarshalJSON emits required upstream fields and present optional lists.
-//
-// Parameters:
-//   - uc: The upstream configuration wire representation to encode.
-//
-// Returns:
-//   - The encoded JSON object, or an error when it cannot be encoded.
-func (uc upstreamConfigWire) MarshalJSON() ([]byte, error) {
-	payload := map[string]any{
-		"bootstrap_dns": uc.BootstrapDNS,
-		"upstream_dns":  uc.UpstreamDNS,
-	}
-	if uc.FallbackDNS != nil {
-		payload["fallback_dns"] = uc.FallbackDNS.values
-	}
-	if uc.PrivateUpstream != nil {
-		payload["private_upstream"] = uc.PrivateUpstream.values
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal upstream configuration: %w", err)
-	}
-
-	return payloadBytes, nil
-}
-
-// addDNSListFields adds present DNS list fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present lists should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSListFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.BootstrapDNS != nil {
-		payload["bootstrap_dns"] = wireConfig.BootstrapDNS.values
-	}
-	if wireConfig.UpstreamDNS != nil {
-		payload["upstream_dns"] = wireConfig.UpstreamDNS.values
-	}
-	if wireConfig.FallbackDNS != nil {
-		payload["fallback_dns"] = wireConfig.FallbackDNS.values
-	}
-	if wireConfig.RateLimitWhitelist != nil {
-		payload["ratelimit_whitelist"] = wireConfig.RateLimitWhitelist.values
-	}
-}
-
-// addDNSNetworkFields adds present DNS network fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present network fields should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSNetworkFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.UpstreamDNSFile != nil {
-		payload["upstream_dns_file"] = wireConfig.UpstreamDNSFile
-	}
-	if wireConfig.ProtectionEnabled != nil {
-		payload["protection_enabled"] = wireConfig.ProtectionEnabled
-	}
-	if wireConfig.RateLimit != nil {
-		payload["ratelimit"] = wireConfig.RateLimit
-	}
-	if wireConfig.RateLimitSubnetLengthIPv4 != nil {
-		payload["ratelimit_subnet_subnet_len_ipv4"] = wireConfig.RateLimitSubnetLengthIPv4
-	}
-	if wireConfig.RateLimitSubnetLengthIPv6 != nil {
-		payload["ratelimit_subnet_subnet_len_ipv6"] = wireConfig.RateLimitSubnetLengthIPv6
-	}
-}
-
-// addDNSBlockingFields adds present DNS blocking fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present blocking fields should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSBlockingFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.BlockingMode != nil {
-		payload["blocking_mode"] = wireConfig.BlockingMode
-	}
-	if wireConfig.BlockingIPv4 != nil {
-		payload["blocking_ipv4"] = wireConfig.BlockingIPv4
-	}
-	if wireConfig.BlockingIPv6 != nil {
-		payload["blocking_ipv6"] = wireConfig.BlockingIPv6
-	}
-}
-
-// addDNSCacheFields adds present DNS cache fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present cache fields should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSCacheFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.BlockedResponseTTL != nil {
-		payload["blocked_response_ttl"] = wireConfig.BlockedResponseTTL
-	}
-	if wireConfig.ProtectionDisabledUntil != nil {
-		payload["protection_disabled_until"] = wireConfig.ProtectionDisabledUntil
-	}
-	if wireConfig.CacheSize != nil {
-		payload["cache_size"] = wireConfig.CacheSize
-	}
-	if wireConfig.CacheTTLMin != nil {
-		payload["cache_ttl_min"] = wireConfig.CacheTTLMin
-	}
-	if wireConfig.CacheTTLMax != nil {
-		payload["cache_ttl_max"] = wireConfig.CacheTTLMax
-	}
-	if wireConfig.CacheEnabled != nil {
-		payload["cache_enabled"] = wireConfig.CacheEnabled
-	}
-	if wireConfig.CacheOptimistic != nil {
-		payload["cache_optimistic"] = wireConfig.CacheOptimistic
-	}
-}
-
-// addDNSExtensionFields adds present DNS extension fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present extension fields should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSExtensionFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.EDNSCSEnabled != nil {
-		payload["edns_cs_enabled"] = wireConfig.EDNSCSEnabled
-	}
-	if wireConfig.EDNSCSUseCustom != nil {
-		payload["edns_cs_use_custom"] = wireConfig.EDNSCSUseCustom
-	}
-	if wireConfig.EDNSCSCustomIP != nil {
-		payload["edns_cs_custom_ip"] = wireConfig.EDNSCSCustomIP
-	}
-	if wireConfig.DisableIPv6 != nil {
-		payload["disable_ipv6"] = wireConfig.DisableIPv6
-	}
-	if wireConfig.DNSSECEnabled != nil {
-		payload["dnssec_enabled"] = wireConfig.DNSSECEnabled
-	}
-}
-
-// addDNSResolverFields adds present DNS resolver fields to a request payload.
-//
-// Parameters:
-//   - payload: The JSON object being assembled.
-//   - wireConfig: The DNS configuration whose present resolver fields should be copied.
-//
-// Returns:
-//   - Nothing; the function updates payload in place.
-func addDNSResolverFields(payload map[string]any, wireConfig dnsConfigWire) {
-	if wireConfig.UpstreamMode != nil {
-		payload["upstream_mode"] = wireConfig.UpstreamMode
-	}
-	if wireConfig.UsePrivatePTRResolvers != nil {
-		payload["use_private_ptr_resolvers"] = wireConfig.UsePrivatePTRResolvers
-	}
-	if wireConfig.ResolveClients != nil {
-		payload["resolve_clients"] = wireConfig.ResolveClients
-	}
-	if wireConfig.LocalPTRUpstreams != nil {
-		payload["local_ptr_upstreams"] = wireConfig.LocalPTRUpstreams.values
-	}
-	if wireConfig.UpstreamTimeout != nil {
-		payload["upstream_timeout"] = wireConfig.UpstreamTimeout
-	}
 }
 
 // postNoContent sends a bodyless POST and accepts a bounded successful response.
@@ -1172,13 +940,13 @@ func validateDNSUpstreamMode(mode *string) error {
 //   - values: The domain list whose presence should be preserved.
 //
 // Returns:
-//   - Nil for a nil list, or a nonnil wire wrapper for a present list.
-func slicePointer(values []string) *optionalStrings {
+//   - Nil for a nil list, or a pointer to a present list.
+func slicePointer(values []string) *[]string {
 	if values == nil {
 		return nil
 	}
 
-	return &optionalStrings{values: values}
+	return &values
 }
 
 // valueFromSlicePointer returns the domain value represented by an optional wire list.
@@ -1188,10 +956,10 @@ func slicePointer(values []string) *optionalStrings {
 //
 // Returns:
 //   - Nil for an absent list, or the decoded slice for a present list.
-func valueFromSlicePointer(values *optionalStrings) []string {
+func valueFromSlicePointer(values *[]string) []string {
 	if values == nil {
 		return nil
 	}
 
-	return values.values
+	return *values
 }

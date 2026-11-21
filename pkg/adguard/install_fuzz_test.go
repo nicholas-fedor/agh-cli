@@ -65,6 +65,7 @@ const (
 	installFuzzValidCheckResponse = `{
 		"dns":{"status":"","can_autofix":false},
 		"web":{"status":"","can_autofix":false},
+		"language":{"status":"","can_autofix":false},
 		"static_ip":{}
 	}`
 	// Response fixture installFuzzValidAddressesResponse is minimally complete.
@@ -194,6 +195,7 @@ func addInstallCheckResponseFuzzSeeds(f *testing.F) {
 			body: []byte(`{
 				"dns":{"status":"ready","can_autofix":true},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"yes","ip":"","error":null}
 			}`),
 			mode:      installFuzzJSON,
@@ -203,6 +205,7 @@ func addInstallCheckResponseFuzzSeeds(f *testing.F) {
 			body: []byte(`{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"no","ip":"192.0.2.53","error":""}
 			}`),
 			mode:      installFuzzJSON,
@@ -212,6 +215,7 @@ func addInstallCheckResponseFuzzSeeds(f *testing.F) {
 			body: []byte(`{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"error","ip":null,"error":"unavailable"}
 			}`),
 			mode:      installFuzzJSON,
@@ -221,7 +225,9 @@ func addInstallCheckResponseFuzzSeeds(f *testing.F) {
 		{body: []byte(`{"dns":{},"web":{},"static_ip":{}}`), mode: installFuzzJSON, operation: 1},
 		{
 			body: []byte(
-				`{"dns":{"status":"","can_autofix":false},"web":{"status":"","can_autofix":false}}`,
+				`{"dns":{"status":"","can_autofix":false},` +
+					`"web":{"status":"","can_autofix":false},` +
+					`"language":{"status":"","can_autofix":false}}`,
 			),
 			mode:      installFuzzJSON,
 			operation: 1,
@@ -230,6 +236,7 @@ func addInstallCheckResponseFuzzSeeds(f *testing.F) {
 			body: []byte(`{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"unknown"}
 			}`),
 			mode:      installFuzzJSON,
@@ -581,6 +588,9 @@ func buildInstallCheckFuzzRequest(data []byte) CheckConfigRequest {
 	if installFuzzControlBit(data, 2) {
 		request.SetStaticIP = new(installFuzzControlBit(data, 6))
 	}
+	if installFuzzControlBit(data, 8) {
+		request.Language = new(string(data))
+	}
 
 	return request
 }
@@ -623,12 +633,16 @@ func buildInstallConfigurationFuzz(data []byte) InitialConfiguration {
 		Web:      AddressInfo{IP: value, Port: webPort},
 		Username: value,
 		Password: value,
+		Language: value,
 	}
 }
 
-// installFuzzControlBit reports whether the bounded control byte contains a bit.
+// installFuzzControlBit reports whether the input sets a control bit. Bits 0
+// through 7 come from the first byte and bit 8 from the second.
 func installFuzzControlBit(data []byte, bit int) bool {
-	return len(data) > 0 && data[0]&(1<<bit) != 0
+	index := bit / 8
+
+	return len(data) > index && data[index]&(1<<(bit%8)) != 0
 }
 
 // requireInstallCheckRequestJSON verifies exact optional check-request presence and values.
@@ -646,10 +660,14 @@ func requireInstallCheckRequestJSON(
 		"dns":           request.DNS != nil,
 		"web":           request.Web != nil,
 		"set_static_ip": request.SetStaticIP != nil,
+		"language":      request.Language != nil,
 	})
 
 	if request.SetStaticIP != nil {
 		assert.Equal(t, *request.SetStaticIP, fields["set_static_ip"])
+	}
+	if request.Language != nil {
+		assert.Equal(t, *request.Language, fields["language"])
 	}
 
 	requireInstallInfoJSON(t, fields, "dns", request.DNS)
@@ -704,8 +722,14 @@ func requireInstallConfigurationJSON(
 		"web":      true,
 		"username": true,
 		"password": true,
+		"language": configuration.Language != "",
 	})
 	assert.Equal(t, configuration.Username, fields["username"])
+
+	if configuration.Language != "" {
+		assert.Equal(t, configuration.Language, fields["language"])
+	}
+
 	assert.Equal(t, configuration.Password, fields["password"])
 	requireInstallAddressJSON(t, fields, "dns", configuration.DNS)
 	requireInstallAddressJSON(t, fields, "web", configuration.Web)

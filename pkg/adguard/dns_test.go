@@ -84,7 +84,7 @@ func TestClientSetDNSConfig(t *testing.T) {
 		assert.Equal(t, []any{}, bootstrapDNS)
 		assert.Equal(t, false, body["protection_enabled"])
 		assert.NotContains(t, body, "upstream_dns")
-		assert.NotContains(t, body, "rate_limit_whitelist")
+		assert.NotContains(t, body, "ratelimit_whitelist")
 
 		w.WriteHeader(http.StatusOK)
 	}))

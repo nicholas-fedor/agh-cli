@@ -236,6 +236,7 @@ func TestInstallCheckConfig(t *testing.T) {
 			Autofix: &autofix,
 		},
 		SetStaticIP: &setStaticIP,
+		Language:    new("xx"),
 	}
 
 	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +256,8 @@ func TestInstallCheckConfig(t *testing.T) {
 		assert.JSONEq(t, `{
 			"dns":{"ip":"192.0.2.53","port":53,"autofix":false},
 			"web":{"ip":"","port":0,"autofix":false},
-			"set_static_ip":true
+			"set_static_ip":true,
+			"language":"xx"
 		}`, string(body))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -263,6 +265,7 @@ func TestInstallCheckConfig(t *testing.T) {
 		_, err = io.WriteString(w, `{
 			"dns":{"status":"","can_autofix":false},
 			"web":{"status":"web is ready","can_autofix":true},
+			"language":{"status":"unknown language: \"xx\"","can_autofix":false},
 			"static_ip":{"static":"no","ip":"192.0.2.53","error":null}
 		}`)
 		assert.NoError(t, err)
@@ -281,6 +284,10 @@ func TestInstallCheckConfig(t *testing.T) {
 		Status:     "web is ready",
 		CanAutofix: true,
 	}, result.Web)
+	assert.Equal(t, CheckConfigResponseInfo{
+		Status:     `unknown language: "xx"`,
+		CanAutofix: false,
+	}, result.Language)
 	require.NotNil(t, result.StaticIP.Static)
 	assert.Equal(t, CheckConfigStaticIPNo, *result.StaticIP.Static)
 	require.NotNil(t, result.StaticIP.IP)
@@ -306,6 +313,7 @@ func TestInstallCheckConfigOmitsNilOptionalFields(t *testing.T) {
 		_, err = io.WriteString(w, `{
 			"dns":{"status":"","can_autofix":false},
 			"web":{"status":"","can_autofix":false},
+			"language":{"status":"","can_autofix":false},
 			"static_ip":{}
 		}`)
 		assert.NoError(t, err)
@@ -332,16 +340,31 @@ func TestInstallCheckConfigRejectsMalformedResponse(t *testing.T) {
 	}{
 		{
 			name: "missing static IP",
-			body: `{"dns":{"status":"","can_autofix":false},"web":{"status":"","can_autofix":false}}`,
+			body: `{"dns":{"status":"","can_autofix":false},` +
+				`"web":{"status":"","can_autofix":false},` +
+				`"language":{"status":"","can_autofix":false}}`,
+		},
+		{
+			name: "missing language",
+			body: `{"dns":{"status":"","can_autofix":false},"web":{"status":"","can_autofix":false},"static_ip":{}}`,
+		},
+		{
+			name: "missing language status",
+			body: `{"dns":{"status":"","can_autofix":false},"web":{"status":"","can_autofix":false},` +
+				`"language":{"can_autofix":false},"static_ip":{}}`,
 		},
 		{
 			name: "missing can autofix",
-			body: `{"dns":{"status":""},"web":{"status":"","can_autofix":false},"static_ip":{}}`,
+			body: `{"dns":{"status":""},` +
+				`"web":{"status":"","can_autofix":false},` +
+				`"language":{"status":"","can_autofix":false},` +
+				`"static_ip":{}}`,
 		},
 		{
 			name: "invalid static status",
 			body: `{"dns":{"status":"","can_autofix":false},` +
 				`"web":{"status":"","can_autofix":false},` +
+				`"language":{"status":"","can_autofix":false},` +
 				`"static_ip":{"static":"unknown"}}`,
 		},
 	}
