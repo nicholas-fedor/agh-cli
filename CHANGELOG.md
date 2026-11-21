@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Stop pinning the go version outside go.mod by @nicholas-fedor in [#178](https://github.com/nicholas-fedor/agh-cli/pull/178)
+
 ### Chores
 
 - Update github/codeql-action digest to 1bd86f2 by @renovate[bot] in [#176](https://github.com/nicholas-fedor/agh-cli/pull/176)
