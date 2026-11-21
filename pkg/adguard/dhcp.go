@@ -481,7 +481,6 @@ func (c *Client) DHCPFindActive(
 		requestErr := c.postJSON(
 			ctx,
 			dhcpFindActiveOperation,
-			http.MethodPost,
 			"control/dhcp/find_active_dhcp",
 			request,
 			&result,

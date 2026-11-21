@@ -75,7 +75,6 @@ func (c *Client) GetVersionInfo(ctx context.Context, recheckNow *bool) (*Version
 	requestErr := c.postJSON(
 		ctx,
 		operationGetVersionInfo,
-		http.MethodPost,
 		"control/version.json",
 		versionRequestWire{RecheckNow: recheckNow},
 		&wireInfo,
