@@ -205,10 +205,6 @@ type FilteredHostResult struct {
 	// Reason is the optional filtering outcome. A present value must be
 	// documented by this package.
 	Reason *FilteringReason
-	// FilterID is the optional legacy subscription identifier.
-	FilterID *int64
-	// Rule is the optional legacy applied rule text.
-	Rule *string
 	// Rules contains the optional applied rule list. Nil means absent or null;
 	// a pointer to an empty slice means an explicitly empty list.
 	Rules *[]FilteringRule
@@ -277,10 +273,6 @@ type filteringRuleResponse struct {
 type filteredHostResponse struct {
 	// Reason is nil when the field is absent or null.
 	Reason *FilteringReason `json:"reason"`
-	// FilterID is nil when the field is absent or null.
-	FilterID *int64 `json:"filter_id"`
-	// Rule is nil when the field is absent or null.
-	Rule *string `json:"rule"`
 	// Rules is nil when the field is absent or null.
 	Rules *[]filteringRuleResponse `json:"rules"`
 	// ServiceName is nil when the field is absent or null.
@@ -1027,8 +1019,6 @@ func decodeFilteredHostResult(body []byte) (*FilteredHostResult, *Error) {
 
 	result := &FilteredHostResult{
 		Reason:      wireResult.Reason,
-		FilterID:    wireResult.FilterID,
-		Rule:        wireResult.Rule,
 		Rules:       nil,
 		ServiceName: wireResult.ServiceName,
 		CNAME:       wireResult.CNAME,

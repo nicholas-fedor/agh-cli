@@ -106,8 +106,6 @@ const validFilteringStatusJSON = `{
 // validFilteredHostJSON is the complete filtering host-check response fixture.
 const validFilteredHostJSON = `{
 	"reason": "FilteredBlackList",
-	"filter_id": 1234,
-	"rule": "||example.org^",
 	"rules": [{"filter_list_id": 1234, "text": "||example.org^"}],
 	"service_name": "example",
 	"cname": "example.test",
@@ -268,10 +266,6 @@ func testClientFilteringCheckHostResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result.Reason)
 	assert.Equal(t, FilteringReasonFilteredBlackList, *result.Reason)
-	require.NotNil(t, result.FilterID)
-	assert.Equal(t, int64(1234), *result.FilterID)
-	require.NotNil(t, result.Rule)
-	assert.Equal(t, "||example.org^", *result.Rule)
 	require.NotNil(t, result.Rules)
 	require.Len(t, *result.Rules, 1)
 	require.NotNil(t, (*result.Rules)[0].FilterListID)

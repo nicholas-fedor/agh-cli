@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -22,9 +21,6 @@ type ClientsService interface {
 	ClientsDelete(ctx context.Context, request ClientDelete) error
 	ClientsUpdate(ctx context.Context, request ClientUpdate) error
 	ClientsSearch(ctx context.Context, request ClientsSearchRequest) ([]ClientFindEntry, error)
-
-	// Deprecated: Use ClientsSearch with a ClientsSearchRequest instead.
-	ClientsFind(ctx context.Context, ids ...string) ([]ClientFindEntry, error)
 }
 
 // AccessListService manages global client and blocked-host access rules.
@@ -100,9 +96,6 @@ type ClientConfig struct {
 	// SafebrowsingEnabled reports or requests per-client safe browsing.
 	// ClientsAdd omits false and sends only true.
 	SafebrowsingEnabled bool `json:"safebrowsing_enabled,omitempty"`
-	// SafesearchEnabled reports or requests per-client safe search.
-	// ClientsAdd omits false and sends only true.
-	SafesearchEnabled bool `json:"safesearch_enabled,omitempty"`
 	// UseGlobalBlockedServices reports or requests use of global blocked services.
 	// ClientsAdd omits false and sends only true.
 	UseGlobalBlockedServices bool `json:"use_global_blocked_services,omitempty"`
@@ -131,7 +124,6 @@ type clientConfigRequest struct {
 	FilteringEnabled         optionalTrue      `json:"filtering_enabled,omitzero"`
 	ParentalEnabled          optionalTrue      `json:"parental_enabled,omitzero"`
 	SafebrowsingEnabled      optionalTrue      `json:"safebrowsing_enabled,omitzero"`
-	SafesearchEnabled        optionalTrue      `json:"safesearch_enabled,omitzero"`
 	UseGlobalBlockedServices optionalTrue      `json:"use_global_blocked_services,omitzero"`
 	IgnoreQuerylog           optionalTrue      `json:"ignore_querylog,omitzero"`
 	IgnoreStatistics         optionalTrue      `json:"ignore_statistics,omitzero"`
@@ -194,8 +186,6 @@ type ClientUpdateData struct {
 	ParentalEnabled *bool `json:"parental_enabled,omitzero"`
 	// SafebrowsingEnabled optionally sets per-client safe browsing.
 	SafebrowsingEnabled *bool `json:"safebrowsing_enabled,omitzero"`
-	// SafesearchEnabled optionally sets per-client safe search.
-	SafesearchEnabled *bool `json:"safesearch_enabled,omitzero"`
 	// SafeSearch optionally replaces provider-specific safe-search settings.
 	// Nil omits the object, while a nonnil zero value sends an empty object.
 	SafeSearch *SafeSearchConfig `json:"safe_search,omitzero"`
@@ -277,8 +267,6 @@ type ClientFindInfo struct {
 	ParentalEnabled bool `json:"parental_enabled,omitempty"`
 	// SafebrowsingEnabled reports whether safe browsing is enabled for the client.
 	SafebrowsingEnabled bool `json:"safebrowsing_enabled,omitempty"`
-	// SafesearchEnabled reports whether safe search is enabled for the client.
-	SafesearchEnabled bool `json:"safesearch_enabled,omitempty"`
 	// UseGlobalBlockedServices reports whether the client uses global blocked services.
 	UseGlobalBlockedServices bool `json:"use_global_blocked_services,omitempty"`
 	// Disallowed reports whether the client is disallowed.
@@ -365,7 +353,6 @@ func newClientConfigRequest(config ClientConfig) clientConfigRequest {
 		FilteringEnabled:         optionalTrue(config.FilteringEnabled),
 		ParentalEnabled:          optionalTrue(config.ParentalEnabled),
 		SafebrowsingEnabled:      optionalTrue(config.SafebrowsingEnabled),
-		SafesearchEnabled:        optionalTrue(config.SafesearchEnabled),
 		UseGlobalBlockedServices: optionalTrue(config.UseGlobalBlockedServices),
 		IgnoreQuerylog:           optionalTrue(config.IgnoreQuerylog),
 		IgnoreStatistics:         optionalTrue(config.IgnoreStatistics),
@@ -558,52 +545,6 @@ func (c *Client) ClientsSearch(ctx context.Context, request ClientsSearchRequest
 	err := json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, clientJSONError(operation, http.MethodPost, fmt.Errorf("%w: %w", errClientJSONResponse, err))
-	}
-
-	return response, nil
-}
-
-// ClientsFind performs the deprecated query-parameter client lookup.
-//
-// Identifiers are sent in order as the ip0, ip1, and subsequent query
-// parameters. The identifiers are not otherwise validated by the client.
-//
-// Parameters:
-//   - ctx: The request context.
-//   - ids: The identifiers to look up.
-//
-// Returns:
-//   - The matched-client entries, including a nonnil empty slice for an empty
-//     JSON array, or a client error when transport, response validation, or JSON
-//     decoding fails.
-//
-// Deprecated: Use ClientsSearch with a ClientsSearchRequest instead.
-func (c *Client) ClientsFind(ctx context.Context, ids ...string) ([]ClientFindEntry, error) {
-	operation := "clients_find"
-	query := make(url.Values, len(ids))
-
-	for index, id := range ids {
-		query.Set(fmt.Sprintf("ip%d", index), id)
-	}
-
-	endpoint := "control/clients/find?" + query.Encode()
-	body, requestErr := c.doClientsRequest(
-		ctx,
-		operation,
-		http.MethodGet,
-		endpoint,
-		nil,
-		clientsResponseJSON,
-	)
-	if requestErr != nil {
-		return nil, requestErr
-	}
-
-	var response []ClientFindEntry
-
-	err := json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, clientJSONError(operation, http.MethodGet, fmt.Errorf("%w: %w", errClientJSONResponse, err))
 	}
 
 	return response, nil

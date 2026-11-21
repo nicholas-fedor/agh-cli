@@ -84,10 +84,10 @@ const (
 		"protection_disabled_duration": 0,
 		"dhcp_available": true,
 		"running": true,
-		"version": "v0.107.62"
+		"version": "v1.0.0"
 	}`
 	// The filtered-host response fixture reports a blocking rule.
-	exampleCheckHostBody = `{"reason":"FilteredBlackList","rule":"||ads.example.test^"}`
+	exampleCheckHostBody = `{"reason":"FilteredBlackList","rules":[{"filter_list_id":1,"text":"||ads.example.test^"}]}`
 	// The filtered-host response fixture reports an undocumented reason.
 	exampleUnknownReasonBody = `{"reason":"NotADocumentedReason"}`
 	// The non-success response fixture is the body retained by a status error.
@@ -259,7 +259,7 @@ func ExampleClient_Status() {
 	fmt.Println("start time reported:", status.StartTime != nil)
 
 	// Output:
-	// version: v0.107.62
+	// version: v1.0.0
 	// dns port: 53
 	// protection enabled: true
 	// dhcp available: true
@@ -335,7 +335,7 @@ func ExampleClient_CheckFilteredHost() {
 
 	fmt.Println("query:", request.query)
 	fmt.Println("reason:", *result.Reason)
-	fmt.Println("rule:", *result.Rule)
+	fmt.Println("rule:", *(*result.Rules)[0].Text)
 
 	// Output:
 	// query: name=ads.example.test
@@ -478,7 +478,7 @@ func ExampleWithHTTPClient() {
 
 	// Output:
 	// url: https://adguard.example.test/control/status
-	// version: v0.107.62
+	// version: v1.0.0
 }
 
 // ExampleWithRequestTimeout demonstrates bounding one request with the

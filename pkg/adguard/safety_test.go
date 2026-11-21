@@ -94,7 +94,7 @@ const (
 	// The enabled true JSON is a response with an explicit true enabled field.
 	safetyEnabledTrueJSON = `{"enabled":true}`
 	// The parental status JSON is the complete parental status response fixture.
-	safetyParentalStatusJSON = `{"enabled":true,"sensitivity":13}`
+	safetyParentalStatusJSON = `{"enabled":true}`
 	// The safe-search status JSON is the complete safe-search response fixture.
 	safetySafeSearchStatusJSON = `{
 		"enabled":true,
@@ -148,8 +148,6 @@ func TestSafetyStatusResponseModels(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, status.Enabled)
 		assert.True(t, *status.Enabled)
-		require.NotNil(t, status.Sensitivity)
-		assert.Equal(t, int64(13), *status.Sensitivity)
 	})
 
 	t.Run("safesearch", func(t *testing.T) {
@@ -803,26 +801,22 @@ func testSafetyParentalPresence(t *testing.T) {
 		name        string
 		body        string
 		wantEnabled *bool
-		wantLevel   *int64
 	}{
-		{name: safetyAbsentName, body: `{}`, wantEnabled: nil, wantLevel: nil},
+		{name: safetyAbsentName, body: `{}`, wantEnabled: nil},
 		{
 			name:        testNullJSON,
-			body:        `{"enabled":null,"sensitivity":null}`,
+			body:        `{"enabled":null}`,
 			wantEnabled: nil,
-			wantLevel:   nil,
 		},
 		{
-			name:        "false and zero",
-			body:        `{"enabled":false,"sensitivity":0}`,
+			name:        "false",
+			body:        `{"enabled":false}`,
 			wantEnabled: new(false),
-			wantLevel:   new(int64(0)),
 		},
 		{
 			name:        safetyTrueName,
-			body:        `{"enabled":true,"sensitivity":13}`,
+			body:        `{"enabled":true}`,
 			wantEnabled: new(true),
-			wantLevel:   new(int64(13)),
 		},
 	}
 
@@ -835,7 +829,6 @@ func testSafetyParentalPresence(t *testing.T) {
 
 			require.NoError(t, err)
 			assertOptionalBool(t, status.Enabled, testCase.wantEnabled)
-			assertOptionalInt64(t, status.Sensitivity, testCase.wantLevel)
 		})
 	}
 }
@@ -846,24 +839,6 @@ func testSafetyParentalPresence(t *testing.T) {
 //   - got: The decoded pointer to inspect.
 //   - want: The expected pointer value.
 func assertOptionalBool(t *testing.T, got, want *bool) {
-	t.Helper()
-
-	if want == nil {
-		assert.Nil(t, got)
-
-		return
-	}
-
-	require.NotNil(t, got)
-	assert.Equal(t, *want, *got)
-}
-
-// assertOptionalInt64 verifies an optional int64 response value.
-//
-// Parameters:
-//   - got: The decoded pointer to inspect.
-//   - want: The expected pointer value.
-func assertOptionalInt64(t *testing.T, got, want *int64) {
 	t.Helper()
 
 	if want == nil {

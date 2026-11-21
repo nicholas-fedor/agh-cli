@@ -181,8 +181,7 @@ func testFilteringIntegrationHostValues(t *testing.T) {
 	t.Parallel()
 	t.Helper()
 
-	body := `{"reason":"FilteredBlackList","filter_id":0,"rule":"",` +
-		`"rules":[],"service_name":"","cname":"","ip_addrs":[]}`
+	body := `{"reason":"FilteredBlackList","rules":[],"service_name":"","cname":"","ip_addrs":[]}`
 	server := newFilteringIntegrationJSONServer(t, body)
 	client := newFilteringIntegrationClient(t, server)
 
@@ -195,10 +194,6 @@ func testFilteringIntegrationHostValues(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result.Reason)
 	assert.Equal(t, adguard.FilteringReasonFilteredBlackList, *result.Reason)
-	require.NotNil(t, result.FilterID)
-	assert.Zero(t, *result.FilterID)
-	require.NotNil(t, result.Rule)
-	assert.Empty(t, *result.Rule)
 	require.NotNil(t, result.Rules)
 	assert.Empty(t, *result.Rules)
 	require.NotNil(t, result.ServiceName)

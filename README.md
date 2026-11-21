@@ -62,7 +62,7 @@ CLI for managing multiple AdGuard Home instances
 
 ## Features
 
-- **Public Go library** — `pkg/adguard` exposes the complete AdGuard Home API with context-aware calls, typed errors, bounded responses, and feature-scoped interfaces
+- **Public Go library** — `pkg/adguard` exposes the complete AdGuard Home v1 API with context-aware calls, typed errors, bounded responses, and feature-scoped interfaces
 - **Multi-instance management** — target any subset of configured AdGuard Home servers in one command
 - **Client management** — list, add, update, and delete DHCP/DNS clients across instances
 - **Filtering management** — read and modify filtering status, enabled/disabled services, and block/allow filter URLs
@@ -642,7 +642,7 @@ task docs-serve
 
 ## Go Library
 
-The repository publishes a reusable Go client at `pkg/adguard`. It covers the complete AdGuard Home HTTP API and is independent of the CLI command layer.
+The repository publishes a reusable Go client at `pkg/adguard`. It covers the complete AdGuard Home v1 HTTP API and is independent of the CLI command layer.
 
 ```go
 package main

@@ -483,7 +483,7 @@ rm -f "$tmp"
 
 ## Go Library
 
-The repository publishes a reusable Go client at `pkg/adguard` that covers the complete AdGuard Home HTTP API independently of the CLI command layer.
+The repository publishes a reusable Go client at `pkg/adguard` that covers the complete AdGuard Home v1 HTTP API independently of the CLI command layer.
 
 ```go
 package main

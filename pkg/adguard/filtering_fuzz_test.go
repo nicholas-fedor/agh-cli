@@ -48,11 +48,11 @@ func FuzzFilteringResponses(fuzz *testing.F) {
 	fuzz.Add(uint8(0), []byte(`{"filters":[{"id":1}]}`))
 	fuzz.Add(uint8(1), []byte(`{}`))
 	fuzz.Add(uint8(1), []byte(
-		`{"reason":null,"filter_id":null,"rule":null,"rules":null,`+
+		`{"reason":null,"rules":null,`+
 			`"service_name":null,"cname":null,"ip_addrs":null}`,
 	))
 	fuzz.Add(uint8(1), []byte(
-		`{"reason":"NotFilteredNotFound","filter_id":0,"rule":"","rules":[],`+
+		`{"reason":"NotFilteredNotFound","rules":[],`+
 			`"service_name":"","cname":"","ip_addrs":[]}`,
 	))
 	fuzz.Add(uint8(1), []byte(`{"reason":"unknown"}`))

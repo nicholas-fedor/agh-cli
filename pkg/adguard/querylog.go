@@ -20,11 +20,6 @@ type QueryLogService interface {
 	QueryLogClear(ctx context.Context) error
 	GetQueryLogConfig(ctx context.Context) (*QueryLogConfig, error)
 	PutQueryLogConfig(ctx context.Context, config QueryLogConfig) error
-
-	// Deprecated: Use GetQueryLogConfig instead.
-	QueryLogInfo(ctx context.Context) (*QueryLogConfig, error)
-	// Deprecated: Use PutQueryLogConfig instead.
-	QueryLogConfig(ctx context.Context, config QueryLogConfig) error
 }
 
 // QueryLogRequest contains the optional query-log filters.
@@ -86,10 +81,6 @@ type QueryLogEntry struct {
 	ElapsedMS *string `json:"elapsedMs"`
 	// Question contains the question the entry answers.
 	Question *DNSQuestion `json:"question"`
-	// FilterID is the identifier of the filter that produced the rule.
-	FilterID *int32 `json:"filterId"`
-	// Rule is the single rewrite rule text that matched the query.
-	Rule *string `json:"rule"`
 	// Rules contains the rewrite rules that matched the query.
 	Rules *[]*QueryLogRule `json:"rules"`
 	// Reason is the filtering reason recorded for the entry.
@@ -211,10 +202,6 @@ type queryLogEntryResponse struct {
 	ElapsedMS *string `json:"elapsedMs"`
 	// Question is nil when the question is absent or null.
 	Question *DNSQuestion `json:"question"`
-	// FilterID is nil when the filter identifier is absent or null.
-	FilterID *int32 `json:"filterId"`
-	// Rule is nil when the rewrite rule text is absent or null.
-	Rule *string `json:"rule"`
 	// Rules is nil when the rewrite rule list is absent or null.
 	Rules *[]*QueryLogRule `json:"rules"`
 	// Reason is nil when the filtering reason is absent or null.
@@ -618,8 +605,6 @@ func queryLogEntryFromWire(wire queryLogEntryResponse) (*QueryLogEntry, error) {
 		ECS:            wire.ECS,
 		ElapsedMS:      wire.ElapsedMS,
 		Question:       wire.Question,
-		FilterID:       wire.FilterID,
-		Rule:           wire.Rule,
 		Rules:          wire.Rules,
 		Reason:         wire.Reason,
 		ServiceName:    wire.ServiceName,

@@ -78,7 +78,8 @@ type DNSConfig struct {
 	CacheEnabled *bool
 	// CacheOptimistic optionally enables optimistic DNS cache refresh.
 	CacheOptimistic *bool
-	// UpstreamMode optionally selects how upstream responses are selected.
+	// UpstreamMode optionally selects how upstream responses are selected. A
+	// present value must be "fastest_addr", "load_balance", or "parallel".
 	UpstreamMode *string
 	// UsePrivatePTRResolvers optionally controls use of private PTR resolvers.
 	UsePrivatePTRResolvers *bool
@@ -927,7 +928,7 @@ func validateDNSUpstreamMode(mode *string) error {
 	}
 
 	switch *mode {
-	case "", "fastest_addr", "load_balance", "parallel":
+	case "fastest_addr", "load_balance", "parallel":
 		return nil
 	default:
 		return errInvalidUpstreamMode

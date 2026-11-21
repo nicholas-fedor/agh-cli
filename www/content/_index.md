@@ -9,7 +9,7 @@ description: A CLI for managing multiple AdGuard Home instances
 
 Instance passwords are read from the operating system credential store, from a read-only mounted secret file, or from an environment variable, and no command prints a stored secret.
 
-The repository also publishes `pkg/adguard`, a standalone Go client for the complete AdGuard Home HTTP API that is independent of the CLI command layer.
+The repository also publishes `pkg/adguard`, a standalone Go client for the complete AdGuard Home v1 HTTP API that is independent of the CLI command layer.
 
 ## Features
 
@@ -18,7 +18,7 @@ The repository also publishes `pkg/adguard`, a standalone Go client for the comp
 - **Filtering management** — read and modify filtering status, enabled/disabled services, and block/allow filter URLs
 - **DNS rewrite rules** — full CRUD plus diff, wildcard rules, and rewrite settings
 - **OS credential store** — instance passwords live in the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager, behind `agh-cli instance credentials`
-- **Public Go library** — `pkg/adguard` exposes the complete AdGuard Home API with context-aware calls, typed errors, bounded responses, and feature-scoped interfaces
+- **Public Go library** — `pkg/adguard` exposes the complete AdGuard Home v1 API with context-aware calls, typed errors, bounded responses, and feature-scoped interfaces
 - **YAML configuration** — single human-readable config file for all instance credentials and targets
 - **Structured terminal output** — formatted tables for list operations
 - **Multi-arch binaries** — built for linux, windows, and darwin across amd64, arm64, riscv64, and more
