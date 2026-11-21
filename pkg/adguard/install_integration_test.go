@@ -79,6 +79,7 @@ const (
 	installIntegrationCheckConfigJSON = `{
 		"dns": {"status": "ok", "can_autofix": false},
 		"web": {"status": "ok", "can_autofix": false},
+		"language": {"status": "", "can_autofix": false},
 		"static_ip": {}
 	}`
 )
@@ -101,6 +102,7 @@ func installIntegrationCheckConfigPresenceCases() []installIntegrationCheckConfi
 			body: `{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{}
 			}`,
 		},
@@ -109,6 +111,7 @@ func installIntegrationCheckConfigPresenceCases() []installIntegrationCheckConfi
 			body: `{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":null,"ip":null,"error":null}
 			}`,
 		},
@@ -117,6 +120,7 @@ func installIntegrationCheckConfigPresenceCases() []installIntegrationCheckConfi
 			body: `{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"yes","ip":"","error":""}
 			}`,
 			wantStatic: &staticYes,
@@ -128,6 +132,7 @@ func installIntegrationCheckConfigPresenceCases() []installIntegrationCheckConfi
 			body: `{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"error","ip":"192.0.2.53","error":"default route unavailable"}
 			}`,
 			wantStatic: &staticError,
@@ -380,17 +385,30 @@ func TestInstallIntegrationCheckConfigRejectsMalformedResponses(t *testing.T) {
 		{name: "null response", body: safetyIntegrationNullName},
 		{
 			name: "missing DNS member",
-			body: `{"web":{"status":"","can_autofix":false},"static_ip":{}}`,
+			body: `{"web":{"status":"","can_autofix":false},` +
+				`"language":{"status":"","can_autofix":false},` +
+				`"static_ip":{}}`,
 		},
 		{
 			name: "missing static IP member",
-			body: `{"dns":{"status":"","can_autofix":false},"web":{"status":"","can_autofix":false}}`,
+			body: `{"dns":{"status":"","can_autofix":false},` +
+				`"web":{"status":"","can_autofix":false},` +
+				`"language":{"status":"","can_autofix":false}}`,
+		},
+		{
+			name: "missing language member",
+			body: `{
+				"dns":{"status":"","can_autofix":false},
+				"web":{"status":"","can_autofix":false},
+				"static_ip":{}
+			}`,
 		},
 		{
 			name: "missing required listener field",
 			body: `{
 				"dns":{"status":""},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{}
 			}`,
 		},
@@ -399,6 +417,7 @@ func TestInstallIntegrationCheckConfigRejectsMalformedResponses(t *testing.T) {
 			body: `{
 				"dns":{"status":"","can_autofix":false},
 				"web":{"status":"","can_autofix":false},
+				"language":{"status":"","can_autofix":false},
 				"static_ip":{"static":"unknown"}
 			}`,
 		},
@@ -457,6 +476,24 @@ func TestInstallIntegrationConfigurePreservesRequiredFields(t *testing.T) {
 			statusCode:   http.StatusOK,
 			contentType:  installIntegrationTextMediaType,
 			responseBody: "configuration accepted",
+		},
+		{
+			name: "configuration with language",
+			configuration: adguard.InitialConfiguration{
+				DNS:      adguard.AddressInfo{IP: "192.0.2.53", Port: 53},
+				Web:      adguard.AddressInfo{IP: "192.0.2.2", Port: 3000},
+				Username: adguardIntegrationAdminName,
+				Password: "password123",
+				Language: "de",
+			},
+			wantBody: `{
+				"dns":{"ip":"192.0.2.53","port":53},
+				"web":{"ip":"192.0.2.2","port":3000},
+				"username":"admin",
+				"password":"password123",
+				"language":"de"
+			}`,
+			statusCode: http.StatusOK,
 		},
 		{
 			name:          "zero configuration",

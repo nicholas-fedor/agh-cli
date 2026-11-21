@@ -64,6 +64,9 @@ type CheckConfigRequest struct {
 	Web *CheckConfigRequestInfo `json:"web,omitzero"`
 	// SetStaticIP optionally requests conversion to a static IP address.
 	SetStaticIP *bool `json:"set_static_ip,omitzero"`
+	// Language is the optional web interface language code to check, such as
+	// "en". AdGuard Home accepts an empty code.
+	Language *string `json:"language,omitzero"`
 }
 
 // CheckConfigRequestInfo contains optional settings for one listener.
@@ -85,6 +88,9 @@ type CheckConfigResponse struct {
 	DNS CheckConfigResponseInfo `json:"dns"`
 	// Web contains the web listener check result.
 	Web CheckConfigResponseInfo `json:"web"`
+	// Language contains the language check result. Its status is empty when
+	// the requested language is valid.
+	Language CheckConfigResponseInfo `json:"language"`
 }
 
 // CheckConfigResponseInfo contains the result for one listener.
@@ -115,6 +121,10 @@ type InitialConfiguration struct {
 	Username string `json:"username"`
 	// Password is the administrator password.
 	Password string `json:"password"`
+	// Language is the optional web interface language code, such as "en". An
+	// empty code is omitted, and the web interface then follows the browser
+	// language.
+	Language string `json:"language,omitzero"`
 	// DNS contains the DNS listener settings.
 	DNS AddressInfo `json:"dns"`
 	// Web contains the web-interface listener settings.
@@ -166,6 +176,8 @@ type checkConfigResponse struct {
 	Web *checkConfigResponseInfo `json:"web"`
 	// StaticIP is nil when the required static-IP result is absent or null.
 	StaticIP *checkConfigStaticIPResponse `json:"static_ip"`
+	// Language is nil when the required language result is absent or null.
+	Language *checkConfigResponseInfo `json:"language"`
 }
 
 // checkConfigResponseInfo mirrors the pinned result for one listener.
@@ -257,7 +269,7 @@ func (c *Client) InstallGetAddresses(ctx context.Context) (*AddressesInfo, error
 // The request is POST /control/install/check_config and always contains a JSON
 // object. Optional fields are omitted when nil, while nonnil false, zero, and
 // empty values are preserved. The response must be a JSON object with the
-// required DNS, web, and static-IP members.
+// required DNS, web, static-IP, and language members.
 //
 // Parameters:
 //   - ctx: The request context. Cancellation stops the request.
@@ -428,20 +440,29 @@ func checkConfigFromWire(response *checkConfigResponse) (*CheckConfigResponse, e
 	}
 
 	return &CheckConfigResponse{
-		DNS: CheckConfigResponseInfo{
-			Status:     *response.DNS.Status,
-			CanAutofix: *response.DNS.CanAutofix,
-		},
-		Web: CheckConfigResponseInfo{
-			Status:     *response.Web.Status,
-			CanAutofix: *response.Web.CanAutofix,
-		},
+		DNS:      checkConfigInfoFromWire(response.DNS),
+		Web:      checkConfigInfoFromWire(response.Web),
+		Language: checkConfigInfoFromWire(response.Language),
 		StaticIP: CheckConfigStaticIPInfo{
 			Static: response.StaticIP.Static,
 			IP:     response.StaticIP.IP,
 			Error:  response.StaticIP.Error,
 		},
 	}, nil
+}
+
+// checkConfigInfoFromWire converts one validated check result.
+//
+// Parameters:
+//   - info: The check result. It and both of its members must not be nil.
+//
+// Returns:
+//   - CheckConfigResponseInfo: The public check result.
+func checkConfigInfoFromWire(info *checkConfigResponseInfo) CheckConfigResponseInfo {
+	return CheckConfigResponseInfo{
+		Status:     *info.Status,
+		CanAutofix: *info.CanAutofix,
+	}
 }
 
 // validateCheckConfigResponse validates required check-configuration members.
@@ -452,13 +473,14 @@ func checkConfigFromWire(response *checkConfigResponse) (*CheckConfigResponse, e
 // Returns:
 //   - err: A missing-required-field or invalid-enum error; otherwise nil.
 func validateCheckConfigResponse(response *checkConfigResponse) error {
-	if response == nil || response.DNS == nil || response.Web == nil || response.StaticIP == nil {
+	if response == nil || response.StaticIP == nil {
 		return errRequiredCheckConfigField
 	}
-	if response.DNS.Status == nil || response.DNS.CanAutofix == nil ||
-		response.Web.Status == nil || response.Web.CanAutofix == nil {
 
-		return errRequiredCheckConfigField
+	for _, info := range []*checkConfigResponseInfo{response.DNS, response.Web, response.Language} {
+		if info == nil || info.Status == nil || info.CanAutofix == nil {
+			return errRequiredCheckConfigField
+		}
 	}
 
 	err := validateCheckConfigStaticIP(response.StaticIP)

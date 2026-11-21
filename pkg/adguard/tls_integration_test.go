@@ -113,6 +113,8 @@ func TestClientTLSIntegrationStatus(t *testing.T) {
 		"port_https":0,
 		"port_dns_over_tls":853,
 		"port_dns_over_quic":null,
+		"port_dnscrypt":5443,
+		"dnscrypt_config_file":null,
 		"certificate_chain":"Y2VydGlmaWNhdGU=",
 		"private_key":null,
 		"private_key_saved":false,
@@ -150,29 +152,31 @@ func TestClientTLSIntegrationConfigureRequest(t *testing.T) {
 	t.Parallel()
 
 	config := adguard.TLSConfig{
-		Enabled:           new(false),
-		ServerName:        new(""),
-		ForceHTTPS:        new(true),
-		PortHTTPS:         new(uint16(0)),
-		PortDNSOverTLS:    new(uint16(853)),
-		PortDNSOverQUIC:   new(uint16(0)),
-		CertificateChain:  new(""),
-		PrivateKey:        new("private-key"),
-		PrivateKeySaved:   new(false),
-		CertificatePath:   new("cert.pem"),
-		PrivateKeyPath:    new("key.pem"),
-		ValidCertificate:  new(false),
-		ValidChain:        new(true),
-		Subject:           new(""),
-		Issuer:            new(""),
-		NotBefore:         new(""),
-		NotAfter:          new(""),
-		DNSNames:          &[]string{},
-		ValidKey:          new(false),
-		KeyType:           new(adguard.TLSKeyTypeECDSA),
-		WarningValidation: new(""),
-		ValidPair:         new(true),
-		ServePlainDNS:     new(false),
+		Enabled:            new(false),
+		ServerName:         new(""),
+		ForceHTTPS:         new(true),
+		PortHTTPS:          new(uint16(0)),
+		PortDNSOverTLS:     new(uint16(853)),
+		PortDNSOverQUIC:    new(uint16(0)),
+		PortDNSCrypt:       new(uint16(0)),
+		DNSCryptConfigFile: new(""),
+		CertificateChain:   new(""),
+		PrivateKey:         new("private-key"),
+		PrivateKeySaved:    new(false),
+		CertificatePath:    new("cert.pem"),
+		PrivateKeyPath:     new("key.pem"),
+		ValidCertificate:   new(false),
+		ValidChain:         new(true),
+		Subject:            new(""),
+		Issuer:             new(""),
+		NotBefore:          new(""),
+		NotAfter:           new(""),
+		DNSNames:           &[]string{},
+		ValidKey:           new(false),
+		KeyType:            new(adguard.TLSKeyTypeECDSA),
+		WarningValidation:  new(""),
+		ValidPair:          new(true),
+		ServePlainDNS:      new(false),
 	}
 	const responseBody = `{"enabled":true,"key_type":"RSA","dns_names":[]}`
 
@@ -192,6 +196,8 @@ func TestClientTLSIntegrationConfigureRequest(t *testing.T) {
 		"port_https":0,
 		"port_dns_over_tls":853,
 		"port_dns_over_quic":0,
+		"port_dnscrypt":0,
+		"dnscrypt_config_file":"",
 		"certificate_chain":"",
 		"private_key":"private-key",
 		"private_key_saved":false,
@@ -644,6 +650,9 @@ func assertTLSIntegrationStatusConfig(t *testing.T, config *adguard.TLSConfig) {
 	require.NotNil(t, config.PortDNSOverTLS)
 	assert.Equal(t, uint16(853), *config.PortDNSOverTLS)
 	assert.Nil(t, config.PortDNSOverQUIC)
+	require.NotNil(t, config.PortDNSCrypt)
+	assert.Equal(t, uint16(5443), *config.PortDNSCrypt)
+	assert.Nil(t, config.DNSCryptConfigFile)
 	require.NotNil(t, config.CertificateChain)
 	assert.Equal(t, "Y2VydGlmaWNhdGU=", *config.CertificateChain)
 	assert.Nil(t, config.PrivateKey)

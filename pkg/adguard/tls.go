@@ -54,6 +54,14 @@ type TLSConfig struct {
 	// PortDNSOverQUIC is the optional DNS-over-QUIC listening port. Nil omits
 	// the field in a request and preserves an explicit zero value when nonnil.
 	PortDNSOverQUIC *uint16 `json:"port_dns_over_quic,omitzero"`
+	// PortDNSCrypt is the optional DNSCrypt listening port, where zero disables
+	// DNSCrypt. Nil omits the field in a request and preserves an explicit zero
+	// value when nonnil.
+	PortDNSCrypt *uint16 `json:"port_dnscrypt,omitzero"`
+	// DNSCryptConfigFile is the optional DNSCrypt configuration file path. Nil
+	// omits the field in a request and represents an absent or null value in a
+	// response.
+	DNSCryptConfigFile *string `json:"dnscrypt_config_file,omitzero"`
 	// CertificateChain is the optional PEM-encoded certificate chain. Nil
 	// omits the field in a request and represents an absent or null response.
 	CertificateChain *string `json:"certificate_chain,omitzero"`
@@ -160,6 +168,11 @@ func (c *Client) TLSStatus(ctx context.Context) (*TLSConfig, error) {
 // while nonnil fields preserve explicit false, zero, empty-string, and
 // empty-slice values. The response must be a JSON object, and a present key
 // type must be RSA or ECDSA.
+//
+// AdGuard Home replaces its TLS settings with the request instead of merging
+// it. A settings field left nil resets to its zero value, so an omitted
+// [TLSConfig.PortDNSCrypt] disables DNSCrypt. To change one setting, start from
+// the configuration [Client.TLSStatus] returns.
 //
 // Parameters:
 //   - ctx: The request context. Cancellation stops the request.
