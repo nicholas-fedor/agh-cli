@@ -280,7 +280,6 @@ func (c *Client) TestUpstreamDNS(
 	requestErr := c.postJSON(
 		ctx,
 		operationTestUpstream,
-		http.MethodPost,
 		"control/test_upstream_dns",
 		upstreamConfigWire{
 			BootstrapDNS:    config.BootstrapDNS,
@@ -373,7 +372,6 @@ func (c *Client) postEmpty(
 // Parameters:
 //   - ctx: The request context.
 //   - operation: The operation identifier used in errors.
-//   - method: The legacy method argument, which this POST helper ignores.
 //   - endpoint: The endpoint path relative to the configured base URL.
 //   - body: The value to encode as the JSON request body.
 //   - result: The destination for the decoded JSON response.
@@ -384,7 +382,6 @@ func (c *Client) postEmpty(
 func (c *Client) postJSON(
 	ctx context.Context,
 	operation string,
-	_ string,
 	endpoint string,
 	body any,
 	result any,

@@ -249,7 +249,6 @@ func (c *Client) executeTLSJSONOperation(
 	requestErr := c.postJSON(
 		ctx,
 		operation,
-		http.MethodPost,
 		endpoint,
 		config,
 		&result,

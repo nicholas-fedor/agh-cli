@@ -288,7 +288,6 @@ func (c *Client) InstallCheckConfig(
 	requestErr := c.postJSON(
 		ctx,
 		operationInstallCheckConfig,
-		http.MethodPost,
 		"control/install/check_config",
 		request,
 		&wireResponse,
