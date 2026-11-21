@@ -214,26 +214,22 @@ func TestSafetyIntegrationParentalPointerPresence(t *testing.T) {
 		name        string
 		body        string
 		wantEnabled *bool
-		wantLevel   *int64
 	}{
-		{name: safetyIntegrationAbsentName, body: `{}`, wantEnabled: nil, wantLevel: nil},
+		{name: safetyIntegrationAbsentName, body: `{}`, wantEnabled: nil},
 		{
 			name:        safetyIntegrationNullName,
-			body:        `{"enabled":null,"sensitivity":null}`,
+			body:        `{"enabled":null}`,
 			wantEnabled: nil,
-			wantLevel:   nil,
 		},
 		{
-			name:        "false and zero",
-			body:        `{"enabled":false,"sensitivity":0}`,
+			name:        "false",
+			body:        `{"enabled":false}`,
 			wantEnabled: new(false),
-			wantLevel:   new(int64(0)),
 		},
 		{
-			name:        "true and value",
-			body:        `{"enabled":true,"sensitivity":13}`,
+			name:        "true",
+			body:        `{"enabled":true}`,
 			wantEnabled: new(true),
-			wantLevel:   new(int64(13)),
 		},
 	}
 
@@ -249,7 +245,6 @@ func TestSafetyIntegrationParentalPointerPresence(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, status)
 			assertSafetyIntegrationOptionalBool(t, status.Enabled, test.wantEnabled)
-			assertSafetyIntegrationOptionalInt64(t, status.Sensitivity, test.wantLevel)
 		})
 	}
 }
@@ -627,7 +622,7 @@ func safetyIntegrationParentalCases() []safetyIntegrationOperationCase {
 			method:              http.MethodGet,
 			path:                "/api/control/parental/status",
 			responseContentType: blockedServicesIntegrationJSONContentType,
-			responseBody:        `{"enabled":true,"sensitivity":13}`,
+			responseBody:        `{"enabled":true}`,
 			call: func(ctx context.Context, client *adguard.Client) error {
 				_, err := client.ParentalStatus(ctx)
 
@@ -977,24 +972,6 @@ func safetyIntegrationRequireError(
 //   - got: The decoded pointer to inspect.
 //   - want: The expected pointer value.
 func assertSafetyIntegrationOptionalBool(t *testing.T, got, want *bool) {
-	t.Helper()
-
-	if want == nil {
-		assert.Nil(t, got)
-
-		return
-	}
-
-	require.NotNil(t, got)
-	assert.Equal(t, *want, *got)
-}
-
-// assertSafetyIntegrationOptionalInt64 verifies an optional int64 value.
-//
-// Parameters:
-//   - got: The decoded pointer to inspect.
-//   - want: The expected pointer value.
-func assertSafetyIntegrationOptionalInt64(t *testing.T, got, want *int64) {
 	t.Helper()
 
 	if want == nil {

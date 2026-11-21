@@ -270,6 +270,41 @@ func TestClientDNSRequiredResponseFields(t *testing.T) {
 	}
 }
 
+// TestClientDNSRejectsEmptyUpstreamMode verifies that an empty upstream mode,
+// which AdGuard Home refuses, fails on read and before any write request.
+func TestClientDNSRejectsEmptyUpstreamMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("read", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			writeBody(w, `{"upstream_mode":""}`)
+		}))
+		client := newDNSTestClient(t, server)
+
+		_, err := client.DNSInfo(t.Context())
+
+		clientErr := requireClientError(t, err, ErrorKindJSON)
+		assert.ErrorIs(t, clientErr, errInvalidUpstreamMode)
+	})
+
+	t.Run("write", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewTestServer(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Error("unexpected request")
+		}))
+		client := newDNSTestClient(t, server)
+
+		err := client.SetDNSConfig(t.Context(), &DNSConfig{UpstreamMode: new("")})
+
+		clientErr := requireClientError(t, err, ErrorKindRequest)
+		assert.ErrorIs(t, clientErr, errInvalidUpstreamMode)
+	})
+}
+
 // TestClientDNSRequestTimeout verifies timeout identity through DNS operations.
 func TestClientDNSRequestTimeout(t *testing.T) {
 	t.Parallel()

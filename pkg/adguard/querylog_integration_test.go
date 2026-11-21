@@ -123,8 +123,6 @@ const (
 				"unicode_name":null,
 				"type":"A"
 			},
-			"filterId":7,
-			"rule":"||example.org^",
 			"rules":[{"filter_list_id":7,"text":"||example.org^"}],
 			"reason":"FilteredBlackList",
 			"service_name":"",
@@ -377,10 +375,6 @@ func testQueryLogIntegrationLogResponse(t *testing.T) {
 	assert.Nil(t, entry.Question.UnicodeName)
 	require.NotNil(t, entry.Question.Type)
 	assert.Equal(t, "A", *entry.Question.Type)
-	require.NotNil(t, entry.FilterID)
-	assert.Equal(t, int32(7), *entry.FilterID)
-	require.NotNil(t, entry.Rule)
-	assert.Equal(t, "||example.org^", *entry.Rule)
 	require.NotNil(t, entry.Rules)
 	require.Len(t, *entry.Rules, 1)
 	require.NotNil(t, (*entry.Rules)[0])

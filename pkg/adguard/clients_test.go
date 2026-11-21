@@ -195,7 +195,6 @@ func TestClientsUpdatePreservesFieldPresence(t *testing.T) {
 				FilteringEnabled:         new(false),
 				ParentalEnabled:          new(false),
 				SafebrowsingEnabled:      new(false),
-				SafesearchEnabled:        new(false),
 				SafeSearch:               &SafeSearchConfig{},
 				UseGlobalBlockedServices: new(false),
 				BlockedServicesSchedule:  new(map[string]any{}),
@@ -210,7 +209,7 @@ func TestClientsUpdatePreservesFieldPresence(t *testing.T) {
 			wantBody: `{"name":"desk","data":{"name":"","ids":[],` +
 				`"use_global_settings":false,"filtering_enabled":false,` +
 				`"parental_enabled":false,"safebrowsing_enabled":false,` +
-				`"safesearch_enabled":false,"safe_search":{},` +
+				`"safe_search":{},` +
 				`"use_global_blocked_services":false,"blocked_services_schedule":{},` +
 				`"blocked_services":[],"upstreams":[],"tags":[],` +
 				`"ignore_querylog":false,"ignore_statistics":false,` +
@@ -245,8 +244,8 @@ func TestClientsUpdatePreservesFieldPresence(t *testing.T) {
 	}
 }
 
-// TestClientsSearchAndFind verifies exact-match search and legacy lookup decoding.
-func TestClientsSearchAndFind(t *testing.T) {
+// TestClientsSearch verifies the exact-match search request and response decoding.
+func TestClientsSearch(t *testing.T) {
 	t.Parallel()
 
 	captured := make(chan clientsRequestCapture, 1)
@@ -257,9 +256,6 @@ func TestClientsSearchAndFind(t *testing.T) {
 
 			body, err := io.ReadAll(r.Body)
 			captured <- clientsRequestCapture{body: string(body), err: err}
-		case "/control/clients/find":
-			assert.Equal(t, http.MethodGet, r.Method)
-			assert.Equal(t, "ip0=192.0.2.1&ip1=cli-42", r.URL.RawQuery)
 		default:
 			http.NotFound(w, r)
 
@@ -281,11 +277,6 @@ func TestClientsSearchAndFind(t *testing.T) {
 	assert.JSONEq(t, `{"clients":[{"id":"192.0.2.1"},{"id":"cli-42"}]}`, request.body)
 	require.Len(t, search, 1)
 	assert.Equal(t, clientsTestName, search[0][clientsTestClientID].Name)
-
-	found, err := client.ClientsFind(t.Context(), clientsTestClientID, "cli-42")
-	require.NoError(t, err)
-	require.Len(t, found, 1)
-	assert.Equal(t, clientsTestName, found[0][clientsTestClientID].Name)
 }
 
 // TestAccessList verifies access-list response decoding.
@@ -374,9 +365,6 @@ func TestClientsRejectsMalformedJSONAndNonSuccess(t *testing.T) {
 		})
 		require.Error(t, requireClientError(t, searchErr, ErrorKindJSON))
 
-		_, findErr := client.ClientsFind(t.Context(), clientsTestClientID)
-		require.Error(t, requireClientError(t, findErr, ErrorKindJSON))
-
 		_, accessErr := client.AccessList(t.Context())
 		assert.Error(t, requireClientError(t, accessErr, ErrorKindJSON))
 	})
@@ -448,7 +436,6 @@ func newClientsAddConfig() ClientConfig {
 		FilteringEnabled:         true,
 		ParentalEnabled:          false,
 		SafebrowsingEnabled:      false,
-		SafesearchEnabled:        false,
 		SafeSearch:               nil,
 		UseGlobalBlockedServices: false,
 		BlockedServicesSchedule:  nil,
@@ -478,7 +465,6 @@ func newClientsUpdateData(filteringEnabled, useGlobalSettings *bool) *ClientUpda
 		FilteringEnabled:         filteringEnabled,
 		ParentalEnabled:          nil,
 		SafebrowsingEnabled:      nil,
-		SafesearchEnabled:        nil,
 		SafeSearch:               nil,
 		UseGlobalBlockedServices: nil,
 		BlockedServicesSchedule:  nil,

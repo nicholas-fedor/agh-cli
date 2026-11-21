@@ -22,11 +22,6 @@ type SafetyService interface {
 	ParentalStatus(ctx context.Context) (*ParentalStatus, error)
 	SafesearchSettings(ctx context.Context, config SafeSearchConfig) error
 	SafesearchStatus(ctx context.Context) (*SafeSearchConfig, error)
-
-	// Deprecated: Use SafesearchSettings with SafeSearchConfig.Enabled instead.
-	SafesearchEnable(ctx context.Context) error
-	// Deprecated: Use SafesearchSettings with SafeSearchConfig.Enabled instead.
-	SafesearchDisable(ctx context.Context) error
 }
 
 // SafebrowsingStatus contains the safe-browsing protection state.
@@ -38,15 +33,12 @@ type SafebrowsingStatus struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
-// ParentalStatus contains the response-only parental-control state and
-// sensitivity.
+// ParentalStatus contains the response-only parental-control state.
 //
-// Both fields are optional. Nil represents an absent or null response value.
+// The field is optional. Nil represents an absent or null response value.
 type ParentalStatus struct {
 	// Enabled is the optional parental-control protection state.
 	Enabled *bool `json:"enabled,omitempty"`
-	// Sensitivity is the optional parental-control sensitivity.
-	Sensitivity *int64 `json:"sensitivity,omitempty"`
 }
 
 const (
@@ -121,11 +113,11 @@ func (c *Client) ParentalEnable(ctx context.Context) error {
 	return nil
 }
 
-// ParentalStatus retrieves the parental-control state and sensitivity.
+// ParentalStatus retrieves the parental-control state.
 //
 // The successful response must use a JSON media type and contain a non-null
-// object. Both fields are optional; absent and null values decode to nil, while
-// explicit false and zero values are preserved.
+// object. The enabled field is optional. An absent or null value decodes to
+// nil, while an explicit false is preserved.
 //
 // Parameters:
 //   - ctx: The request context. Cancellation stops the request.

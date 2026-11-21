@@ -13,18 +13,11 @@ import (
 )
 
 // StatsService exposes DNS statistics and statistics configuration operations.
-//
-// The final two methods are the deprecated legacy statistics operations.
 type StatsService interface {
 	GetStatsConfig(ctx context.Context) (*StatsConfig, error)
 	PutStatsConfig(ctx context.Context, config StatsConfig) error
 	Stats(ctx context.Context, request *StatsRequest) (*Stats, error)
 	StatsReset(ctx context.Context) error
-
-	// Deprecated: Use GetStatsConfig instead.
-	StatsInfo(ctx context.Context) (*StatsConfig, error)
-	// Deprecated: Use PutStatsConfig instead.
-	StatsConfig(ctx context.Context, config StatsConfig) error
 }
 
 // StatsRequest selects the statistics lookback period.

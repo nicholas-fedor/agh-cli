@@ -17,13 +17,6 @@ type BlockedServicesService interface {
 	BlockedServicesAll(ctx context.Context) (*BlockedServicesAll, error)
 	BlockedServicesSchedule(ctx context.Context) (*BlockedServicesSchedule, error)
 	BlockedServicesScheduleUpdate(ctx context.Context, schedule BlockedServicesSchedule) error
-
-	// Deprecated: Use BlockedServicesAll instead.
-	BlockedServicesAvailableServices(ctx context.Context) ([]string, error)
-	// Deprecated: Use BlockedServicesSchedule instead.
-	BlockedServicesList(ctx context.Context) ([]string, error)
-	// Deprecated: Use BlockedServicesScheduleUpdate instead.
-	BlockedServicesSet(ctx context.Context, services []string) error
 }
 
 // BlockedServicesAll contains the complete blocked-service catalog.

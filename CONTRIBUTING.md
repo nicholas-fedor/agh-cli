@@ -4,7 +4,7 @@ Thank you for your interest in improving agh-cli. This document describes the re
 
 ## Project overview
 
-agh-cli is a Go CLI for managing multiple AdGuard Home instances. It also publishes `pkg/adguard`, a reusable Go client for the complete AdGuard Home HTTP API.
+agh-cli is a Go CLI for managing multiple AdGuard Home instances. It also publishes `pkg/adguard`, a reusable Go client for the complete AdGuard Home v1 HTTP API.
 
 The project is licensed under the GNU Affero General Public License v3.0 or later.
 

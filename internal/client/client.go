@@ -43,7 +43,6 @@ func (s *Service) Add(ctx context.Context, request Settings) error {
 		FilteringEnabled:         request.FilteringEnabled,
 		ParentalEnabled:          request.ParentalEnabled,
 		SafebrowsingEnabled:      request.SafebrowsingEnabled,
-		SafesearchEnabled:        false,
 		SafeSearch:               nil,
 		UseGlobalBlockedServices: false,
 		BlockedServicesSchedule:  nil,

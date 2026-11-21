@@ -63,7 +63,6 @@ func TestServiceAddShapesRequest(t *testing.T) {
 		FilteringEnabled:         true,
 		ParentalEnabled:          false,
 		SafebrowsingEnabled:      true,
-		SafesearchEnabled:        false,
 		SafeSearch:               nil,
 		UseGlobalBlockedServices: false,
 		BlockedServicesSchedule:  nil,

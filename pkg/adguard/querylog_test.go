@@ -55,8 +55,6 @@ const (
 				"unicode_name":null,
 				"type":"A"
 			},
-			"filterId":0,
-			"rule":"",
 			"rules":[{"filter_list_id":0,"text":""}],
 			"reason":"NotFilteredNotFound",
 			"service_name":"",
@@ -181,10 +179,6 @@ func TestClientQueryLogRequestAndResponse(t *testing.T) {
 	assert.Nil(t, entry.Question.UnicodeName)
 	require.NotNil(t, entry.Question.Type)
 	assert.Equal(t, "A", *entry.Question.Type)
-	require.NotNil(t, entry.FilterID)
-	assert.Zero(t, *entry.FilterID)
-	require.NotNil(t, entry.Rule)
-	assert.Empty(t, *entry.Rule)
 	require.NotNil(t, entry.Rules)
 	require.Len(t, *entry.Rules, 1)
 	require.NotNil(t, (*entry.Rules)[0].FilterListID)
