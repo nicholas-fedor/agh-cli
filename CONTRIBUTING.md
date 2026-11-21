@@ -4,7 +4,7 @@ Thank you for your interest in improving agh-cli. This document describes the re
 
 ## Project overview
 
-agh-cli is a Go 1.27.1 CLI for managing multiple AdGuard Home instances. It also publishes `pkg/adguard`, a reusable Go client for the complete AdGuard Home HTTP API.
+agh-cli is a Go CLI for managing multiple AdGuard Home instances. It also publishes `pkg/adguard`, a reusable Go client for the complete AdGuard Home HTTP API.
 
 The project is licensed under the GNU Affero General Public License v3.0 or later.
 
@@ -12,7 +12,7 @@ The project is licensed under the GNU Affero General Public License v3.0 or late
 
 Install the following tools:
 
-- Go 1.27.1
+- [Go](https://go.dev/)
 - [Task](https://taskfile.dev/)
 - [golangci-lint v2](https://golangci-lint.run/)
 - [betteralign](https://github.com/dkorunic/betteralign)
@@ -139,7 +139,7 @@ Each package must have package documentation, preferably in `doc.go`.
 
 ### Go conventions
 
-- Go 1.27.1 is the baseline.
+- The `go` directive in `go.mod` sets the language and standard library baseline.
 - Use modern standard-library APIs such as `errors.AsType`, `errors.Join`, `slices`, `maps`, and iterator helpers where applicable.
 - Use short, consistent receiver names: `c` for `Client`, `i` for `Instance`, `m` for `Manager`, `t` for `TableWriter`.
 - Do not mix pointer and value receivers on one type.

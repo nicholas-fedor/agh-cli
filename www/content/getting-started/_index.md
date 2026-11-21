@@ -10,7 +10,7 @@ This guide walks you through installing agh-cli, configuring your AdGuard Home i
 - One or more [AdGuard Home](https://adguard.com/en/adguard-home/overview.html) instances reachable from your machine
 - The admin username and password for those instances, if they require HTTP Basic Auth
 - A running credential store session for the operating system credential store: the macOS Keychain, the Linux and BSD Secret Service, or the Windows Credential Manager. Hosts without one, such as most containers and many headless servers, can use a [mounted secret file or an environment variable](#headless-hosts-and-external-sources) instead
-- [Go](https://go.dev/) 1.27+ (if installing from source)
+- [Go](https://go.dev/) (if installing from source)
 
 ## Installation
 
