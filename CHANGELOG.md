@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Drop the ignored method parameter from postJSON by @nicholas-fedor in [#184](https://github.com/nicholas-fedor/agh-cli/pull/184)
 - Stop pinning the go version outside go.mod by @nicholas-fedor in [#178](https://github.com/nicholas-fedor/agh-cli/pull/178)
 
 ### Chores
