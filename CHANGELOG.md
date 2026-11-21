@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update ossf/scorecard-action action to v2.6.0 by @renovate[bot] in [#174](https://github.com/nicholas-fedor/agh-cli/pull/174)
 - Update step-security/harden-runner action to v2.23.0 by @renovate[bot] in [#172](https://github.com/nicholas-fedor/agh-cli/pull/172)
 
+### Fixed
+
+- Align wire fields with the AdGuard Home server by @nicholas-fedor in [#180](https://github.com/nicholas-fedor/agh-cli/pull/180)
+
 ## [0.1.3] - 2026-11-17
 
 ### Changed
