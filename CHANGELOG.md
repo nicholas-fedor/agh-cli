@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Align wire fields with the AdGuard Home server by @nicholas-fedor in [#180](https://github.com/nicholas-fedor/agh-cli/pull/180)
 
+### Removed
+
+- Remove APIs that AdGuard Home v1 dropped by @nicholas-fedor in [#182](https://github.com/nicholas-fedor/agh-cli/pull/182)
+
 ## [0.1.3] - 2026-11-17
 
 ### Changed
