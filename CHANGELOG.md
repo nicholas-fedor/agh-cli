@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- Update sigstore/cosign-installer action to v4.1.4 by @renovate[bot] in [#189](https://github.com/nicholas-fedor/agh-cli/pull/189)
+- Update github/codeql-action digest to 915412f by @renovate[bot] in [#188](https://github.com/nicholas-fedor/agh-cli/pull/188)
 - Update anchore/sbom-action action to v0.24.4 by @renovate[bot] in [#186](https://github.com/nicholas-fedor/agh-cli/pull/186)
 
 ## [0.2.0] - 2026-11-21
